@@ -168,15 +168,37 @@ async function main() {
     units = state.units;
   }
 
-  // Band rebalancing: hold the book (zero turnover) unless membership changed
-  // or a constituent drifted beyond the band from its target weight.
-  const targets = Object.fromEntries(weights.map((w) => [w.symbol, w.weight]));
+  // Reconstitution is MONTHLY — the published rule, and until 2026-08-21 not
+  // the implemented one. This job runs every six hours so the on-chain NAV
+  // stays fresh, but re-examining membership on every run is a different index:
+  // it swapped constituents 117 times over the 2017-2026 sample against 53 for
+  // the monthly rule, returned less (+1,082% vs +1,104%) and traded more (32%
+  // vs 28% annual turnover). Between reconstitutions the book is marked to
+  // market and only the drift band can move it.
+  const month = new Date().toISOString().slice(0, 7);
+  const isReconstitution = state?.reconstitutedIn !== month;
+  const heldSymbols = units ? Object.keys(units) : [];
+
+  const activeWeights = isReconstitution || !units
+    ? weights
+    : applyCap(
+        // Between reconstitutions the membership is frozen; only the cap-weights
+        // among the incumbents are refreshed.
+        markets
+          .filter((m) => heldSymbols.includes(m.symbol) && m.marketCap > 0 && m.price > 0)
+          .map((m, _i, arr) => ({
+            symbol: m.symbol,
+            weight: m.marketCap / arr.reduce((t, x) => t + x.marketCap, 0),
+          })),
+        MAX_WEIGHT
+      );
+
+  const targets = Object.fromEntries(activeWeights.map((w) => [w.symbol, w.weight]));
   let rebalance = units === null;
   if (units !== null) {
-    const held = Object.keys(units);
     const wanted = Object.keys(targets);
-    if (held.length !== wanted.length || wanted.some((s) => !(s in units))) {
-      rebalance = true; // membership change
+    if (isReconstitution && (heldSymbols.length !== wanted.length || wanted.some((s) => !(s in units)))) {
+      rebalance = true; // membership change, at a reconstitution
     } else {
       for (const [sym, u] of Object.entries(units)) {
         const drifted = (u * prices[sym]) / level;
@@ -189,10 +211,14 @@ async function main() {
   }
   if (rebalance) {
     units = Object.fromEntries(
-      weights.map((w) => [w.symbol, (level * w.weight) / prices[w.symbol]])
+      activeWeights.map((w) => [w.symbol, (level * w.weight) / prices[w.symbol]])
     );
   }
-  console.log(rebalance ? 'rebalanced to target weights' : 'within band — book held, zero turnover');
+  console.log(
+    rebalance
+      ? `rebalanced to target weights (${isReconstitution ? 'monthly reconstitution' : 'drift band'})`
+      : `within band — book held, zero turnover${isReconstitution ? ' (reconstitution: membership unchanged)' : ''}`
+  );
 
   const account = privateKeyToAccount(pk);
   const publicClient = createPublicClient({ chain: giwaSepolia, transport: http() });
@@ -260,7 +286,8 @@ async function main() {
 
   fs.writeFileSync(
     STATE_PATH,
-    JSON.stringify({ updatedAt: postedAt, level, units, priceSource, override }, null, 2) + '\n'
+    JSON.stringify({ updatedAt: postedAt, level, units, priceSource, override,
+      reconstitutedIn: isReconstitution ? month : (state?.reconstitutedIn ?? month) }, null, 2) + '\n'
   );
 
   // Append-only ledger of every mark this keeper has posted. One line, one

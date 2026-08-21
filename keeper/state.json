@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-08-21T07:28:15.481Z",
-  "level": 1.1750357864211785,
+  "updatedAt": "2026-08-21T10:14:09.357Z",
+  "level": 1.1985061056965105,
   "units": {
     "BTC": 0.000009174707288830527,
     "ETH": 0.00009041398526458989,
@@ -24,5 +24,6 @@
     "CRO": 0.03542007506979619
   },
   "priceSource": "coingecko",
-  "override": null
+  "override": null,
+  "reconstitutedIn": "2026-08"
 }
