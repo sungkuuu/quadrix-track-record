@@ -1,0 +1,115 @@
+name: track-record
+
+on:
+  schedule:
+    - cron: '10 0 * * *' # daily 00:10 UTC — records the just-closed UTC day
+  workflow_dispatch:
+
+permissions:
+  contents: write # appends trackrecord/*.jsonl to main
+  issues: write # failure alert, keeper-style
+
+concurrency:
+  group: track-record
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Append and anchor daily record
+        run: |
+          set -o pipefail
+          node scripts/track-record.mjs --anchor 2>&1 | tee tr.log
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
+      - name: Commit record
+        run: |
+          git config user.name "qx-track-record"
+          git config user.email "keeper@quadrix.finance"
+          git add trackrecord/
+          git diff --cached --quiet || git commit -m "track-record: $(date -u +%Y-%m-%d)"
+          git push
+
+      # A gap in the record is chain-linked, never backfilled (spec §2) — so a
+      # failed day is permanent. That earns the same alerting as the keeper.
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          {
+            echo "The daily track-record run failed. **A missed day cannot be backfilled** —"
+            echo "it becomes a permanent, publicly counted gap (spec §2)."
+            echo
+            echo "- run: $RUN_URL"
+            echo
+            echo '```'
+            tail -n 40 tr.log 2>/dev/null || echo '(no output — failed before the script started)'
+            echo '```'
+          } > alert.md
+          existing=$(gh issue list --label track-record-failure --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file alert.md
+          else
+            gh label create track-record-failure --color b60205 \
+              --description "daily track record run failed" 2>/dev/null || true
+            gh issue create --title "track-record run failing" \
+              --label track-record-failure --body-file alert.md
+          fi
+
+      - name: Resolve alert
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --label track-record-failure --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Track-record run succeeded. Closing."
+          done
+
+      # A missing benchmark does not fail the job (the record must still be
+      # written, spec §2) — so it needs its own alert path, or it degrades
+      # silently, as it did for seq 1–5.
+      - name: Alert on missing benchmarks
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          if grep -q "^BENCHMARKS_MISSING" tr.log; then
+            {
+              echo "Today's record was written and anchored, but the Binance benchmark"
+              echo "fetch returned nothing. **Missing benchmarks are never backfilled**"
+              echo "(spec §2) — each further day is permanent."
+              echo
+              echo "- run: $RUN_URL"
+            } > bm-alert.md
+            existing=$(gh issue list --label benchmark-missing --state open \
+              --json number --jq '.[0].number // empty')
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body-file bm-alert.md
+            else
+              gh label create benchmark-missing --color d93f0b \
+                --description "daily record written without benchmark prices" 2>/dev/null || true
+              gh issue create --title "track-record: benchmarks missing" \
+                --label benchmark-missing --body-file bm-alert.md
+            fi
+          elif grep -q "appended" tr.log; then
+            # only a run that actually wrote a record with benchmarks resolves
+            # the alert — a same-day re-run that appends nothing proves nothing
+            for n in $(gh issue list --label benchmark-missing --state open --json number --jq '.[].number'); do
+              gh issue close "$n" --comment "Benchmarks recorded successfully. Closing."
+            done
+          fi

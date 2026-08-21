@@ -1,0 +1,13 @@
+{
+  "name": "quadrix-track-record",
+  "private": true,
+  "type": "module",
+  "description": "Hash-chained, on-chain-anchored daily operating record for Quadrix",
+  "scripts": {
+    "record": "node scripts/track-record.mjs",
+    "verify": "node scripts/verify.mjs --dir ./trackrecord"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  }
+}
