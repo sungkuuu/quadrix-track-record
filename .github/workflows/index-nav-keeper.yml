@@ -1,0 +1,91 @@
+name: index-nav-keeper
+
+# Moved here from the private application repo on 2026-08-21. The keeper is a
+# public-evidence job — the NAV it posts is checkable on chain by anyone — so it
+# belongs in a public repository, where Actions minutes are free and unmetered.
+# In the private repo one unrelated project exhausted the shared quota and
+# silently froze this.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *' # every 6h — qX20 NAV mark on GIWA Sepolia
+  workflow_dispatch:
+    inputs:
+      acknowledge_move:
+        description: 'Operator override: post the NAV even if it exceeds the sanity threshold. Requires a RUNBOOK entry.'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: keeper
+  cancel-in-progress: false
+
+jobs:
+  update-nav:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+
+      - name: Post NAV
+        run: |
+          set -o pipefail
+          node keeper/update-nav.mjs 2>&1 | tee keeper.log
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+          KEEPER_ACK_MOVE: ${{ inputs.acknowledge_move }}
+
+      # state.json carries the model book forward; nav-marks.jsonl is the
+      # append-only record of what was actually posted on chain.
+      - name: Commit model state and the mark ledger
+        run: |
+          git config user.name "qx20-keeper"
+          git config user.email "keeper@quadrix.finance"
+          git add keeper/state.json keeper/nav-marks.jsonl
+          git diff --cached --exit-code > /dev/null || git commit -m "keeper: qX20 NAV mark $(date -u +%Y-%m-%dT%H:%M)Z"
+          git push
+
+      # A red badge is not an alert — nobody watches Actions at 3am. Filing an
+      # issue emails every watcher with no extra secret to configure.
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          {
+            echo "The qX20 NAV keeper failed. **The NAV on chain is now stale** —"
+            echo "qX20 keeps quoting the last posted mark until this is resolved."
+            echo
+            echo "- run: $RUN_URL"
+            echo "- runbook: \`keeper/RUNBOOK.md\`"
+            echo
+            echo '```'
+            tail -n 40 keeper.log 2>/dev/null || echo '(no keeper output — the run failed before the keeper started)'
+            echo '```'
+          } > alert.md
+          existing=$(gh issue list --label keeper-failure --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file alert.md
+          else
+            gh label create keeper-failure --color b60205 --description "qX20 NAV keeper run failed" 2>/dev/null || true
+            gh issue create --title "qX20 NAV keeper failing" --label keeper-failure --body-file alert.md
+          fi
+
+      # An open issue should mean "broken right now", not "broke once".
+      - name: Resolve alert
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --label keeper-failure --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Keeper run succeeded — NAV posted. Closing."
+          done

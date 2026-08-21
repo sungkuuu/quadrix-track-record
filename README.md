@@ -41,6 +41,10 @@ authority — the site is a mirror.
 | `scripts/anchor-decision.mjs` | anchors a decision document |
 | `scripts/verify.mjs` | the verifier above |
 | `docs/track-record-spec.md` | the rules the record follows |
+| `keeper/nav-marks.jsonl` | append-only ledger of every qX20 NAV mark posted on chain |
+| `keeper/update-nav.mjs` | the qX20 index keeper (runs every 6h in CI) |
+| `keeper/state.json` | the keeper's working file — overwritten each run, **not** a record |
+| `keeper/RUNBOOK.md` | what to do when the keeper fails |
 
 ## Rules that make this worth reading
 
@@ -54,6 +58,20 @@ authority — the site is a mirror.
 - **Anchored decisions cannot be edited.** A decision document's hash is
   committed on chain when the decision is made; changing it means publishing a
   new dated document, which leaves a trace.
+
+## The keeper, and why a mutable file lives here
+
+`keeper/` runs the qX20 index: every six hours it marks the model book to
+market and posts the resulting NAV to the index vault on GIWA Sepolia. It moved
+here on 2026-08-21 for the same reason the record did — a public repository's
+CI cannot be starved by an unrelated project's quota.
+
+`keeper/state.json` is the one file in this repository that is **overwritten**
+rather than appended: it carries the model units forward so the index level is
+continuous across runs. It is a working file, not evidence. What was actually
+posted is recorded in `keeper/nav-marks.jsonl`, one line per on-chain
+transaction, appended and never rewritten — so any past mark can be checked
+against the chain without trusting the current contents of `state.json`.
 
 ## What this does and does not prove
 
