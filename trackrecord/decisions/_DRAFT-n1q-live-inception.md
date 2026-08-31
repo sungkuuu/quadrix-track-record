@@ -2,7 +2,7 @@
 
 **Effective:** {{EFFECTIVE_DATE}} (UTC), forward only.
 
-> ⚠️ DRAFT — not anchored. Fill `{{EFFECTIVE_DATE}}`, `{{VAULT_ADDRESS}}`, and the
+> ⚠️ DRAFT — not anchored. Fill `{{EFFECTIVE_DATE}}`, `0x9C0e27Be3c541373ce4f47f6df9b4023E999Ce6A`, and the
 > executed amounts, rename the file to `{{EFFECTIVE_DATE}}-n1q-live-inception.md`,
 > then anchor. Nothing in this file is final until it is anchored.
 
@@ -18,7 +18,7 @@ there was anything to report.
 | --- | --- |
 | Vault | Nexus One Quality Vault (**N1Q**) |
 | Venue | Enzyme Onyx, Arbitrum |
-| Address | `{{VAULT_ADDRESS}}` |
+| Address | `0x9C0e27Be3c541373ce4f47f6df9b4023E999Ce6A` |
 | Capital at inception | {{AMOUNT}} USDC, own funds |
 | Fees | 0% management / 20% performance, high-water mark |
 
@@ -65,7 +65,7 @@ position. Time is the one input that cannot be bought later.
 ## Effect on the published record
 
 From {{EFFECTIVE_DATE}} the daily record runs in LIVE mode against the vault at
-`{{VAULT_ADDRESS}}`. Benchmarks continue from the same source (Binance daily close,
+`0x9C0e27Be3c541373ce4f47f6df9b4023E999Ce6A`. Benchmarks continue from the same source (Binance daily close,
 BTC and ETH) and are flagged, never backfilled, when a day is missing.
 
 ## Verifying this document
