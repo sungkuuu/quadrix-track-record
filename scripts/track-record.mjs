@@ -112,15 +112,78 @@ function decisionsInForce(onDate) {
 
 const decisions = decisionsInForce(date);
 
+// ---------------------------------------------------------------- LIVE book
+// Book reader, decision of 2026-09-01 (owner): ONCHAIN SUM — balances are read
+// from the chain and priced from the same public source the benchmarks use, so
+// anyone can recompute the book without trusting a number we typed. The posted
+// admin NAV is NOT read (it is the March-incident surface). Chains are a config
+// list; today the whole book lives on Arbitrum, and a later bridge execution
+// adds a chain entry here rather than changing the reader.
+//
+// Cash rule: only USDC held BY THE VAULT CONTRACT counts as cash. USDC or
+// native ETH on the management wallet is the owner's own (gas float, residue),
+// not vault property — the whitelist below is the exhaustive set of vault
+// positions outside the contract.
+const LIVE_INCEPTION = '2026-09-01'; // anchored decision 2026-09-01-n1q-live-inception
+const MGMT_WALLET = '0x2b5b5177f4aaece5a311134023ac11dd9ca9e321';
+const CHAINS = {
+  arbitrum: {
+    rpc: 'https://arb1.arbitrum.io/rpc',
+    cash: { symbol: 'USDC', address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', decimals: 6, holder: 'vault' },
+    positions: [
+      // symbol used for Binance pricing: WBTC marks to BTC, WETH to ETH — the
+      // wrapper premium/discount on Arbitrum is far inside our tolerance.
+      { symbol: 'WBTC', priceSymbol: 'BTC', address: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', decimals: 8 },
+      { symbol: 'WETH', priceSymbol: 'ETH', address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', decimals: 18 },
+      { symbol: 'PENDLE', priceSymbol: 'PENDLE', address: '0x0c880f6761F1af8d9Aa9C466984b80DAb9a8c9e8', decimals: 18 },
+    ],
+  },
+};
+
+async function erc20Balance(rpc, token, holder) {
+  const data = '0x70a08231' + holder.slice(2).toLowerCase().padStart(64, '0');
+  const r = await fetch(rpc, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: token, data }, 'latest'] }),
+  });
+  const j = await r.json();
+  if (j.error || !j.result) throw new Error(`balanceOf failed for ${token}: ${JSON.stringify(j.error)}`);
+  return BigInt(j.result);
+}
+
+async function buildLiveBook(recordDate) {
+  const vault = process.env.ENZYME_VAULT_ADDRESS;
+  const positions = [];
+  let cash = 0;
+  for (const [chain, cfg] of Object.entries(CHAINS)) {
+    const cashHolder = cfg.cash.holder === 'vault' ? vault : MGMT_WALLET;
+    cash += Number(await erc20Balance(cfg.rpc, cfg.cash.address, cashHolder)) / 10 ** cfg.cash.decimals;
+    for (const t of cfg.positions) {
+      const qty = Number(await erc20Balance(cfg.rpc, t.address, MGMT_WALLET)) / 10 ** t.decimals;
+      if (qty === 0) continue; // empty sleeves stay out of the record, not in it as zeros
+      const price = await binanceClose(t.priceSymbol, recordDate);
+      if (price == null) throw new Error(`no price for ${t.priceSymbol} on ${recordDate} — refusing to write a mispriced book`);
+      positions.push({ chain, symbol: t.symbol, address: t.address, qty, priceUSDT: price, valueUSDT: qty * price });
+    }
+  }
+  return { positions, cashUSDT: cash };
+}
+
+if (MODE === 'LIVE' && date < LIVE_INCEPTION) {
+  console.log(`LIVE series starts ${LIVE_INCEPTION}; ${date} predates it — nothing to record`);
+  process.exit(0);
+}
+const book = MODE === 'LIVE' ? await buildLiveBook(date) : { positions: [], cashUSDT: 0 };
+const aum = book.cashUSDT + book.positions.reduce((s, p) => s + p.valueUSDT, 0);
+
 const record = {
   seq: prev ? prev.seq + 1 : 0,
   date,
   observedAt: new Date().toISOString(),
   mode: MODE, // series selected once at the top; never concatenate (spec §8)
-  // LIVE book construction lands with the Enzyme reader (blocked on the real
-  // vault address); until then LIVE mode cannot start — guarded above.
-  book: { positions: [], cashUSDT: 0 },
-  aumUSDT: 0,
+  book,
+  aumUSDT: Math.round(aum * 1e6) / 1e6,
   benchmarks:
     btc != null && eth != null
       ? { source: 'binance-daily-close', BTC: btc, ETH: eth }

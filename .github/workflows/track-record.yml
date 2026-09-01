@@ -30,6 +30,10 @@ jobs:
           node scripts/track-record.mjs --anchor 2>&1 | tee tr.log
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
+          # LIVE since the anchored inception decision of 2026-09-01. The
+          # DRY_RUN series is complete and is never extended (spec §8).
+          TRACK_MODE: LIVE
+          ENZYME_VAULT_ADDRESS: '0x9C0e27Be3c541373ce4f47f6df9b4023E999Ce6A'
 
       - name: Commit record
         run: |
