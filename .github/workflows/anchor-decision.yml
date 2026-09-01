@@ -1,0 +1,44 @@
+name: anchor-decision
+
+# Anchors one decision document by hand, with the same KEEPER_PK secret the
+# nightly run uses — the key never has to exist on a local machine.
+# Run it from the Actions tab: pick this workflow, press "Run workflow",
+# and give the path of the decision file.
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: 'Decision file (repo-relative path)'
+        required: true
+        default: 'trackrecord/decisions/2026-09-01-n1q-live-inception.md'
+
+permissions:
+  contents: write # appends trackrecord/decisions.jsonl to main
+
+concurrency:
+  group: anchor-decision
+  cancel-in-progress: false
+
+jobs:
+  anchor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Anchor the decision
+        run: node scripts/anchor-decision.mjs "${{ inputs.file }}"
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
+      - name: Commit the anchor record
+        run: |
+          git config user.name "qx-track-record"
+          git config user.email "keeper@quadrix.finance"
+          git add trackrecord/decisions.jsonl
+          git diff --cached --quiet || git commit -m "decisions: anchor ${{ inputs.file }}"
+          git push
