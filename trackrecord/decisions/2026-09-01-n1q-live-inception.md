@@ -1,10 +1,9 @@
-# LIVE inception — N1Q, {{EFFECTIVE_DATE}}
+# LIVE inception — N1Q, 2026-09-01
 
-**Effective:** {{EFFECTIVE_DATE}} (UTC), forward only.
+**Effective:** 2026-09-01 (UTC), forward only.
 
-> ⚠️ DRAFT — not anchored. Fill `{{EFFECTIVE_DATE}}`, `0x9C0e27Be3c541373ce4f47f6df9b4023E999Ce6A`, and the
-> executed amounts, rename the file to `{{EFFECTIVE_DATE}}-n1q-live-inception.md`,
-> then anchor. Nothing in this file is final until it is anchored.
+> ⚠️ NOT YET ANCHORED. Deposit is executing 2026-09-01; anchor immediately after
+> the vault accepts the deposit. Nothing in this file is final until anchored.
 
 ## What this is
 
@@ -19,7 +18,7 @@ there was anything to report.
 | Vault | Nexus One Quality Vault (**N1Q**) |
 | Venue | Enzyme Onyx, Arbitrum |
 | Address | `0x9C0e27Be3c541373ce4f47f6df9b4023E999Ce6A` |
-| Capital at inception | {{AMOUNT}} USDC, own funds |
+| Capital at inception | 500.00 USDC, own funds |
 | Fees | 0% management / 20% performance, high-water mark |
 
 The vault was named **Nexus One Deep Value (N1DV)** through 2026-08-26 and renamed
@@ -64,7 +63,7 @@ position. Time is the one input that cannot be bought later.
 
 ## Effect on the published record
 
-From {{EFFECTIVE_DATE}} the daily record runs in LIVE mode against the vault at
+From 2026-09-01 the daily record runs in LIVE mode against the vault at
 `0x9C0e27Be3c541373ce4f47f6df9b4023E999Ce6A`. Benchmarks continue from the same source (Binance daily close,
 BTC and ETH) and are flagged, never backfilled, when a day is missing.
 
@@ -75,7 +74,7 @@ This file's SHA-256 is committed to GIWA Sepolia as transaction calldata
 onward, so the date of this decision does not rest on our word. To check it:
 
 ```
-shasum -a 256 {{EFFECTIVE_DATE}}-n1q-live-inception.md
+shasum -a 256 2026-09-01-n1q-live-inception.md
 ```
 
 and compare against `/trackrecord/decisions.jsonl` and the anchor transaction it names.
