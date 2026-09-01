@@ -138,7 +138,52 @@ const CHAINS = {
       { symbol: 'PENDLE', priceSymbol: 'PENDLE', address: '0x0c880f6761F1af8d9Aa9C466984b80DAb9a8c9e8', decimals: 18 },
     ],
   },
+  // Added per the anchored gap-execution decision of 2026-09-01.
+  base: {
+    rpc: 'https://mainnet.base.org',
+    positions: [
+      { symbol: 'AERO', priceSymbol: 'AERO', address: '0x940181a94A35A4569E4529A3CDfB74e38FD98631', decimals: 18 },
+    ],
+  },
+  hyperevm: {
+    rpc: 'https://rpc.hyperliquid.xyz/evm',
+    positions: [
+      // HYPE is the chain's native gas asset, not an ERC-20, and Binance does
+      // not list it — priced from Hyperliquid's public daily candle close, its
+      // primary market (decision 2026-09-01-gap-execution).
+      { symbol: 'HYPE', native: true, priceSource: 'hyperliquid', decimals: 18 },
+    ],
+  },
 };
+
+/** Hyperliquid public daily candle close for the record date (UTC). */
+async function hyperliquidClose(coin, date) {
+  const start = Date.parse(date + 'T00:00:00Z');
+  try {
+    const r = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'candleSnapshot', req: { coin, interval: '1d', startTime: start, endTime: start + 86_400_000 } }),
+    });
+    if (!r.ok) return null;
+    const k = await r.json();
+    const c = Array.isArray(k) && k.find((x) => x.t === start);
+    return c ? parseFloat(c.c) : null;
+  } catch {
+    return null; // spec §2: no silent fill — caller refuses to write a mispriced book
+  }
+}
+
+async function nativeBalance(rpc, holder) {
+  const r = await fetch(rpc, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [holder, 'latest'] }),
+  });
+  const j = await r.json();
+  if (j.error || !j.result) throw new Error(`getBalance failed on ${rpc}: ${JSON.stringify(j.error)}`);
+  return BigInt(j.result);
+}
 
 async function erc20Balance(rpc, token, holder) {
   const data = '0x70a08231' + holder.slice(2).toLowerCase().padStart(64, '0');
@@ -157,14 +202,21 @@ async function buildLiveBook(recordDate) {
   const positions = [];
   let cash = 0;
   for (const [chain, cfg] of Object.entries(CHAINS)) {
-    const cashHolder = cfg.cash.holder === 'vault' ? vault : MGMT_WALLET;
-    cash += Number(await erc20Balance(cfg.rpc, cfg.cash.address, cashHolder)) / 10 ** cfg.cash.decimals;
+    if (cfg.cash) {
+      const cashHolder = cfg.cash.holder === 'vault' ? vault : MGMT_WALLET;
+      cash += Number(await erc20Balance(cfg.rpc, cfg.cash.address, cashHolder)) / 10 ** cfg.cash.decimals;
+    }
     for (const t of cfg.positions) {
-      const qty = Number(await erc20Balance(cfg.rpc, t.address, MGMT_WALLET)) / 10 ** t.decimals;
+      const raw = t.native
+        ? await nativeBalance(cfg.rpc, MGMT_WALLET)
+        : await erc20Balance(cfg.rpc, t.address, MGMT_WALLET);
+      const qty = Number(raw) / 10 ** t.decimals;
       if (qty === 0) continue; // empty sleeves stay out of the record, not in it as zeros
-      const price = await binanceClose(t.priceSymbol, recordDate);
-      if (price == null) throw new Error(`no price for ${t.priceSymbol} on ${recordDate} — refusing to write a mispriced book`);
-      positions.push({ chain, symbol: t.symbol, address: t.address, qty, priceUSDT: price, valueUSDT: qty * price });
+      const price = t.priceSource === 'hyperliquid'
+        ? await hyperliquidClose(t.symbol, recordDate)
+        : await binanceClose(t.priceSymbol, recordDate);
+      if (price == null) throw new Error(`no price for ${t.symbol} on ${recordDate} — refusing to write a mispriced book`);
+      positions.push({ chain, symbol: t.symbol, address: t.native ? 'native' : t.address, qty, priceUSDT: price, valueUSDT: qty * price });
     }
   }
   return { positions, cashUSDT: cash };
