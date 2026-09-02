@@ -197,6 +197,17 @@ async function erc20Balance(rpc, token, holder) {
   return BigInt(j.result);
 }
 
+async function vaultTotalSupply(rpc, vault) {
+  const r = await fetch(rpc, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: vault, data: '0x18160ddd' }, 'latest'] }),
+  });
+  const j = await r.json();
+  if (j.error || !j.result) throw new Error(`totalSupply failed: ${JSON.stringify(j.error)}`);
+  return Number(BigInt(j.result)) / 1e18;
+}
+
 async function buildLiveBook(recordDate) {
   const vault = process.env.ENZYME_VAULT_ADDRESS;
   const positions = [];
@@ -219,7 +230,11 @@ async function buildLiveBook(recordDate) {
       positions.push({ chain, symbol: t.symbol, address: t.native ? 'native' : t.address, qty, priceUSDT: price, valueUSDT: qty * price });
     }
   }
-  return { positions, cashUSDT: cash };
+  // Shares outstanding, read from the vault contract — lets any consumer
+  // compute per-share value without trusting a divisor we typed. Added from
+  // seq 1 (schema addition; earlier records keep the shape they were hashed with).
+  const sharesOutstanding = await vaultTotalSupply(CHAINS.arbitrum.rpc, vault);
+  return { positions, cashUSDT: cash, sharesOutstanding };
 }
 
 if (MODE === 'LIVE' && date < LIVE_INCEPTION) {
