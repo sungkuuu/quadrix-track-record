@@ -42,6 +42,15 @@ jobs:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
           KEEPER_ACK_MOVE: ${{ inputs.acknowledge_move }}
 
+      # QBV v3 streaming-fee poke. The fee is lazy (a missed run settles
+      # exactly on the next), so this is deliberately non-fatal: it must never
+      # block the NAV mark above.
+      - name: Accrue QBV management fee
+        continue-on-error: true
+        run: node keeper/accrue-qbv-fee.mjs
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
       # state.json carries the model book forward; nav-marks.jsonl is the
       # append-only record of what was actually posted on chain.
       - name: Commit model state and the mark ledger
