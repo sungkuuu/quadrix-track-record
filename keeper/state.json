@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-09-13T11:59:50.829Z",
-  "level": 1.197968419307578,
+  "updatedAt": "2026-09-13T16:25:29.605Z",
+  "level": 1.2062119513832497,
   "units": {
     "BTC": 0.000009284755974815287,
     "ETH": 0.00008858089605746204,
@@ -23,7 +23,7 @@
     "SHIB": 432.31507102418317,
     "SUI": 0.00299120512648153
   },
-  "priceSource": "coingecko",
+  "priceSource": "coinpaprika",
   "override": null,
   "reconstitutedIn": "2026-09"
 }
