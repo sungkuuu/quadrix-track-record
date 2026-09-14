@@ -1,5 +1,7 @@
 # qX20 NAV keeper — operations runbook
 
+Current vault: `0x2A165501ddA6e430fF98E82682f53CA8465Bb21f` (2026-09-14 →). Superseded: `0x1d1115b961832dd921be78cf1362a531b69bcaa0` (2026-07-21 → 2026-09-14; NAV frozen at its last mark, redemptions never gated).
+
 The keeper marks the qX20 model book to market and posts the resulting NAV to
 `QuadrixIndexVault` on GIWA Sepolia on a six-hour schedule
 (`.github/workflows/index-nav-keeper.yml`, cron `17 */6`). GitHub starts the
@@ -169,7 +171,7 @@ an uncommitted local run desynchronises CI (failure mode 5).
 
 | Date (UTC) | Move | Source | Reason | Operator |
 | --- | --- | --- | --- | --- |
-| — | — | — | no overrides to date | — |
+| 2026-09-14 | from par 1.000000 to the model level (≈+21%, clamped to ≤1.24×) | redeploy | vault redeployed with a reentrancy guard at 0x2A165501ddA6e430fF98E82682f53CA8465Bb21f; the new contract starts at par while the model index continues — one acknowledged post to converge. Superseded vault 0x1d1115b961832dd921be78cf1362a531b69bcaa0 keeps its marks | keeper operator |
 
 ## Alert-path drills
 
