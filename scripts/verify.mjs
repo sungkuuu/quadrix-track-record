@@ -6,7 +6,14 @@
  *   1. every record's hash is the SHA-256 of its own contents (tamper check),
  *   2. every record embeds the previous record's hash (append-only chain),
  *   3. every anchored head hash exists on GIWA Sepolia as confirmed calldata
- *      (`qxtr:<hash>` in a transaction Quadrix cannot rewrite or backdate).
+ *      (`qxtr:<hash>` in a transaction Quadrix cannot rewrite or backdate),
+ *   4. every record has an anchor (a record without one has no checkable date)
+ *      and every record's list of decisions in force matches the ledger,
+ *   5. every anchored decision document still hashes to the value committed on
+ *      chain (`qxdec:<hash>`) and that transaction is confirmed.
+ *
+ * GIWA Sepolia is a testnet. What the anchors prove is that Quadrix did not
+ * rewrite or backdate a record; the proof lasts as long as that chain's history.
  *
  * Anyone can run it against the published data:
  *

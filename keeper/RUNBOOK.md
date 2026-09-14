@@ -1,18 +1,23 @@
 # qX20 NAV keeper — operations runbook
 
 The keeper marks the qX20 model book to market and posts the resulting NAV to
-`QuadrixIndexVault` on GIWA Sepolia every 6 hours (`.github/workflows/keeper.yml`).
+`QuadrixIndexVault` on GIWA Sepolia on a six-hour schedule
+(`.github/workflows/index-nav-keeper.yml`, cron `17 */6`). GitHub starts the
+job late: over the first 90 marks from this repository the gaps between marks
+ran 0.1–13.8 h (median 6.1 h), three of them longer than 12 h.
 
 **What a failure means:** the NAV on chain is *stale*, not wrong. The vault keeps
 quoting the last posted mark. Deposits and redemptions still work — they just
-transact at an old price. There is no path by which a failed keeper run locks
-funds or corrupts state; the model book only advances when a run succeeds.
+transact at an old price. A failed keeper run does not lock funds or corrupt
+state; the model book only advances when a run succeeds. A *successful* run can
+still post a wrong NAV in one case — a constituent without a price, failure
+mode 6 below — because the sanity gate only sees the size of the move.
 
 **How you find out:** a failed run opens (or comments on) a GitHub issue labelled
 `keeper-failure`, which emails every repo watcher. A successful run closes it. An
-open issue therefore always means "broken right now", not "broke once". A Slack
-webhook can be added as a second channel by setting the `SLACK_WEBHOOK_URL`
-repository secret — no code change needed.
+open issue therefore always means "broken right now", not "broke once". There
+is no second channel; adding one (a webhook, for instance) would need a step
+added to the workflow.
 
 ---
 
@@ -83,24 +88,57 @@ retries. If it persists for more than ~24h (4 runs), add a third source to
 
 The repository secret was deleted or rotated. Re-add `KEEPER_PK`. This key is a
 testnet burner that holds only GIWA Sepolia gas; it has no authority over the
-managed vault and cannot move user assets — its only power is `setNav` on qX20,
-itself bounded by the contract's ±25%.
+managed vault and cannot move user assets. It does sign every on-chain write in
+this repository: qX20 marks (`setNav`, bounded by the contract's ±25%), the
+daily record anchors (`track-record.yml`), decision anchors
+(`anchor-decision.yml`) and the QBV v3 `accrueManagementFee` poke. The watchdog
+derives the anchoring account from it. Rotating the key therefore changes the
+address every future anchor is sent from: past anchors stay valid on chain,
+but the series would from then on be anchored from two accounts, and the
+watchdog's gas check moves to the new one.
 
 ### 4. Transaction reverted
 
-Almost always the contract's ±25% bound (the script's own ±15% gate should have
-caught it first — if it did not, the two are out of sync, which is a bug) or an
-out-of-gas keeper account. Check the keeper address's ETH balance on the GIWA
-Sepolia explorer; top up from the faucet.
+Gas, nonce or RPC. The contract's ±25% bound cannot be the cause when the
+script is what sent the transaction: the script's own ±15% gate stops first,
+and past it (operator override) the script clamps the NAV to ±24% before
+sending. A bound revert therefore means someone sent `setNav` outside this
+script. For the ordinary case, check the keeper address's ETH balance on the
+GIWA Sepolia explorer and top up from the faucet.
 
-### 5. `git push` failed on "Commit model state"
+### 5. `git push` failed on "Commit model state and the mark ledger"
 
-The NAV was posted on chain but `state.json` was not committed, so the model
-book will be recomputed from the previous state on the next run and will
-disagree with the posted NAV. Re-run the workflow manually; it converges within
-one run. This is the one failure mode where the on-chain state ran ahead of the
-repository state — the `concurrency: keeper` group exists to keep two runs from
-racing into it.
+The NAV was posted on chain but neither `state.json` nor the new
+`nav-marks.jsonl` line was committed. Two consequences:
+
+- The model book will be recomputed from the previous state on the next run
+  and will disagree with the posted NAV. Re-running the workflow converges
+  within one run.
+- The ledger line for that mark is lost **permanently** unless it is restored
+  by hand: the next run checks out a fresh tree, and nothing re-derives the
+  ledger from the chain. Before re-running, copy the mark line from the failed
+  run's log (the script prints `nav <from> -> <to>` and the tx hash) and
+  append it to `keeper/nav-marks.jsonl` in a commit of its own, so that the
+  ledger's `navFrom` still equals the previous line's `navTo`.
+
+This is the one failure mode where the on-chain state ran ahead of the
+repository state — the `concurrency: keeper` group exists to keep two runs
+from racing into it. It has not happened yet: on every ledger line so far
+`navFrom` equals the prior `navTo`.
+
+### 6. Constituent without a price
+
+The keeper prices the book from the top-60 market feed. A held constituent
+that drops out of that feed (rank, delisting, a ticker collision — prices are
+keyed by ticker, so two coins with the same symbol overwrite each other) is
+logged as `constituents without a live price (dropped)` and **left out of the
+valuation**. The run does not fail. If the resulting NAV moves less than 15%
+it is posted, low by that constituent's weight, and the drift check for it is
+`NaN`, so nothing rebalances it away either. The next run that sees a price
+again restores the value. Treat the warning as an alert: check the ledger for
+a dip that coincides with it, and if the coin is genuinely gone from the
+universe, wait for the monthly reconstitution or re-run after the feed
+recovers.
 
 ---
 
@@ -108,12 +146,12 @@ racing into it.
 
 ```bash
 export KEEPER_PK=0x...            # testnet burner only
-node contracts/keeper/update-nav.mjs
+node keeper/update-nav.mjs
 ```
 
 Add `KEEPER_ACK_MOVE=true` to bypass the sanity gate locally. Commit the
-resulting `contracts/keeper/state.json` — an uncommitted local run desynchronises
-CI (failure mode 5).
+resulting `keeper/state.json` and the appended `keeper/nav-marks.jsonl` line —
+an uncommitted local run desynchronises CI (failure mode 5).
 
 ## Known limitations
 
@@ -123,9 +161,9 @@ CI (failure mode 5).
   lives in `main`, the token can write anywhere in the repo. Moving state out of
   the repository, or to a bot branch merged after verification, is the long-term
   fix; it is not the current priority.
-- **No paging.** Email and Slack are the channels. Nothing wakes anyone up,
-  which is correct while the vault holds test assets and stale NAV is the worst
-  outcome.
+- **No paging.** Email, via GitHub issue notifications, is the only channel.
+  Nothing wakes anyone up, which is correct while the vault holds test assets
+  and stale NAV is the worst outcome.
 
 ## Override log
 
@@ -142,4 +180,5 @@ closes whatever the drill opened.
 
 | Date (UTC) | Result |
 | --- | --- |
-| 2026-07-22 | Full cycle verified — failure opened [#1](https://github.com/sungkuuu/quadrix/issues/1) with the keeper log attached; a second failure commented on the same issue instead of opening a new one; a successful run on `main` closed it automatically. |
+| 2026-07-22 | Full cycle verified in the private repository, before the move — failure opened [sungkuuu/quadrix#1](https://github.com/sungkuuu/quadrix/issues/1) with the keeper log attached; a second failure commented on the same issue instead of opening a new one; a successful run on `main` closed it automatically. |
+| — | Not yet re-drilled in this repository. None of the three alert labels here (`keeper-failure`, `track-record-failure`, `watchdog`) has fired; the watchdog's `--simulate` input exists for this purpose but no drill has been logged. |

@@ -8,7 +8,7 @@ name: index-nav-keeper
 
 on:
   schedule:
-    - cron: '17 */6 * * *' # every 6h — qX20 NAV mark on GIWA Sepolia
+    - cron: '17 */6 * * *' # scheduled every 6h — qX20 NAV mark on GIWA Sepolia; GitHub starts it late (observed 0.1–13.8h between marks)
   workflow_dispatch:
     inputs:
       acknowledge_move:
@@ -52,7 +52,9 @@ jobs:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 
       # state.json carries the model book forward; nav-marks.jsonl is the
-      # append-only record of what was actually posted on chain.
+      # append-only record of what was actually posted on chain from this
+      # repository (since 2026-08-21). A failed push here loses the ledger
+      # line as well as the state — RUNBOOK failure mode 5.
       - name: Commit model state and the mark ledger
         run: |
           git config user.name "qx20-keeper"

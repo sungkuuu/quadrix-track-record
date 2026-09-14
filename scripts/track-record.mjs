@@ -1,22 +1,29 @@
 /**
- * Track-record pipeline — implements docs/track-record-spec.md.
+ * Track-record pipeline — implements the parts of docs/track-record-spec.md
+ * marked "implemented" in that file's status table (§1, §5 AUM, §6, §8, and
+ * parts of §2 and §3). It computes no return statistics.
  *
- * Appends one point-in-time daily record to trackrecord/record.jsonl and
- * anchors the hash-chain head on GIWA Sepolia. Append-only: corrections are
- * new records, never edits. Each record embeds the previous record's hash,
- * so a retroactive fork breaks the chain (spec §1); the anchored head makes
- * the break third-party-detectable without our cooperation.
+ * Appends one point-in-time daily record to trackrecord/record{-live}.jsonl
+ * and anchors the hash-chain head on GIWA Sepolia (a testnet: the time proof
+ * lasts as long as that chain's history). Append-only: corrections are new
+ * records, never edits. Each record embeds the previous record's hash, so a
+ * retroactive fork breaks the chain (spec §1); the anchored head makes the
+ * break third-party-detectable without our cooperation.
  *
- * DRY RUN (current mode): the book is empty. What accrues is proof that the
- * recording infrastructure predates the record — capital may only enter
- * after ≥7 anchored dry-run days (spec §6).
+ * Two series, never concatenated: DRY_RUN (record.jsonl, 2026-08-13 → 08-30,
+ * closed; the book was empty and what accrued was proof that the recording
+ * infrastructure predates the capital, spec §6) and LIVE (record-live.jsonl,
+ * from 2026-09-01, real own capital; TRACK_MODE=LIVE in CI since then).
+ * 2026-08-31 belongs to neither and was never recorded — a gap, not a join.
  *
- * Benchmark prices are recorded from day one so the source is locked before
+ * Benchmark prices were recorded from day one so the source was locked before
  * inception (spec §3): Binance daily closes for BTC/ETH, the same source the
- * published qX20 series uses.
+ * published qX20 backtest uses (the live qX20 keeper marks from CoinGecko,
+ * CoinPaprika as fallback). They are stored under `benchmarks` as reference
+ * closes only; no composite benchmark is computed here.
  *
  * Usage:
- *   node scripts/track-record.mjs            # append today's record
+ *   node scripts/track-record.mjs            # append yesterday's record
  *   KEEPER_PK=0x... node scripts/track-record.mjs --anchor   # + anchor head
  */
 import fs from 'node:fs';
@@ -38,7 +45,7 @@ const ANCHORS = path.join(DIR, `anchors${SUFFIX}.jsonl`);
 
 if (MODE === 'LIVE' && !process.env.ENZYME_VAULT_ADDRESS) {
   throw new Error(
-    'TRACK_MODE=LIVE requires ENZYME_VAULT_ADDRESS (the N1DV vault on Arbitrum) — refusing to start a live series with an empty book source'
+    'TRACK_MODE=LIVE requires ENZYME_VAULT_ADDRESS (the N1Q vault on Arbitrum) — refusing to start a live series with an empty book source'
   );
 }
 
@@ -51,7 +58,10 @@ const giwaSepolia = defineChain({
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
-/** Yesterday's completed UTC day — records always describe a closed day. */
+/** Yesterday's completed UTC day. Prices are that day's close; balances are
+ *  read at block `latest` when the run actually happens — the following
+ *  morning, hours after the cron time (observed 01:48–11:20 UTC across both
+ *  series). A flow inside that window is dated to the record day. */
 function recordDate() {
   const d = new Date(Date.now() - 86_400_000);
   return d.toISOString().slice(0, 10);
@@ -115,10 +125,13 @@ const decisions = decisionsInForce(date);
 // ---------------------------------------------------------------- LIVE book
 // Book reader, decision of 2026-09-01 (owner): ONCHAIN SUM — balances are read
 // from the chain and priced from the same public source the benchmarks use, so
-// anyone can recompute the book without trusting a number we typed. The posted
-// admin NAV is NOT read (it is the March-incident surface). Chains are a config
-// list; today the whole book lives on Arbitrum, and a later bridge execution
-// adds a chain entry here rather than changing the reader.
+// anyone can recompute the book without trusting a *balance* we typed. What
+// is typed, and has to be trusted or checked against the anchored decisions,
+// is the config below: the position whitelist, the holder wallet and the cash
+// rule. The posted admin NAV is NOT read (it is the March-incident surface).
+// Chains are a config list; the book started on Arbitrum alone, and the
+// gap-execution decision of 2026-09-01 added Base and HyperEVM as entries here
+// rather than by changing the reader.
 //
 // Cash rule: only USDC held BY THE VAULT CONTRACT counts as cash. USDC or
 // native ETH on the management wallet is the owner's own (gas float, residue),
@@ -251,6 +264,8 @@ const record = {
   mode: MODE, // series selected once at the top; never concatenate (spec §8)
   book,
   aumUSDT: Math.round(aum * 1e6) / 1e6,
+  // Reference closes only (spec §3 status: partial). No 60/40 composite or
+  // total-market index is computed or stored here; consumers derive them.
   benchmarks:
     btc != null && eth != null
       ? { source: 'binance-daily-close', BTC: btc, ETH: eth }

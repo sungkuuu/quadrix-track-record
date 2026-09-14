@@ -10,7 +10,12 @@
  * stays minimal. Model units persist in state.json so the index level is
  * continuous across runs.
  *
- * Usage: KEEPER_PK=0x... node contracts/keeper/update-nav.mjs
+ * Membership is reconstituted at the first run of each calendar month, with no
+ * notice period (see the comment at the reconstitution step). The keeper key
+ * also signs the record and decision anchors and the QBV fee poke — see
+ * keeper/RUNBOOK.md, failure mode 3.
+ *
+ * Usage: KEEPER_PK=0x... node keeper/update-nav.mjs
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -163,18 +168,30 @@ async function main() {
       if (prices[sym] > 0) value += u * prices[sym];
       else missing.push(sym);
     }
+    // A held constituent absent from the feed is left out of the valuation and
+    // the run continues: the NAV posted is low by that weight if the move stays
+    // inside the sanity gate, and its drift check below is NaN, so it is not
+    // rebalanced away either. RUNBOOK failure mode 6.
     if (missing.length) console.warn('constituents without a live price (dropped):', missing);
     level = value;
     units = state.units;
   }
 
   // Reconstitution is MONTHLY — the published rule, and until 2026-08-21 not
-  // the implemented one. This job runs every six hours so the on-chain NAV
-  // stays fresh, but re-examining membership on every run is a different index:
-  // it swapped constituents 117 times over the 2017-2026 sample against 53 for
-  // the monthly rule, returned less (+1,082% vs +1,104%) and traded more (32%
-  // vs 28% annual turnover). Between reconstitutions the book is marked to
-  // market and only the drift band can move it.
+  // the implemented one. This job is scheduled every six hours so the on-chain
+  // NAV stays fresh, but re-examining membership on every run is a different
+  // index: on the 2017–2026 backtest it swapped constituents roughly twice as
+  // often, returned slightly less and traded more than the monthly rule. (That
+  // comparison was run outside this repository and is not reproducible from
+  // it.) Between reconstitutions the book is marked to market and only the
+  // drift band can move it.
+  //
+  // The reconstitution happens at the FIRST RUN of each calendar month, with no
+  // notice period and no announcement: the 2026-09-01 run swapped one
+  // constituent, and the only traces are that run's log line and the
+  // state.json diff. The ledger line carries the NAV, not the membership. The
+  // seven-day announcement rule belongs to the basket-vault registry, not to
+  // this keeper.
   const month = new Date().toISOString().slice(0, 7);
   const isReconstitution = state?.reconstitutedIn !== month;
   const heldSymbols = units ? Object.keys(units) : [];
@@ -255,7 +272,7 @@ async function main() {
         `  book          ${movers}`,
         `  rebalanced    ${rebalance}`,
         '',
-        '  Operator: see contracts/keeper/RUNBOOK.md before overriding.',
+        '  Operator: see keeper/RUNBOOK.md before overriding.',
         '',
       ].join('\n')
     );
@@ -290,9 +307,12 @@ async function main() {
       reconstitutedIn: isReconstitution ? month : (state?.reconstitutedIn ?? month) }, null, 2) + '\n'
   );
 
-  // Append-only ledger of every mark this keeper has posted. One line, one
-  // on-chain transaction — so the index level can be checked against the chain
-  // for any past date without trusting state.json's current contents.
+  // Append-only ledger of every mark this keeper has posted from this
+  // repository (since 2026-08-21; earlier marks exist only as on-chain events).
+  // One line, one on-chain transaction — so the NAV of any past mark can be
+  // checked against the chain without trusting state.json's current contents.
+  // The line does not carry members or units: the model book behind a mark
+  // lives only in the git history of state.json.
   fs.appendFileSync(
     MARKS_PATH,
     JSON.stringify({
