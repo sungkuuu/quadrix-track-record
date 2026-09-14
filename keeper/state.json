@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-09-14T04:44:35.512Z",
-  "level": 1.212585178622603,
+  "updatedAt": "2026-09-14T05:04:32.535Z",
+  "level": 1.2127895626452274,
   "units": {
     "BTC": 0.000009284755974815287,
     "ETH": 0.00008858089605746204,
@@ -24,10 +24,6 @@
     "SUI": 0.00299120512648153
   },
   "priceSource": "coingecko",
-  "override": {
-    "movePct": 21.2585,
-    "priceSource": "coingecko",
-    "previousNav": 1
-  },
+  "override": null,
   "reconstitutedIn": "2026-09"
 }
