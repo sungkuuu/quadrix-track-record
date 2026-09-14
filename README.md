@@ -16,9 +16,12 @@ No dependencies, Node 18+:
 node scripts/verify.mjs --dir ./trackrecord
 ```
 
-It recomputes every record hash, walks the chain, checks each anchor
-transaction on GIWA Sepolia, and re-hashes every decision document against the
-hash committed on chain. Exit code 0 means every check passed.
+It walks **both** published series from their own genesis — the closed DRY_RUN
+rehearsal (`record.jsonl`, 2026-08-13 → 08-30) and the LIVE series with real
+capital behind it (`record-live.jsonl`, from 2026-09-01) — recomputing every
+record hash, checking each anchor transaction on GIWA Sepolia, and re-hashing
+every decision document against the hash committed on chain. Exit code 0 means
+every check passed. `--series live` or `--series dry` restricts it to one.
 
 To check the copy served by the site instead of this one:
 

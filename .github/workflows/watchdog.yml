@@ -1,0 +1,72 @@
+name: watchdog
+
+# The record and the keeper fail loudly when they run and crash. They fail
+# silently when they never run. This checks the outputs every six hours and
+# opens (or updates) one issue while anything is wrong, closing it when clear.
+on:
+  schedule:
+    - cron: '47 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      simulate:
+        description: 'trip one check on purpose: stale | anchor | keeper | gas'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check outputs
+        id: check
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/watchdog.mjs ${{ inputs.simulate && format('--simulate {0}', inputs.simulate) || '' }} 2>&1 | tee watchdog.log
+
+      - name: Raise alert
+        if: steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          {
+            echo "The watchdog found a problem with the published outputs. **A missed record day cannot be backfilled.**"
+            echo
+            echo "- run: $RUN_URL"
+            echo
+            echo '```'
+            cat watchdog.log
+            echo '```'
+          } > alert.md
+          existing=$(gh issue list --label watchdog --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file alert.md
+          else
+            gh label create watchdog --color b60205 --description "published outputs stale or broken" 2>/dev/null || true
+            gh issue create --title "watchdog: published outputs need attention" --label watchdog --body-file alert.md
+          fi
+
+      - name: Resolve alert
+        if: steps.check.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          existing=$(gh issue list --label watchdog --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "Watchdog is clear again: $(head -1 watchdog.log)"
+          fi

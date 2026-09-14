@@ -16,10 +16,17 @@
  *
  *   node verify.mjs --dir ./trackrecord
  *
+ * Two series are published and both are verified by default: the DRY_RUN
+ * rehearsal (record.jsonl / anchors.jsonl, 2026-08-13 → 08-30, closed) and the
+ * LIVE series (record-live.jsonl / anchors-live.jsonl, genesis 2026-09-01, the
+ * one with real capital behind it). They are separate chains on purpose —
+ * spec §8 — so each is walked from its own genesis.
+ *
  * Options:
- *   --base <url>   fetch <base>/trackrecord/{record,anchors}.jsonl
- *   --dir <path>   read record.jsonl / anchors.jsonl from a local directory
- *   --rpc <url>    JSON-RPC endpoint (default: https://sepolia-rpc.giwa.io)
+ *   --base <url>     fetch <base>/trackrecord/… (the site's mirror)
+ *   --dir <path>     read the files from a local directory
+ *   --series <name>  dry | live | all   (default: all)
+ *   --rpc <url>      JSON-RPC endpoint (default: https://sepolia-rpc.giwa.io)
  *
  * The point of this file is that you can read all of it. If you don't trust
  * the copy served by the site, verify the same data with your own code —
@@ -37,6 +44,11 @@ const opt = (name, fallback) => {
 const BASE = opt('--base', null);
 const DIR = opt('--dir', BASE ? null : './trackrecord');
 const RPC = opt('--rpc', 'https://sepolia-rpc.giwa.io');
+const SERIES = opt('--series', 'all');
+if (!['dry', 'live', 'all'].includes(SERIES)) {
+  console.error(`--series must be dry, live or all (got ${SERIES})`);
+  process.exit(2);
+}
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
@@ -66,15 +78,26 @@ async function loadLines(name) {
     .map((l) => JSON.parse(l));
 }
 
-async function rpc(method, params) {
-  const r = await fetch(RPC, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-  });
-  const j = await r.json();
-  if (j.error) throw new Error(`${method}: ${j.error.message}`);
-  return j.result;
+// A public RPC will occasionally refuse a call; that is a network hiccup, not a
+// failed verification, so retry briefly before giving up on that check.
+async function rpc(method, params, attempt = 0) {
+  try {
+    const r = await fetch(RPC, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message);
+    return j.result;
+  } catch (e) {
+    if (attempt < 3) {
+      await new Promise((res) => setTimeout(res, 500 * (attempt + 1)));
+      return rpc(method, params, attempt + 1);
+    }
+    throw new Error(`${method}: ${e.message} (after ${attempt + 1} attempts)`);
+  }
 }
 
 let failures = 0;
@@ -84,8 +107,6 @@ const fail = (msg) => {
 };
 const ok = (msg) => console.log(`  ok    ${msg}`);
 
-const records = await loadLines('record.jsonl');
-const anchors = await loadLines('anchors.jsonl');
 // Optional: absent on a chain that has published no decisions yet.
 let decisions = [];
 try {
@@ -94,65 +115,101 @@ try {
   decisions = [];
 }
 
-console.log(`\nchain — ${records.length} record(s)`);
-let prevHash = null;
-for (const rec of records) {
-  const { hash, ...rest } = rec;
-  const computed = sha256(JSON.stringify(rest));
-  if (computed !== hash) {
-    fail(`#${rec.seq} ${rec.date}: stored hash ${hash.slice(0, 12)}… != computed ${computed.slice(0, 12)}…`);
-  } else if (rec.prevHash !== prevHash) {
-    fail(`#${rec.seq} ${rec.date}: prevHash does not match record #${rec.seq - 1} (chain break)`);
-  } else {
-    ok(`#${rec.seq} ${rec.date} ${rec.mode} head ${hash.slice(0, 12)}…${rec.benchmarks?.missing ? ' (benchmarks recorded as missing)' : ''}`);
-  }
-  prevHash = rec.hash;
+const SERIES_FILES = {
+  dry: { label: 'DRY_RUN', records: 'record.jsonl', anchors: 'anchors.jsonl' },
+  live: { label: 'LIVE', records: 'record-live.jsonl', anchors: 'anchors-live.jsonl' },
+};
+const totals = { records: 0, anchors: 0, series: [] };
 
-  // A record's decision list must match the ledger for that date, in both
-  // directions: nothing dropped from the record, nothing added to it.
-  const expected = decisions
-    .filter((d) => d.effectiveFrom <= rec.date)
-    .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
-  const carried = rec.decisions ?? [];
-  if (carried.length !== expected.length) {
-    fail(`#${rec.seq} ${rec.date}: carries ${carried.length} decision(s), ledger says ${expected.length}`);
-  } else {
-    for (let i = 0; i < expected.length; i++) {
-      if (carried[i].id !== expected[i].id || carried[i].sha256 !== expected[i].sha256) {
-        fail(`#${rec.seq} ${rec.date}: decision ${carried[i].id} does not match the ledger`);
+async function verifySeries(key) {
+  const f = SERIES_FILES[key];
+  let records, anchors;
+  try {
+    records = await loadLines(f.records);
+    anchors = await loadLines(f.anchors);
+  } catch (e) {
+    fail(`${f.label}: series files unreadable (${e.message})`);
+    return;
+  }
+  totals.records += records.length;
+  totals.anchors += anchors.length;
+  const first = records[0]?.date ?? '—';
+  const last = records[records.length - 1]?.date ?? '—';
+  totals.series.push(`${f.label} ${records.length} records ${first} → ${last}`);
+
+  console.log(`\n[${f.label}] chain — ${records.length} record(s), ${f.records}`);
+  let prevHash = null;
+  for (const rec of records) {
+    const { hash, ...rest } = rec;
+    const computed = sha256(JSON.stringify(rest));
+    if (computed !== hash) {
+      fail(`#${rec.seq} ${rec.date}: stored hash ${hash.slice(0, 12)}… != computed ${computed.slice(0, 12)}…`);
+    } else if (rec.prevHash !== prevHash) {
+      fail(`#${rec.seq} ${rec.date}: prevHash does not match record #${rec.seq - 1} (chain break)`);
+    } else {
+      ok(`#${rec.seq} ${rec.date} ${rec.mode} head ${hash.slice(0, 12)}…${rec.benchmarks?.missing ? ' (benchmarks recorded as missing)' : ''}`);
+    }
+    prevHash = rec.hash;
+
+    // A record's decision list must match the ledger for that date, in both
+    // directions: nothing dropped from the record, nothing added to it.
+    const expected = decisions
+      .filter((d) => d.effectiveFrom <= rec.date)
+      .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+    const carried = rec.decisions ?? [];
+    if (carried.length !== expected.length) {
+      fail(`#${rec.seq} ${rec.date}: carries ${carried.length} decision(s), ledger says ${expected.length}`);
+    } else {
+      for (let i = 0; i < expected.length; i++) {
+        if (carried[i].id !== expected[i].id || carried[i].sha256 !== expected[i].sha256) {
+          fail(`#${rec.seq} ${rec.date}: decision ${carried[i].id} does not match the ledger`);
+        }
       }
     }
   }
+
+  console.log(`\n[${f.label}] anchors — ${anchors.length} on-chain commitment(s) via ${RPC}`);
+  for (const a of anchors) {
+    const rec = records.find((r) => r.seq === a.seq);
+    if (!rec) {
+      fail(`anchor seq ${a.seq}: no matching record`);
+      continue;
+    }
+    if (rec.hash !== a.headHash) {
+      fail(`anchor seq ${a.seq}: headHash does not match record hash`);
+      continue;
+    }
+    const expected = '0x' + Buffer.from('qxtr:' + a.headHash, 'utf8').toString('hex');
+    let tx;
+    try {
+      tx = await rpc('eth_getTransactionByHash', [a.txHash]);
+    } catch (e) {
+      fail(`anchor seq ${a.seq}: rpc unavailable — ${e.message}`);
+      continue;
+    }
+    if (!tx) {
+      fail(`anchor seq ${a.seq}: tx ${a.txHash} not found on chain`);
+      continue;
+    }
+    const receipt = await rpc('eth_getTransactionReceipt', [a.txHash]);
+    if (!receipt || receipt.status !== '0x1') {
+      fail(`anchor seq ${a.seq}: tx ${a.txHash} not confirmed`);
+      continue;
+    }
+    if ((tx.input || '').toLowerCase() !== expected.toLowerCase()) {
+      fail(`anchor seq ${a.seq}: calldata does not carry qxtr:${a.headHash.slice(0, 12)}…`);
+      continue;
+    }
+    ok(`seq ${a.seq} ${a.date} anchored in ${a.txHash.slice(0, 14)}… (block ${parseInt(receipt.blockNumber, 16)})`);
+  }
+  // Every record must have exactly one anchor — a record without one is a
+  // claim nobody can check the date of.
+  for (const rec of records) {
+    if (!anchors.some((a) => a.seq === rec.seq)) fail(`#${rec.seq} ${rec.date}: no anchor for this record`);
+  }
 }
 
-console.log(`\nanchors — ${anchors.length} on-chain commitment(s) via ${RPC}`);
-for (const a of anchors) {
-  const rec = records.find((r) => r.seq === a.seq);
-  if (!rec) {
-    fail(`anchor seq ${a.seq}: no matching record`);
-    continue;
-  }
-  if (rec.hash !== a.headHash) {
-    fail(`anchor seq ${a.seq}: headHash does not match record hash`);
-    continue;
-  }
-  const expected = '0x' + Buffer.from('qxtr:' + a.headHash, 'utf8').toString('hex');
-  const tx = await rpc('eth_getTransactionByHash', [a.txHash]);
-  if (!tx) {
-    fail(`anchor seq ${a.seq}: tx ${a.txHash} not found on chain`);
-    continue;
-  }
-  const receipt = await rpc('eth_getTransactionReceipt', [a.txHash]);
-  if (!receipt || receipt.status !== '0x1') {
-    fail(`anchor seq ${a.seq}: tx ${a.txHash} not confirmed`);
-    continue;
-  }
-  if ((tx.input || '').toLowerCase() !== expected.toLowerCase()) {
-    fail(`anchor seq ${a.seq}: calldata does not carry qxtr:${a.headHash.slice(0, 12)}…`);
-    continue;
-  }
-  ok(`seq ${a.seq} ${a.date} anchored in ${a.txHash.slice(0, 14)}… (block ${parseInt(receipt.blockNumber, 16)})`);
-}
+for (const key of SERIES === 'all' ? ['dry', 'live'] : [SERIES]) await verifySeries(key);
 
 if (decisions.length) {
   console.log(`\ndecisions — ${decisions.length} anchored document(s)`);
@@ -188,7 +245,7 @@ if (decisions.length) {
 
 console.log(
   failures === 0
-    ? `\nVERIFIED — ${records.length} records, ${anchors.length} anchors, ${decisions.length} decisions, 0 failures\n`
+    ? `\nVERIFIED — ${totals.records} records, ${totals.anchors} anchors, ${decisions.length} decisions, 0 failures\n   ${totals.series.join('\n   ')}\n`
     : `\nFAILED — ${failures} check(s) failed\n`
 );
 process.exit(failures === 0 ? 0 : 1);
