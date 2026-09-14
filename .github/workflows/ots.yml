@@ -1,0 +1,40 @@
+name: ots
+
+# Second time proof, independent of GIWA Sepolia: every record head hash and
+# decision hash is also stamped with OpenTimestamps (Bitcoin). Runs after the
+# daily record window; stamps anything new, upgrades pending proofs once the
+# calendar has folded them into a Bitcoin block, commits trackrecord/ots/.
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ots
+  cancel-in-progress: false
+
+jobs:
+  stamp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Stamp new hashes, upgrade pending proofs
+        run: |
+          node scripts/ots-stamp.mjs
+          node scripts/ots-stamp.mjs --upgrade
+          node scripts/ots-stamp.mjs --verify | tail -1
+      - name: Commit proofs
+        run: |
+          git config user.name "qx-track-record"
+          git config user.email "keeper@quadrix.finance"
+          git add trackrecord/ots
+          git diff --cached --quiet || git commit -m "ots: $(date -u +%Y-%m-%d) — $(node scripts/ots-stamp.mjs --verify | tail -1)"
+          git push

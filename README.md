@@ -37,6 +37,23 @@ node scripts/verify.mjs --base https://quadrix.finance
 Both should agree. If they ever disagree, this repository and the chain are the
 authority — the site is a mirror.
 
+## Second time proof — OpenTimestamps
+
+GIWA Sepolia is a testnet, so the anchors above prove *what* existed but their
+*when* lasts only as long as that chain's history. Since 2026-09-14 every record
+head hash and every decision hash is also stamped with
+[OpenTimestamps](https://opentimestamps.org) — Bitcoin calendar servers, no fee —
+and the proofs are committed under `trackrecord/ots/` (one `.ots` per hash,
+append-only). A fresh proof is *pending* until the calendar folds it into a
+Bitcoin block, usually within hours; the daily `ots` workflow upgrades them.
+
+```bash
+node scripts/ots-stamp.mjs --verify      # bitcoin-attested / pending, per hash
+```
+
+Any OpenTimestamps client can verify a `.ots` file against the hash it covers
+without trusting this repository.
+
 ## What is in here
 
 | Path | What it is |
@@ -50,6 +67,8 @@ authority — the site is a mirror.
 | `scripts/track-record.mjs` | writes and anchors one day (scheduled daily in CI; see Timing) |
 | `scripts/anchor-decision.mjs` | anchors a decision document |
 | `scripts/verify.mjs` | the verifier above |
+| `trackrecord/ots/*.ots` | OpenTimestamps proofs, one per record/decision hash (Bitcoin time proof) |
+| `scripts/ots-stamp.mjs` | stamps new hashes, upgrades pending proofs (runs daily in CI) |
 | `scripts/watchdog.mjs` | checks the published outputs for staleness, missing anchors and gas (scheduled every six hours in CI) |
 | `docs/track-record-spec.md` | the rules the record is meant to follow; the status table at its top says which sections are implemented here |
 | `keeper/nav-marks.jsonl` | append-only ledger of every qX20 NAV mark posted since the keeper moved here on 2026-08-21; earlier marks exist only as on-chain events |
