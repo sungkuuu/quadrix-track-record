@@ -1,0 +1,97 @@
+name: paper-index
+
+# workflow_dispatch ONLY — no schedule line. These are rules-only paper index
+# levels (qREV, qDEFI); they are not in force until an owner decision anchors
+# an inception date (keeper/rulebooks/{qrev,qdefi}.json `inception`), and
+# until then this workflow is a manual, reviewed action, not a cron job.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # appends trackrecord/record-{qrev,qdefi}.jsonl to main
+  issues: write # failure alert, same pattern as track-record.yml
+
+concurrency:
+  group: paper-index
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: qREV — compute and append today's record
+        run: |
+          set -o pipefail
+          node keeper/paper-index.mjs --index qrev --anchor 2>&1 | tee pi-qrev.log
+        env:
+          # Same keeper key as scripts/track-record.mjs. If it is not set as
+          # a repo secret, paper-index.mjs logs a clear line and skips the
+          # anchor step entirely — the record is still written and committed.
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
+      - name: qDEFI — compute and append today's record
+        run: |
+          set -o pipefail
+          node keeper/paper-index.mjs --index qdefi --anchor 2>&1 | tee pi-qdefi.log
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
+      - name: Commit records
+        run: |
+          git config user.name "qx-paper-index"
+          git config user.email "keeper@quadrix.finance"
+          git add trackrecord/record-qrev.jsonl trackrecord/anchors-qrev.jsonl \
+                  trackrecord/record-qdefi.jsonl trackrecord/anchors-qdefi.jsonl \
+                  keeper/state-qrev.json keeper/state-qdefi.json 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "paper-index: $(date -u +%Y-%m-%d)"
+          git push
+
+      # Same failure-alert pattern as track-record.yml: a missed day is
+      # simply absent from the record, never backfilled, so it earns the
+      # same visible, standing alert.
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          {
+            echo "The paper-index run failed. A missed day is simply absent from"
+            echo "record-{qrev,qdefi}.jsonl — it is never backfilled."
+            echo
+            echo "- run: $RUN_URL"
+            echo
+            echo '```'
+            echo '--- qREV ---'
+            tail -n 40 pi-qrev.log 2>/dev/null || echo '(no output — failed before the qREV step ran)'
+            echo '--- qDEFI ---'
+            tail -n 40 pi-qdefi.log 2>/dev/null || echo '(no output — failed before the qDEFI step ran)'
+            echo '```'
+          } > alert.md
+          existing=$(gh issue list --label paper-index-failure --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file alert.md
+          else
+            gh label create paper-index-failure --color b60205 \
+              --description "paper-index (qREV/qDEFI) run failed" 2>/dev/null || true
+            gh issue create --title "paper-index run failing" \
+              --label paper-index-failure --body-file alert.md
+          fi
+
+      - name: Resolve alert
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --label paper-index-failure --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "paper-index run succeeded. Closing."
+          done

@@ -1,0 +1,78 @@
+{
+  "ticker": "qDEFI",
+  "name": "DeFi Index",
+  "kind": "paper-index",
+  "status": "not in force — rules only, no vault, no anchored inception",
+  "asOf": "2026-09-15",
+  "source": {
+    "rulebook": "quadrix/docs/methodology/qdefi.md (site repo, private)",
+    "ownerDecisionDate": "2026-09-15"
+  },
+  "universe": {
+    "definition": "governance/utility tokens of decentralized-finance protocols",
+    "sourcePair": "CoinGecko category `decentralized-finance-defi` INTERSECT DefiLlama protocol listing whose category is DeFi-family",
+    "defiFamilyCategories": [
+      "Dexs", "Lending", "Derivatives", "Yield", "Yield Aggregator", "CDP",
+      "Liquid Staking", "Liquid Restaking", "Restaking", "Basis Trading", "RWA",
+      "DEX Aggregator", "Options", "Synthetics", "Insurance", "Leveraged Farming",
+      "Staking Pool"
+    ],
+    "outOfFamilyCategories": ["Launchpad", "Prediction Market", "Bridge", "Reserve Currency", "Interface", "Chain"],
+    "chainsOut": "tokens with a DefiLlama Chain listing (native gas token of a chain: INJ, GNO, SEI, TRX, BNB, ETH, SOL, AVAX, ...) are excluded -- a chain is infrastructure, not a sector",
+    "oraclesIn": "oracle tokens (LINK, PYTH, ...) are DeFi-family per CoinGecko/CMC/DefiLlama and are explicitly INCLUDED (owner 2026-09-15: \"follow the data\")",
+    "instrumentExclusions": "qX20 rulebook §3 categories in full (stablecoins, yield-bearing stables, wrapped assets, LSD/LRT wrapper tokens, LP/vault shares, exchange tokens, tokenized RWA shares) plus qDEFI-specific: one-token-per-protocol (staked derivative excluded when the underlying governance token is already a member, e.g. stkAAVE/sENA out because AAVE/ENA are in)"
+  },
+  "eligibility": {
+    "minCirculatingMarketCapUSD": 150000000,
+    "minVolume24hUSD": 5000000,
+    "minListingAgeDays": 365
+  },
+  "ranking": {
+    "metric": "circulating market cap",
+    "direction": "descending",
+    "targetCount": 15,
+    "rankBuffer": {
+      "entryMaxRank": 13,
+      "exitMinRank": 17,
+      "note": "0.85N / 1.15N per qdefi.md §6 -- an incumbent is kept while rank <= exitMinRank, an outsider is force-added only at rank <= entryMaxRank, seats filled to targetCount by best remaining rank"
+    }
+  },
+  "exitHysteresis": {
+    "enabled": false,
+    "note": "qdefi.md has no hysteresis rule beyond the rank buffer itself -- a name failing eligibility or falling below exitMinRank exits at that reconstitution, no grace quarter"
+  },
+  "weighting": {
+    "method": "market-cap-proportional",
+    "cap": {
+      "maxWeight": 0.35,
+      "method": "immediate trim to cap at reconstitution, excess redistributed pro rata among uncapped names, iterated to convergence"
+    }
+  },
+  "reconstitution": {
+    "cadence": "quarterly",
+    "rule": "first run after 00:00 UTC on Jan 1 / Apr 1 / Jul 1 / Oct 1 (same dates as qREV)",
+    "tolerance": {
+      "thresholdPoints": 5,
+      "rule": "a name whose target weight differs from its drifted (mark-to-market) weight by less than 5 percentage points is NOT traded at reconstitution",
+      "capOverride": "any name whose drifted weight is above 35% is ALWAYS cut to 35% regardless of the 5-point tolerance"
+    },
+    "betweenReconstitutions": "no trading; the book is only marked to market daily. No drift band (owner 2026-09-15)."
+  },
+  "specialEvents": {
+    "inScope": false,
+    "note": "token migrations (e.g. MKR->SKY-style rebrands), hacks, delistings, and other special events are OUT OF SCOPE for this paper-index implementation pass."
+  },
+  "dataSources": {
+    "sectorClassification": {
+      "primary": "CoinGecko coins/markets?category=decentralized-finance-defi",
+      "secondary": "DefiLlama protocols list (category field + gecko_id/symbol match)",
+      "fallback": "none -- if either source is unreachable, membership is frozen at the last reconstitution"
+    },
+    "marketCapPriceVolume": {
+      "primary": "CoinGecko coins/markets (paginated to top 500)",
+      "fallback": "CoinPaprika tickers (price only, no reconstitution)"
+    }
+  },
+  "inception": null,
+  "genesisLevel": 100
+}
