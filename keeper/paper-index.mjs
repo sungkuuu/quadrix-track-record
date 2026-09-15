@@ -484,10 +484,19 @@ async function issuanceValue12m(sym, coingeckoId, priceNow, circulatingNow, date
         else break;
       }
       if (best && Math.abs(Date.parse(best) - Date.parse(targetPast)) <= 10 * DAY) {
-        const s0 = weekly[best].circulating;
-        const s1 = circulatingNow;
-        if (s0 != null && s1 != null) {
-          return { value: Math.max(0, s1 - s0) * priceNow, source: 'onchain-registry', s0, s1 };
+        // Both endpoints must come from the same definition. The registry counts
+        // voluntary lock-ups as issued; CoinGecko's circulating figure does not, so
+        // mixing the two under-states issuance (AERO: registry 1.74B a year ago vs
+        // CoinGecko 0.99B today → "zero issuance"). Use the registry's latest week
+        // for s1 and only fall through to CoinGecko when the registry has no
+        // recent point — then both endpoints come from CoinGecko.
+        const latest = dates[dates.length - 1];
+        if (Math.abs(Date.parse(dateStr) - Date.parse(latest)) <= 10 * DAY) {
+          const s0 = weekly[best].circulating;
+          const s1 = weekly[latest].circulating;
+          if (s0 != null && s1 != null) {
+            return { value: Math.max(0, s1 - s0) * priceNow, source: 'onchain-registry', s0, s1 };
+          }
         }
       }
     }

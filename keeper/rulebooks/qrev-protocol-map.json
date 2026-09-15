@@ -61,8 +61,8 @@
   "total1y": 67,
   "total30d": 2.8,
   "allTime": 13127,
-  "sym": "-",
-  "gecko": "",
+  "sym": "ETH",
+  "gecko": "ethereum",
   "parent": ""
  },
  {
@@ -215,8 +215,8 @@
   "total1y": 22,
   "total30d": 2.1,
   "allTime": 27,
-  "sym": "-",
-  "gecko": "",
+  "sym": "BNB",
+  "gecko": "binancecoin",
   "parent": ""
  },
  {
@@ -347,8 +347,8 @@
   "total1y": 11,
   "total30d": 1.9,
   "allTime": 15,
-  "sym": "-",
-  "gecko": "",
+  "sym": "HYPE",
+  "gecko": "hyperliquid",
   "parent": ""
  },
  {
