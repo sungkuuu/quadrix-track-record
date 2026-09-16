@@ -110,5 +110,54 @@
     "decision": "2026-09-16-qrev-paper-inception",
     "genesisLevel": 100
   },
-  "genesisLevel": 100
+  "genesisLevel": 100,
+  "basket": {
+    "_doc": "The on-chain basket for this index (QuadrixBasketVault v3.1 on GIWA Sepolia). vault/faucet null = not deployed: the keeper computes every mark and posts none. After a deploy (site repo .github/workflows/deploy-index-basket.yml) fill vault, faucet, assets {SYMBOL: {address, decimals}} in manifest order, and navBase = the index level on the deploy day (contracts/baskets/{index}.json navBase), so the first post is navPerShare 1.000000. keeper/basket-mark.mjs reads this block.",
+    "chainId": 91342,
+    "vault": "0xba83462fdfede13dc7eb1d1fd893ae76dcaad975",
+    "faucet": "0x86ae814adb07a27a549fe6536fc62dbc0cdd601b",
+    "navBase": 100,
+    "assets": {
+      "HYPE": {
+        "address": "0xf2ff6a94474c03d3032cfd248f4ca3a40bd58617",
+        "decimals": 10
+      },
+      "SKY": {
+        "address": "0xe4f0bd727d956dfe5ef7bf67ec5af36bab3df680",
+        "decimals": 7
+      },
+      "CAKE": {
+        "address": "0x7f927b96846212efe86604ea1a53037ccf3e005d",
+        "decimals": 9
+      },
+      "UNI": {
+        "address": "0x3d03d466051879d2c41b60112fc7085b8b8b8c56",
+        "decimals": 9
+      },
+      "RAY": {
+        "address": "0x9de23cf10afe8b3fd021fc465f984a0523fd9e9b",
+        "decimals": 9
+      },
+      "CRV": {
+        "address": "0xa105cb36c0f613f2a24188f25ff781808d0812be",
+        "decimals": 8
+      },
+      "PENDLE": {
+        "address": "0xce60a9ac653b9a44fc689cd90b081e129fb2a3fd",
+        "decimals": 9
+      },
+      "JUP": {
+        "address": "0x0f59aa0cbc85be9556446970ded14cd7313ea803",
+        "decimals": 8
+      },
+      "AERO": {
+        "address": "0x51c3d8257200f2d2142570511f799a3a8f3e6f58",
+        "decimals": 8
+      },
+      "ZRO": {
+        "address": "0xe2dcf51f5c7f03bd502c0948d8541063f2c8df04",
+        "decimals": 8
+      }
+    }
+  }
 }

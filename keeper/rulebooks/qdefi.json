@@ -98,5 +98,74 @@
     "decision": "2026-09-16-qdefi-paper-inception",
     "genesisLevel": 100
   },
-  "genesisLevel": 100
+  "genesisLevel": 100,
+  "basket": {
+    "_doc": "The on-chain basket for this index (QuadrixBasketVault v3.1 on GIWA Sepolia). vault/faucet null = not deployed: the keeper computes every mark and posts none. After a deploy (site repo .github/workflows/deploy-index-basket.yml) fill vault, faucet, assets {SYMBOL: {address, decimals}} in manifest order, and navBase = the index level on the deploy day (contracts/baskets/{index}.json navBase), so the first post is navPerShare 1.000000. keeper/basket-mark.mjs reads this block.",
+    "chainId": 91342,
+    "vault": "0x88d3b5f638fe0d331797c612a5496bd8f0491fd4",
+    "faucet": "0xcd3bf9707e6723af66f45f413031f30b3db79c94",
+    "navBase": 100,
+    "assets": {
+      "HYPE": {
+        "address": "0x08f6f33b572e480898dfe9f8de66372183c33000",
+        "decimals": 10
+      },
+      "LINK": {
+        "address": "0x842009c22152d5d26593db93ca6664e4a61d667d",
+        "decimals": 10
+      },
+      "UNI": {
+        "address": "0xecc53491f29eff3fc5b000d5c6367cd7d86c532b",
+        "decimals": 9
+      },
+      "AAVE": {
+        "address": "0x0d55244f54cddf665705fa6114504414097c6162",
+        "decimals": 11
+      },
+      "ONDO": {
+        "address": "0x83615e8756b6818fa22bfe53fda61ec0215e3bdf",
+        "decimals": 8
+      },
+      "MORPHO": {
+        "address": "0x00d05c5fe9b145de447d9440f95eefcad61804c2",
+        "decimals": 9
+      },
+      "SKY": {
+        "address": "0x4e0c8d1d03679852a230c20cfaf050b679a03d26",
+        "decimals": 7
+      },
+      "ENA": {
+        "address": "0xf7bcbd24bb216d3f54df55e3c8a9cb94d2aa794f",
+        "decimals": 8
+      },
+      "JST": {
+        "address": "0x5ea3ad21048ba8a3c429d0b0f67a0860cd7e2e17",
+        "decimals": 8
+      },
+      "JUP": {
+        "address": "0xbe527e2a4e222b8dd08e5cfaf4161d82a4c45fdb",
+        "decimals": 8
+      },
+      "CAKE": {
+        "address": "0x490da6844e2500f1e122ec1a6ca2e70383a93a03",
+        "decimals": 9
+      },
+      "ETHFI": {
+        "address": "0x0cc621d8c525e0096fdf3ce2177c65dead9fd7c2",
+        "decimals": 8
+      },
+      "AERO": {
+        "address": "0xb5efdc24bd58aab5d6929c155705919b1062fa9b",
+        "decimals": 8
+      },
+      "CRV": {
+        "address": "0x0581ba8a63d787b4a39ed898445b1bfdde84bdf6",
+        "decimals": 8
+      },
+      "PYTH": {
+        "address": "0x196fb515cdd98b2c84fe60a2f53588af75ea13f5",
+        "decimals": 7
+      }
+    }
+  }
 }
