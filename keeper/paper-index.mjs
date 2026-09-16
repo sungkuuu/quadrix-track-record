@@ -668,6 +668,8 @@ function printQrevLedger(evaluated, finalMembers) {
 // =========================================================================
 //  qDEFI — universe, eligibility, ranking, weighting
 // =========================================================================
+const QDEFI_TOKEN_MAP = JSON.parse(fs.readFileSync(path.join(HERE, 'rulebooks', 'qdefi-token-map.json'), 'utf8'));
+
 async function computeQdefiMembers(dateStr, markets, incumbents) {
   const rb = RULEBOOK;
   const dateKey = dateStr;
@@ -697,9 +699,18 @@ async function computeQdefiMembers(dateStr, markets, incumbents) {
     if (seen.has(coin.symbol)) continue; // keep the highest-cap listing per symbol
     seen.add(coin.symbol);
     if (QX20_EXCLUDE.has(coin.symbol) || QDEFI_EXTRA_EXCLUDE.has(coin.symbol)) continue;
-    if (chainTokenSymbols.has(coin.symbol)) continue; // §1: chains are out, oracles stay in
+    const mapEntry = QDEFI_TOKEN_MAP[coin.symbol] && typeof QDEFI_TOKEN_MAP[coin.symbol] === 'object' ? QDEFI_TOKEN_MAP[coin.symbol] : null;
+    if (mapEntry?.exclude) continue; // manual map (§3): e.g. PUMP — launchpad, symbol collision must not decide
+    // §1: chains are out, oracles stay in — unless the manual map says the token's
+    // primary adapter is a DeFi protocol (HYPE: perps/spot DEX first, L1 second).
+    if (chainTokenSymbols.has(coin.symbol) && !mapEntry?.chainListingIgnored) continue;
 
-    const matches = llamaByGecko.get(coin.id) || llamaBySymbol.get(coin.symbol) || [];
+    let matches = llamaByGecko.get(coin.id) || llamaBySymbol.get(coin.symbol) || [];
+    if (mapEntry?.primaryProtocol) {
+      const primary = protocols.filter((p) => p.slug === mapEntry.primaryProtocol || p.parentProtocol === `parent#${mapEntry.primaryProtocol}`);
+      if (primary.length) matches = primary;
+      if (mapEntry.category) matches = [{ ...(matches[0] || {}), category: mapEntry.category }, ...matches];
+    }
     // Oracles (LINK, PYTH, ...) are explicitly INCLUDED per rulebook §1 ("오
     // 라클은 포함") even though DefiLlama's own category label for them
     // ("Oracle", or in LINK's case "Services"/"Requests Oracle") is not in

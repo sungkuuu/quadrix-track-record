@@ -1,0 +1,15 @@
+{
+  "_doc": "qDEFI manual token map (rulebook qdefi.md §1/§3). Automatic name matching alone is not allowed to decide membership where the sources disagree; every entry here cites the rule it implements. Changes are followed by an anchored decision.",
+  "HYPE": {
+    "primaryProtocol": "hyperliquid",
+    "category": "Derivatives",
+    "chainListingIgnored": true,
+    "reason": "§1: a token that is both a protocol (Hyperliquid perps/spot DEX) and a chain (Hyperliquid L1) is judged by its primary adapter, the one with the larger trailing revenue — Derivatives/Dexs. DefiLlama's 'Hyperliquid L1' chain row does not make HYPE infrastructure."
+  },
+  "PUMP": {
+    "primaryProtocol": "pump.fun",
+    "category": "Launchpad",
+    "exclude": true,
+    "reason": "§3: pump.fun is a launchpad, outside the DeFi family. DefiLlama symbol lookup collides with PumpSwap (Dexs) and pumpBTC; the collision must not decide membership."
+  }
+}
