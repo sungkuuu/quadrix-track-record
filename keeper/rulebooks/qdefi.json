@@ -2,7 +2,7 @@
   "ticker": "qDEFI",
   "name": "DeFi Index",
   "kind": "paper-index",
-  "status": "not in force — rules only, no vault, no anchored inception",
+  "status": "in force since 2026-09-16 — rules-only paper index, no vault; inception anchored (see decisions.jsonl)",
   "asOf": "2026-09-15",
   "source": {
     "rulebook": "quadrix/docs/methodology/qdefi.md (site repo, private)",
@@ -12,12 +12,32 @@
     "definition": "governance/utility tokens of decentralized-finance protocols",
     "sourcePair": "CoinGecko category `decentralized-finance-defi` INTERSECT DefiLlama protocol listing whose category is DeFi-family",
     "defiFamilyCategories": [
-      "Dexs", "Lending", "Derivatives", "Yield", "Yield Aggregator", "CDP",
-      "Liquid Staking", "Liquid Restaking", "Restaking", "Basis Trading", "RWA",
-      "DEX Aggregator", "Options", "Synthetics", "Insurance", "Leveraged Farming",
+      "Dexs",
+      "Lending",
+      "Derivatives",
+      "Yield",
+      "Yield Aggregator",
+      "CDP",
+      "Liquid Staking",
+      "Liquid Restaking",
+      "Restaking",
+      "Basis Trading",
+      "RWA",
+      "DEX Aggregator",
+      "Options",
+      "Synthetics",
+      "Insurance",
+      "Leveraged Farming",
       "Staking Pool"
     ],
-    "outOfFamilyCategories": ["Launchpad", "Prediction Market", "Bridge", "Reserve Currency", "Interface", "Chain"],
+    "outOfFamilyCategories": [
+      "Launchpad",
+      "Prediction Market",
+      "Bridge",
+      "Reserve Currency",
+      "Interface",
+      "Chain"
+    ],
     "chainsOut": "tokens with a DefiLlama Chain listing (native gas token of a chain: INJ, GNO, SEI, TRX, BNB, ETH, SOL, AVAX, ...) are excluded -- a chain is infrastructure, not a sector",
     "oraclesIn": "oracle tokens (LINK, PYTH, ...) are DeFi-family per CoinGecko/CMC/DefiLlama and are explicitly INCLUDED (owner 2026-09-15: \"follow the data\")",
     "instrumentExclusions": "qX20 rulebook §3 categories in full (stablecoins, yield-bearing stables, wrapped assets, LSD/LRT wrapper tokens, LP/vault shares, exchange tokens, tokenized RWA shares) plus qDEFI-specific: one-token-per-protocol (staked derivative excluded when the underlying governance token is already a member, e.g. stkAAVE/sENA out because AAVE/ENA are in)"
@@ -73,6 +93,10 @@
       "fallback": "CoinPaprika tickers (price only, no reconstitution)"
     }
   },
-  "inception": null,
+  "inception": {
+    "date": "2026-09-16",
+    "decision": "2026-09-16-qdefi-paper-inception",
+    "genesisLevel": 100
+  },
   "genesisLevel": 100
 }

@@ -1,11 +1,12 @@
 name: paper-index
 
-# workflow_dispatch ONLY — no schedule line. These are rules-only paper index
-# levels (qREV, qDEFI); they are not in force until an owner decision anchors
-# an inception date (keeper/rulebooks/{qrev,qdefi}.json `inception`), and
-# until then this workflow is a manual, reviewed action, not a cron job.
+# Rules-only paper index levels (qREV, qDEFI). In force since the anchored
+# inception decisions of 2026-09-16 (trackrecord/decisions/2026-09-16-*-paper-inception.md).
+# Daily at 00:25 UTC, after the N1Q record at 00:10; manual dispatch kept for reruns.
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '25 0 * * *'
 
 permissions:
   contents: write # appends trackrecord/record-{qrev,qdefi}.jsonl to main
@@ -51,6 +52,7 @@ jobs:
                   trackrecord/record-qdefi.jsonl trackrecord/anchors-qdefi.jsonl \
                   keeper/state-qrev.json keeper/state-qdefi.json 2>/dev/null || true
           git diff --cached --quiet || git commit -m "paper-index: $(date -u +%Y-%m-%d)"
+          git pull --rebase origin main
           git push
 
       # Same failure-alert pattern as track-record.yml: a missed day is

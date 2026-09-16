@@ -2,7 +2,7 @@
   "ticker": "qREV",
   "name": "Revenue Index",
   "kind": "paper-index",
-  "status": "not in force — rules only, no vault, no anchored inception",
+  "status": "in force since 2026-09-16 — rules-only paper index, no vault; inception anchored (see decisions.jsonl)",
   "asOf": "2026-09-15",
   "source": {
     "rulebook": "quadrix/docs/methodology/value-capture.md (site repo, private)",
@@ -15,7 +15,11 @@
     "protocolMap": "keeper/rulebooks/qrev-protocol-map.json (manual protocol-slug -> symbol table, copied from the site repo's docs/research/qrev/hr-protocols.json 2026-09-15 snapshot; no automatic name matching per rulebook §1)",
     "chainTokenTest": "netBurn12m = burn_value_12m - issuance_value_12m > 0 (protocol-controlled burn/fee-buyback adapters tagged category=Chain in the protocol map); if <=0 the chain token is out of the universe entirely for that quarter, not merely down-weighted",
     "exclusions": {
-      "categories": ["Launchpad", "Meme", "Gamified Mining"],
+      "categories": [
+        "Launchpad",
+        "Meme",
+        "Gamified Mining"
+      ],
       "assetTypeExclusions": "qX20 rulebook §3 categories in full: stablecoins, yield-bearing stables, wrapped assets, liquid-staking derivatives, LP shares, exchange tokens (BNB is treated as a chain token per owner 2026-09-15, not an exchange token), tokenized RWA shares",
       "chainRevenueRule": "a token with both a protocol adapter and a Chain adapter (e.g. HYPE: Perps + L1) is judged as a protocol token; its category is the adapter with the larger trailing-12m revenue (\"primary adapter\"), and revenue is summed across all its adapters",
       "gamblingAdapters": "Prediction Market / Luck Games adapter revenue is included in the sum per protocol (open decision D4 in the rulebook; draft default: include)",
@@ -101,6 +105,10 @@
       "fallback": "CoinGecko circulating supply, current vs ~365 days ago"
     }
   },
-  "inception": null,
+  "inception": {
+    "date": "2026-09-16",
+    "decision": "2026-09-16-qrev-paper-inception",
+    "genesisLevel": 100
+  },
   "genesisLevel": 100
 }
