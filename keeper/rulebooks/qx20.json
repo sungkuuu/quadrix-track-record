@@ -55,10 +55,91 @@
   "basket": {
     "_doc": "The on-chain basket for this index (QuadrixBasketVault v3.1 on GIWA Sepolia). vault/faucet null = not deployed: the keeper computes every mark and posts none. After a deploy (site repo .github/workflows/deploy-index-basket.yml) fill vault, faucet, assets {SYMBOL: {address, decimals}} in manifest order, and navBase = the index level on the deploy day (contracts/baskets/{index}.json navBase), so the first post is navPerShare 1.000000. keeper/basket-mark.mjs reads this block.",
     "chainId": 91342,
-    "vault": null,
-    "faucet": null,
-    "navBase": null,
+    "vault": "0x39f2993f7b21b85d857c9a19de07cdcca7a0a1c9",
+    "faucet": "0xd7e7beb190049d03b2aadbfcececc2e74aac1456",
+    "navBase": 1.1752366494854245,
     "navBaseNote": "null until deployed — set to keeper/state.json level on the deploy day (the manifest records it as navBase); qX20 has no genesis-100 convention, its level is a NAV-like 1.0-based number",
-    "assets": {}
+    "assets": {
+      "BTC": {
+        "address": "0xfe90560cf3ee5f85493dca38fb2bf56179f0a4fe",
+        "decimals": 13
+      },
+      "ETH": {
+        "address": "0xdbb6c0f79935a8dd3cfac88b4f8586f563320ac2",
+        "decimals": 12
+      },
+      "BNB": {
+        "address": "0x1607e70cac3fac0b413d0948d2117b12b1f78212",
+        "decimals": 11
+      },
+      "XRP": {
+        "address": "0x5c0f15100649789902ddf31d6991e38e29256266",
+        "decimals": 9
+      },
+      "SOL": {
+        "address": "0x47420cd0a6e2bba16debbc6a126bf8a7af9c174d",
+        "decimals": 10
+      },
+      "TRX": {
+        "address": "0x4037f0608746d8afefad786e62a8b567db1a067a",
+        "decimals": 8
+      },
+      "HYPE": {
+        "address": "0xe7007ee036b22880ece81b959df1c8a5458b0a96",
+        "decimals": 10
+      },
+      "DOGE": {
+        "address": "0xcef31a0a4a630b8d850e328c44b8d18718fb0d12",
+        "decimals": 7
+      },
+      "RAIN": {
+        "address": "0x643f0b8b6d3f1543d622ab265d23d2647f0cc02a",
+        "decimals": 7
+      },
+      "LINK": {
+        "address": "0xf0abf814683dbe1cf8cf423450adfdcf85b744bc",
+        "decimals": 10
+      },
+      "ADA": {
+        "address": "0x466ae80fa247da24764c9cae9a1f8fdc240960c4",
+        "decimals": 8
+      },
+      "XLM": {
+        "address": "0x6d70c5084f5bf3f0cd94adb803b958c456fb2324",
+        "decimals": 8
+      },
+      "BCH": {
+        "address": "0x358b0f199008de9a2a6005698bbbc6950e19d22a",
+        "decimals": 11
+      },
+      "UNI": {
+        "address": "0x93765ebdf4b75d1d945c0efa656a8802170040b6",
+        "decimals": 9
+      },
+      "GRAM": {
+        "address": "0x293ee9abd3f625d8844b66ea82a57dcd40c6156b",
+        "decimals": 9
+      },
+      "CC": {
+        "address": "0x579cc91336ea92e06f30e725d303625836addc6a",
+        "decimals": 7
+      },
+      "HBAR": {
+        "address": "0x6deeb1b63d7f4baf8874452b80223521f6abf895",
+        "decimals": 7
+      },
+      "AVAX": {
+        "address": "0x3c725e370f8ab6557ec21d9b94e6f95269f71674",
+        "decimals": 9
+      },
+      "SHIB": {
+        "address": "0x1bf8091db22e3c34a9f28a53f38e3822e57195a3",
+        "decimals": 3
+      },
+      "SUI": {
+        "address": "0xb6ea7403356ec41526d52e9c9051725930278464",
+        "decimals": 8
+      }
+    }
   }
 }
