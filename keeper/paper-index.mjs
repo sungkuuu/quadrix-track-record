@@ -32,6 +32,15 @@
  * Sepolia, self-send, calldata-as-commitment) but with prefix `qxpi-{index}:`
  * instead of `qxtr:`. It is a genuine no-op — skipped with a clear log line —
  * whenever KEEPER_PK is not set, in dry-run or otherwise.
+ *
+ * Basket marking (2026-09-16, keeper/basket-mark.mjs): a rulebook whose
+ * `basket` block names a deployed QuadrixBasketVault makes the run, after the
+ * record is written, post navPerShare and every constituent's reference price
+ * to that vault (band-stepped) and, on a reconstitution day, write
+ * keeper/pending-registry-{index}.json with the registry change it would
+ * announce. `--index qx20` runs ONLY that leg for qX20: its book is
+ * keeper/state.json (written by update-nav.mjs, which keeps marking the
+ * NAV-tracker vault and is not changed); no record line, no anchor.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -40,6 +49,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createWalletClient, createPublicClient, http, defineChain, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { markBasket } from './basket-mark.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -58,8 +68,8 @@ const opt = (name, fallback) => {
   return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
 };
 const INDEX = opt('--index', null);
-if (!['qrev', 'qdefi'].includes(INDEX)) {
-  console.error('usage: node keeper/paper-index.mjs --index qrev|qdefi [--dry-run] [--anchor]');
+if (!['qrev', 'qdefi', 'qx20'].includes(INDEX)) {
+  console.error('usage: node keeper/paper-index.mjs --index qrev|qdefi|qx20 [--dry-run] [--anchor]');
   process.exit(2);
 }
 const DRY_RUN = flag('--dry-run');
@@ -848,12 +858,71 @@ function lastLine(file) {
   return lines.length ? JSON.parse(lines[lines.length - 1]) : null;
 }
 
+/**
+ * qX20 is not a paper index: its book lives in keeper/state.json, written by
+ * update-nav.mjs (which keeps posting the NAV-tracker vault and is not
+ * touched). This leg marks the qX20 BASKET vault from that same book — the
+ * same code path as the paper indexes — and writes no record and no anchor.
+ */
+async function markQx20Basket() {
+  const dateStr = todayUTC();
+  const statePath = path.join(HERE, 'state.json');
+  if (!fs.existsSync(statePath)) throw new Error('keeper/state.json (the qX20 model book) is missing');
+  const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  console.log(`\n=== ${RULEBOOK.ticker} basket mark — ${dateStr}${DRY_RUN ? ' [DRY RUN]' : ''} (book: keeper/state.json @ ${state.updatedAt}) ===`);
+
+  const markets = await fetchCoinGeckoMarketsTop500(dateStr);
+  const priceNow = Object.fromEntries([...bySymbol(markets).entries()].map(([s, m]) => [s, m.price]));
+  let level = 0;
+  const members = [];
+  for (const [sym, u] of Object.entries(state.units)) {
+    members.push(sym);
+    if (priceNow[sym] > 0) level += u * priceNow[sym];
+    else console.warn(`  ${sym}: no live price today — left out of the level (RUNBOOK failure mode 6)`);
+  }
+  console.log(`level ${level.toFixed(6)} from ${members.length} constituents (update-nav.mjs's last posted level ${state.level})`);
+
+  // Membership only moves at update-nav.mjs's monthly reconstitution, so any
+  // difference between the book and the vault's registry IS a reconstitution
+  // for the purpose of the pending-registry file.
+  await markBasket({
+    index: INDEX,
+    basket: RULEBOOK.basket,
+    level,
+    navBase: RULEBOOK.basket?.navBase ?? RULEBOOK.genesisLevel,
+    prices: priceNow,
+    members,
+    reconstituted: true,
+    dryRun: DRY_RUN,
+    keeperDir: HERE,
+    date: dateStr,
+  });
+}
+
 async function main() {
+  if (INDEX === 'qx20') return markQx20Basket();
+
   const dateStr = todayUTC();
   const prevRecord = lastLine(RECORDS_PATH);
 
   if (!DRY_RUN && prevRecord && prevRecord.date >= dateStr) {
     console.log(`${INDEX}: record for ${dateStr} already exists (append-only — not rewritten)`);
+    // The basket may still need today's marks (a re-run after a failed
+    // chain leg, or the operator re-marking during an auction): mark it from
+    // the state the earlier run left, without touching the record.
+    const st = fs.existsSync(STATE_PATH) ? JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')) : null;
+    if (st?.units && RULEBOOK.basket?.vault) {
+      const mk = await fetchCoinGeckoMarketsTop500(dateStr);
+      const px = Object.fromEntries([...bySymbol(mk).entries()].map(([s, m]) => [s, m.price]));
+      let lv = 0;
+      for (const [sym, u] of Object.entries(st.units)) if (px[sym] > 0) lv += u * px[sym];
+      await markBasket({
+        index: INDEX, basket: RULEBOOK.basket, level: lv || st.level,
+        navBase: RULEBOOK.basket.navBase ?? RULEBOOK.genesisLevel, prices: px,
+        members: Object.keys(st.units), reconstituted: prevRecord.reconstituted === true,
+        dryRun: DRY_RUN, keeperDir: HERE, date: dateStr,
+      });
+    }
     return;
   }
 
@@ -978,6 +1047,23 @@ async function main() {
     const extra = INDEX === 'qrev' ? ` P/HR=${m.phr ?? '—'} netRev12m=${m.netRevenue12m ?? '—'} issuance12m=${m.issuance12m ?? '—'} (${m.issuanceSource ?? '—'})` : '';
     console.log(`  ${m.symbol.padEnd(8)} ${((m.weight ?? 0) * 100).toFixed(1).padStart(5)}%  mcap=${m.marketCap ?? '—'}${extra}`);
   }
+
+  // ------------------------------------------------- basket marks (on-chain)
+  // After the record, never before: the record is the product; the vault
+  // follows it. Skips with a log line when the rulebook has no vault, the
+  // key is absent, or this is a dry run (keeper/basket-mark.mjs).
+  await markBasket({
+    index: INDEX,
+    basket: RULEBOOK.basket,
+    level,
+    navBase: RULEBOOK.basket?.navBase ?? RULEBOOK.genesisLevel,
+    prices: priceNow,
+    members: members.map((m) => m.symbol),
+    reconstituted,
+    dryRun: DRY_RUN,
+    keeperDir: HERE,
+    date: dateStr,
+  });
 
   // --------------------------------------------------------------- anchor
   const giwaSepolia = defineChain({

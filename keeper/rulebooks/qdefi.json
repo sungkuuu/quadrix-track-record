@@ -98,5 +98,13 @@
     "decision": "2026-09-16-qdefi-paper-inception",
     "genesisLevel": 100
   },
-  "genesisLevel": 100
+  "genesisLevel": 100,
+  "basket": {
+    "_doc": "The on-chain basket for this index (QuadrixBasketVault v3.1 on GIWA Sepolia). vault/faucet null = not deployed: the keeper computes every mark and posts none. After a deploy (site repo .github/workflows/deploy-index-basket.yml) fill vault, faucet, assets {SYMBOL: {address, decimals}} in manifest order, and navBase = the index level on the deploy day (contracts/baskets/{index}.json navBase), so the first post is navPerShare 1.000000. keeper/basket-mark.mjs reads this block.",
+    "chainId": 91342,
+    "vault": null,
+    "faucet": null,
+    "navBase": 100,
+    "assets": {}
+  }
 }

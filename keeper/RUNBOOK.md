@@ -144,6 +144,51 @@ recovers.
 
 ---
 
+## Index baskets — marking the basket vaults (prepared 2026-09-16, no vault deployed yet)
+
+Each index (qX20, qREV, qDEFI) is to get a basket vault
+(`QuadrixBasketVault` v3.1) holding one mock per constituent; the keeper marks
+it daily from the index record (`keeper/basket-mark.mjs`, run from
+`paper-index.mjs`; `docs/paper-index.md`, "Basket marking"). Until a
+rulebook's `basket.vault` is set the leg prints what it would post and posts
+nothing. Once set, the same `KEEPER_PK` signs `setNav` and `setRefPrice` on
+the basket vault — add that to the list in failure mode 3.
+
+### During a rebalance: re-mark often, short auctions
+
+A rebalance is the one time the vault trades, and it trades only through
+dutch auctions priced off the keeper's reference prices. v3.1 refuses a fill
+whose reference is older than `maxRefAge` (default one hour). So while any
+auction is open:
+
+1. **Re-mark often.** Run `node keeper/paper-index.mjs --index <index>` again
+   as often as the auction needs — a re-run on a day that already has a
+   record skips the record and only re-posts the marks. An unchanged price
+   re-posted still refreshes the reference clock. Do not raise `maxRefAge` to
+   avoid re-marking: a wide window is a wide window for a bidder too.
+2. **Short auctions.** Open auctions with a duration well inside the
+   re-marking cadence, and re-open rather than extend. The curve runs from
+   +2% to the floor (−`maxFillLossBps`) over the duration; a long auction
+   against a stale reference is the case the guard exists for.
+3. **Order of a reconstitution.** The keeper's `pending-registry-{index}.json`
+   lists the change. A human writes the decision document, anchors it
+   (`anchor-decision` workflow), and calls `announceRegistryChange` with its
+   sha256 (owner key). Seven days later anyone calls `executeRegistryChange`.
+   Then the keeper opens auctions: sell the leaving asset for members until
+   its balance is zero (`finalizeRemoval`), post a first `setRefPrice` for the
+   entering asset, and buy it from the overweight members. Redemption pays the
+   old shape until `finalizeRemoval` and the new shape after; nothing about it
+   is paused at any point.
+4. **Daily loss budget.** Fills below reference draw on `dailyLossBudgetBps`;
+   when it trips (`DailyBudgetExceeded`) the auction waits for the next UTC
+   day. That is the policy working; do not loosen it mid-rebalance.
+5. **Log every override** in the table below, as for the NAV keeper.
+
+Auction execution is not automated in this repository yet — the calls above
+are made by hand from the keeper key. The paper record does not wait for
+any of this: the level moves on day 0, the vault follows over the week, and
+the gap is a stated tracking difference.
+
 ## Manual run (local)
 
 ```bash

@@ -123,6 +123,72 @@ Rate-limit pacing uses `ruby -e 'sleep N'` throughout (never the shell
 specifically, since it is the one most likely to 429 right after the
 500-name markets pull.
 
+## Basket marking — the on-chain leg (prepared 2026-09-16)
+
+Each rulebook carries a `basket` block (`keeper/rulebooks/{qx20,qrev,qdefi}.json`):
+
+```json
+"basket": { "chainId": 91342, "vault": null, "faucet": null, "navBase": 100, "assets": {} }
+```
+
+`vault: null` means no basket exists and the keeper posts nothing. Once an
+index basket is deployed on GIWA Sepolia (site repo,
+`.github/workflows/deploy-index-basket.yml` → `QuadrixBasketVault` v3.1 with
+one mock constituent per name), the block is filled — `vault`, `faucet`,
+`assets: { SYMBOL: { address, decimals } }` in the manifest's order, and
+`navBase` = the index level on the deploy day — and the daily run does three
+more things AFTER the record line is written (`keeper/basket-mark.mjs`,
+called from `paper-index.mjs`):
+
+1. **navPerShare** = `level / navBase × 1e6`, six decimals. The contract
+   refuses any single post outside ±15% of the last one, so a larger move is
+   walked in steps of at most 14.9% — one transaction and one log line per
+   step. The mark is for reporting: nothing that moves assets reads it.
+2. **refPrice per constituent** from the same CoinGecko snapshot, in the
+   contract's unit (USD × 1e18 per base unit of the mock), stepped the same
+   way. An unchanged price is re-posted anyway: the post refreshes
+   `refPriceUpdatedAt`, and v3.1's `fill()` refuses to execute against a
+   reference older than `maxRefAge` (1h by default). A constituent without a
+   price today is simply not posted — auctions in it fail closed, exits are
+   unaffected.
+3. **On a reconstitution day**, if the membership no longer matches the
+   vault's registry, `keeper/pending-registry-{index}.json` is written with
+   the adds, the removes, a `decisionSha256: null` placeholder and the exact
+   `announceRegistryChange` / `executeRegistryChange` / auction calls the
+   change needs. Nothing is announced on chain by the keeper: the
+   announcement carries the sha256 of an anchored decision document, which is
+   a human step (RUNBOOK, "During a rebalance").
+
+`--index qx20` runs only this leg for qX20: its book is `keeper/state.json`,
+written by `keeper/update-nav.mjs`, which keeps marking the NAV-tracker vault
+every six hours and is not changed. No record line and no anchor are written
+for qX20 here — its ledger is `keeper/nav-marks.jsonl`.
+
+Every chain write is skipped, with a line saying so, when `KEEPER_PK` is not
+set, on `--dry-run`, or while `basket.vault` is null — the marks are still
+computed and printed as `would setNav(...)` / `would setRefPrice(...)`.
+
+**Where the basket and the index rules disagree — stated, not hidden:**
+
+- *Seven-day registry delay vs. a reconstitution the record applies the same
+  day.* The paper level trades on day 0; the vault cannot add or drop a name
+  before day 7, and cannot finish the swap until the auctions drain the
+  leaving asset. The basket therefore lags the index at every reconstitution
+  and the tracking difference is real, not rounding. The keeper does not
+  paper over it: the record is the index; the vault's `navPerShare` is the
+  index; the vault's holdings are what they are and `redeem()` pays those.
+- *A ±15% band vs. a daily mark.* A day the market moves 20% is posted in
+  two steps within one run; the band is not a cap on the level, only on the
+  step. The keeper's ±15% sanity halt in `update-nav.mjs` is a different
+  thing (a bad-feed stop for the NAV tracker) and still applies there.
+- *Reference precision for 18-decimal low-price tokens.* The contract's
+  reference unit is USD × 1e18 per base unit, which for an 18-decimal token
+  is the USD price in whole units — ETH posts as `2395`, and a sub-dollar
+  18-decimal token cannot be posted at all. The testnet mocks side-step this
+  by choosing decimals per price (site repo `contracts/baskets/gen-manifest.py`);
+  mainnet does not get to choose and needs a scale change in the contract.
+  Listed as open.
+
 ## What is NOT implemented
 
 - **Special corporate events** (token migrations like MKR→SKY, hacks,
@@ -136,6 +202,10 @@ specifically, since it is the one most likely to 429 right after the
   on-chain NAV that a bad print could corrupt; the worst case is a bad
   number in a rules-only jsonl line, which the next day's run does not
   compound).
+- **Rebalance execution.** The keeper marks; it does not trade. Registry
+  changes (announce, wait seven days, execute, drain by auction, finalise)
+  and weight rebalances (dutch auctions between members) are the next step.
+  What exists today is the pending-registry file and the RUNBOOK procedure.
 - **Non-EVM on-chain issuance history** — the supply registry has weekly
   history only for the EVM chains its own pipeline could reach with a free
   archive RPC (Ethereum, Base, Optimism, Arbitrum). Solana/Tron/Hyperliquid/
@@ -181,6 +251,8 @@ node keeper/paper-index.mjs --index qrev  --dry-run   # writes keeper/dryrun/
 node keeper/paper-index.mjs --index qdefi --dry-run
 node keeper/paper-index.mjs --index qrev              # writes trackrecord/
 KEEPER_PK=0x... node keeper/paper-index.mjs --index qrev --anchor
+node keeper/paper-index.mjs --index qx20 --dry-run    # basket leg only, from keeper/state.json
+KEEPER_PK=0x... node keeper/paper-index.mjs --index qx20   # posts the qX20 basket's marks (once basket.vault is set)
 ```
 
 `--dry-run` does not de-duplicate by date (unlike the production path),

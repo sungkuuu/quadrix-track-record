@@ -1,0 +1,64 @@
+{
+  "ticker": "qX20",
+  "name": "Top-20 Index",
+  "kind": "basket",
+  "status": "live on the NAV-tracker vault (QuadrixIndexVault, keeper/update-nav.mjs); the in-kind basket on QuadrixBasketVault v3.1 is prepared, not deployed (basket.vault null)",
+  "asOf": "2026-09-16",
+  "source": {
+    "rulebook": "quadrix/docs/methodology/qx20.md (site repo, private; draft — in force as implemented by keeper/update-nav.mjs)",
+    "implementation": "keeper/update-nav.mjs — the model book is keeper/state.json, the mark ledger keeper/nav-marks.jsonl",
+    "note": "This file describes qX20 as data so the basket keeper (keeper/basket-mark.mjs via paper-index.mjs --index qx20) can mark the qX20 basket from the same book update-nav.mjs marks the NAV tracker from. It does not drive update-nav.mjs, which keeps its constants in code."
+  },
+  "universe": {
+    "definition": "the whole crypto market by circulating market cap; no sector, chain or issuer filter",
+    "source": "CoinGecko coins/markets top 60 (CoinPaprika top 80 fallback) in update-nav.mjs; top 500 in the basket leg (same feed, deeper page)",
+    "exclusions": "stablecoins and yield-bearing stables, wrapped and bridged representations, staking/restaking derivatives, LP tokens and vault shares, exchange tokens, tokenised RWA/money-market shares, PAXG — the EXCLUDE list in update-nav.mjs, matched by ticker"
+  },
+  "eligibility": {
+    "note": "none beyond rank and the exclusions — the rulebook draft proposes volume and listing-age floors; not implemented"
+  },
+  "ranking": {
+    "metric": "circulating market cap",
+    "direction": "descending",
+    "targetCount": 20,
+    "rankBuffer": {
+      "entryMaxRank": 17,
+      "exitMinRank": 23,
+      "note": "incumbents stay while rank <= 23; outsiders forced in at rank <= 17; seats filled to 20 by best rank"
+    }
+  },
+  "weighting": {
+    "method": "market-cap-proportional",
+    "cap": {
+      "maxWeight": 0.6,
+      "method": "iterative trim and pro-rata redistribution (applyCap)"
+    }
+  },
+  "reconstitution": {
+    "cadence": "monthly",
+    "rule": "first keeper run of each calendar month (UTC), no notice period — update-nav.mjs",
+    "driftBand": {
+      "points": 5,
+      "rule": "between reconstitutions the book is re-weighted to target only when a constituent drifts more than 5 points from its cap-weighted target; checked every run (6h)"
+    }
+  },
+  "marking": {
+    "navTracker": {
+      "vault": "0x2A165501ddA6e430fF98E82682f53CA8465Bb21f",
+      "cadence": "every 6h",
+      "sanityHaltPct": 15,
+      "contractBandPct": 25
+    },
+    "basket": "daily, after the paper-index run, by paper-index.mjs --index qx20; navPerShare = level / basket.navBase, stepped in <=14.9% moves; refPrice per constituent from the same CoinGecko snapshot"
+  },
+  "genesisLevel": 1.0,
+  "basket": {
+    "_doc": "The on-chain basket for this index (QuadrixBasketVault v3.1 on GIWA Sepolia). vault/faucet null = not deployed: the keeper computes every mark and posts none. After a deploy (site repo .github/workflows/deploy-index-basket.yml) fill vault, faucet, assets {SYMBOL: {address, decimals}} in manifest order, and navBase = the index level on the deploy day (contracts/baskets/{index}.json navBase), so the first post is navPerShare 1.000000. keeper/basket-mark.mjs reads this block.",
+    "chainId": 91342,
+    "vault": null,
+    "faucet": null,
+    "navBase": null,
+    "navBaseNote": "null until deployed — set to keeper/state.json level on the deploy day (the manifest records it as navBase); qX20 has no genesis-100 convention, its level is a NAV-like 1.0-based number",
+    "assets": {}
+  }
+}
