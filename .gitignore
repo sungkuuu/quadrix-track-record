@@ -1,2 +1,10 @@
 node_modules/
 .deployer
+
+# paper-index keeper: raw API response cache (ephemeral, re-fetchable) and
+# local dry-run scratch output (not the production record — see
+# docs/paper-index.md). The 2026-09-15 demonstration dry-run files are
+# force-added (`git add -f`) once for review; this ignore rule is so future
+# ad-hoc dry runs don't get committed by accident.
+keeper/cache/
+keeper/dryrun/

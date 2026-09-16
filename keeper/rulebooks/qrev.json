@@ -1,0 +1,106 @@
+{
+  "ticker": "qREV",
+  "name": "Revenue Index",
+  "kind": "paper-index",
+  "status": "not in force — rules only, no vault, no anchored inception",
+  "asOf": "2026-09-15",
+  "source": {
+    "rulebook": "quadrix/docs/methodology/value-capture.md (site repo, private)",
+    "backtestHarness": "quadrix/docs/research/qrev/qrev-backtest.py",
+    "ownerDecisionDate": "2026-09-15",
+    "note": "Owner decisions of 2026-09-15 supersede earlier rulebook draft text where they differ. This file is the implemented parameter set; the prose rulebook is the narrative record of why."
+  },
+  "universe": {
+    "definition": "protocol tokens with a DefiLlama dailyHoldersRevenue adapter, plus chain-native tokens whose trailing-12-month burn exceeds the value of new issuance over the same period",
+    "protocolMap": "keeper/rulebooks/qrev-protocol-map.json (manual protocol-slug -> symbol table, copied from the site repo's docs/research/qrev/hr-protocols.json 2026-09-15 snapshot; no automatic name matching per rulebook §1)",
+    "chainTokenTest": "netBurn12m = burn_value_12m - issuance_value_12m > 0 (protocol-controlled burn/fee-buyback adapters tagged category=Chain in the protocol map); if <=0 the chain token is out of the universe entirely for that quarter, not merely down-weighted",
+    "exclusions": {
+      "categories": ["Launchpad", "Meme", "Gamified Mining"],
+      "assetTypeExclusions": "qX20 rulebook §3 categories in full: stablecoins, yield-bearing stables, wrapped assets, liquid-staking derivatives, LP shares, exchange tokens (BNB is treated as a chain token per owner 2026-09-15, not an exchange token), tokenized RWA shares",
+      "chainRevenueRule": "a token with both a protocol adapter and a Chain adapter (e.g. HYPE: Perps + L1) is judged as a protocol token; its category is the adapter with the larger trailing-12m revenue (\"primary adapter\"), and revenue is summed across all its adapters",
+      "gamblingAdapters": "Prediction Market / Luck Games adapter revenue is included in the sum per protocol (open decision D4 in the rulebook; draft default: include)",
+      "noLiveToken": "protocols with no liquid token in the protocol map are out of the universe"
+    }
+  },
+  "eligibility": {
+    "minCirculatingMarketCapUSD": 150000000,
+    "minVolume24hUSD": 10000000,
+    "minHolderRevenueTrailing12mUSD": 1000000,
+    "minConsecutivePositiveRevenueMonths": 6,
+    "minListingAgeDays": 365,
+    "valueTrapFilter": {
+      "description": "trailing-30-day holder revenue must be at least this fraction of the trailing-12m monthly average, else the name is dropped as a possible value trap",
+      "thresholdFraction": 0.25,
+      "formula": "hr30 >= thresholdFraction * hr12m / 12"
+    }
+  },
+  "ranking": {
+    "metric": "P/HR = circulating market cap / trailing-12-month holder revenue",
+    "direction": "ascending (cheapest P/HR first)",
+    "targetCount": 10,
+    "rankBuffer": {
+      "entryMaxRank": 8,
+      "exitMinRank": 13,
+      "note": "an incumbent is kept while its rank is <= exitMinRank; an outsider is force-added only at rank <= entryMaxRank; seats are filled to targetCount by best remaining rank"
+    }
+  },
+  "exitHysteresis": {
+    "enabled": true,
+    "description": "an incumbent that fails an eligibility gate, or whose rank falls below exitMinRank (i.e. > 13), is not removed immediately. It is kept for one further quarter (weighted by the normal rule, using whatever data is available), flagged 'onNotice'. It is removed only if it fails again (a gate failure or rank > 13) at the following reconstitution — two consecutive failures to exit."
+  },
+  "weighting": {
+    "method": "net-revenue-proportional",
+    "netRevenueFormula": "netRevenue_i = holderRevenue12m_i - issuanceValue12m_i (chain tokens: netRevenue_i = netBurn12m_i, already net of issuance by construction)",
+    "floor": {
+      "description": "a name whose net revenue is below the floor is weighted at the floor, never excluded by this rule alone",
+      "fractionOfPositiveNetRevenueSum": 0.02,
+      "note": "floor = fractionOfPositiveNetRevenueSum * sum of POSITIVE net revenues across the reconstituted basket, recomputed at each reconstitution"
+    },
+    "allNegativeFallback": "if every member's net revenue is <= 0 in a given quarter, fall back to gross trailing-12m holder-revenue weighting for that quarter only",
+    "cap": {
+      "maxWeight": 0.35,
+      "method": "immediate trim to cap at reconstitution, excess redistributed pro rata among uncapped names, iterated to convergence (no drift corridor above the cap — same iterative cap function as keeper/update-nav.mjs applyCap)"
+    }
+  },
+  "issuance": {
+    "definition": "on-chain total supply minus balances of protocol-controlled addresses listed in keeper/supply/registry.json (treasury, vesting, dead/burn-sink addresses); voluntary lockups (vote-escrow contracts such as veAERO/vlCVX/vePENDLE) are NOT excluded -- locked-but-minted tokens count as issued",
+    "windowMonths": 12,
+    "primarySource": "keeper/supply/registry.json + keeper/supply/supply-weekly.json (on-chain measurement, copied from quadrix/docs/research/qrev/supply/ 2026-09-15 snapshot; re-run that pipeline and re-copy to refresh)",
+    "fallbackSource": "CoinGecko circulating_supply now vs. CoinGecko circulating_supply ~365 days ago (coins/{id}/history) when the on-chain registry has no >=365-day weekly history for a symbol",
+    "fallbackFlag": "issuance_source: \"coingecko\" is stamped on that member's record row whenever the fallback is used"
+  },
+  "reconstitution": {
+    "cadence": "quarterly",
+    "rule": "first run after 00:00 UTC on Jan 1 / Apr 1 / Jul 1 / Oct 1",
+    "lookbackWindows": {
+      "trailing12mEndDate": "reconstitution date (exclusive)",
+      "trailing30dEndDate": "reconstitution date (exclusive)"
+    },
+    "tolerance": {
+      "thresholdPoints": 5,
+      "rule": "a name whose target weight differs from its drifted (mark-to-market) weight by less than 5 percentage points is NOT traded at reconstitution -- its unit count is left alone",
+      "capOverride": "any name whose drifted weight is above 35% is ALWAYS cut to 35% regardless of the 5-point tolerance"
+    },
+    "betweenReconstitutions": "no trading; the book is only marked to market daily. No drift band (owner 2026-09-15)."
+  },
+  "specialEvents": {
+    "inScope": false,
+    "note": "token migrations, hacks, delistings, and other special events are explicitly OUT OF SCOPE for this paper-index implementation pass. If one occurs while the keeper is running, it will surface as a missing price or a data gap and the run should be reviewed by hand, not auto-resolved."
+  },
+  "dataSources": {
+    "holderRevenue": {
+      "primary": "DefiLlama summary/fees/{slug}?dataType=dailyHoldersRevenue (per protocol, from keeper/rulebooks/qrev-protocol-map.json slugs)",
+      "fallback": "none (rulebook §8: no substitute source for this definition)"
+    },
+    "marketCapPriceVolume": {
+      "primary": "CoinGecko coins/markets (paginated to top 500)",
+      "fallback": "CoinPaprika tickers (price only, no reconstitution)"
+    },
+    "supplyIssuance": {
+      "primary": "on-chain supply registry (keeper/supply/)",
+      "fallback": "CoinGecko circulating supply, current vs ~365 days ago"
+    }
+  },
+  "inception": null,
+  "genesisLevel": 100
+}

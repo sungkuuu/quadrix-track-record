@@ -32,7 +32,13 @@
  * Options:
  *   --base <url>     fetch <base>/trackrecord/… (the site's mirror)
  *   --dir <path>     read the files from a local directory
- *   --series <name>  dry | live | all   (default: all)
+ *   --series <name>  dry | live | qrev | qdefi | all   (default: all)
+ *                    "all" verifies dry+live only, unchanged from before
+ *                    qrev/qdefi existed — request them explicitly by name.
+ *                    qrev/qdefi are keeper/paper-index.mjs's rules-only
+ *                    index levels (trackrecord/record-{qrev,qdefi}.jsonl,
+ *                    anchor prefix `qxpi-<index>:`); same hash-chain shape,
+ *                    no `decisions` field.
  *   --rpc <url>      JSON-RPC endpoint (default: https://sepolia-rpc.giwa.io)
  *
  * The point of this file is that you can read all of it. If you don't trust
@@ -52,8 +58,8 @@ const BASE = opt('--base', null);
 const DIR = opt('--dir', BASE ? null : './trackrecord');
 const RPC = opt('--rpc', 'https://sepolia-rpc.giwa.io');
 const SERIES = opt('--series', 'all');
-if (!['dry', 'live', 'all'].includes(SERIES)) {
-  console.error(`--series must be dry, live or all (got ${SERIES})`);
+if (!['dry', 'live', 'qrev', 'qdefi', 'all'].includes(SERIES)) {
+  console.error(`--series must be dry, live, qrev, qdefi or all (got ${SERIES})`);
   process.exit(2);
 }
 
@@ -123,8 +129,16 @@ try {
 }
 
 const SERIES_FILES = {
-  dry: { label: 'DRY_RUN', records: 'record.jsonl', anchors: 'anchors.jsonl' },
-  live: { label: 'LIVE', records: 'record-live.jsonl', anchors: 'anchors-live.jsonl' },
+  dry: { label: 'DRY_RUN', records: 'record.jsonl', anchors: 'anchors.jsonl', anchorPrefix: 'qxtr:', checkDecisions: true },
+  live: { label: 'LIVE', records: 'record-live.jsonl', anchors: 'anchors-live.jsonl', anchorPrefix: 'qxtr:', checkDecisions: true },
+  // Paper-index series (qREV, qDEFI) — keeper/paper-index.mjs. Rules-only
+  // levels, no vault, not in force until an inception decision is anchored.
+  // They carry no `decisions` field (that ledger is scoped to the LIVE book)
+  // and anchor under their own calldata prefix, `qxpi-<index>:`, distinct
+  // from the operating record's `qxtr:` — same hash-chain shape otherwise,
+  // so the generic per-record checks below need no series-specific code.
+  qrev: { label: 'QREV', records: 'record-qrev.jsonl', anchors: 'anchors-qrev.jsonl', anchorPrefix: 'qxpi-qrev:', checkDecisions: false },
+  qdefi: { label: 'QDEFI', records: 'record-qdefi.jsonl', anchors: 'anchors-qdefi.jsonl', anchorPrefix: 'qxpi-qdefi:', checkDecisions: false },
 };
 const totals = { records: 0, anchors: 0, series: [] };
 
@@ -154,22 +168,30 @@ async function verifySeries(key) {
     } else if (rec.prevHash !== prevHash) {
       fail(`#${rec.seq} ${rec.date}: prevHash does not match record #${rec.seq - 1} (chain break)`);
     } else {
-      ok(`#${rec.seq} ${rec.date} ${rec.mode} head ${hash.slice(0, 12)}…${rec.benchmarks?.missing ? ' (benchmarks recorded as missing)' : ''}`);
+      // rec.mode (DRY_RUN/LIVE) is the operating-record label; paper-index
+      // records instead carry rec.index (QREV/QDEFI) and rec.level — either
+      // is printed, whichever the record shape has.
+      ok(`#${rec.seq} ${rec.date} ${rec.mode ?? rec.index} head ${hash.slice(0, 12)}…${rec.benchmarks?.missing ? ' (benchmarks recorded as missing)' : ''}`);
     }
     prevHash = rec.hash;
 
     // A record's decision list must match the ledger for that date, in both
     // directions: nothing dropped from the record, nothing added to it.
-    const expected = decisions
-      .filter((d) => d.effectiveFrom <= rec.date)
-      .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
-    const carried = rec.decisions ?? [];
-    if (carried.length !== expected.length) {
-      fail(`#${rec.seq} ${rec.date}: carries ${carried.length} decision(s), ledger says ${expected.length}`);
-    } else {
-      for (let i = 0; i < expected.length; i++) {
-        if (carried[i].id !== expected[i].id || carried[i].sha256 !== expected[i].sha256) {
-          fail(`#${rec.seq} ${rec.date}: decision ${carried[i].id} does not match the ledger`);
+    // Paper-index series (qREV/qDEFI) carry no `decisions` field at all —
+    // that ledger is scoped to the LIVE operating record — so this check is
+    // skipped for them (f.checkDecisions === false), not run-and-ignored.
+    if (f.checkDecisions) {
+      const expected = decisions
+        .filter((d) => d.effectiveFrom <= rec.date)
+        .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+      const carried = rec.decisions ?? [];
+      if (carried.length !== expected.length) {
+        fail(`#${rec.seq} ${rec.date}: carries ${carried.length} decision(s), ledger says ${expected.length}`);
+      } else {
+        for (let i = 0; i < expected.length; i++) {
+          if (carried[i].id !== expected[i].id || carried[i].sha256 !== expected[i].sha256) {
+            fail(`#${rec.seq} ${rec.date}: decision ${carried[i].id} does not match the ledger`);
+          }
         }
       }
     }
@@ -186,7 +208,7 @@ async function verifySeries(key) {
       fail(`anchor seq ${a.seq}: headHash does not match record hash`);
       continue;
     }
-    const expected = '0x' + Buffer.from('qxtr:' + a.headHash, 'utf8').toString('hex');
+    const expected = '0x' + Buffer.from(f.anchorPrefix + a.headHash, 'utf8').toString('hex');
     let tx;
     try {
       tx = await rpc('eth_getTransactionByHash', [a.txHash]);
@@ -204,7 +226,7 @@ async function verifySeries(key) {
       continue;
     }
     if ((tx.input || '').toLowerCase() !== expected.toLowerCase()) {
-      fail(`anchor seq ${a.seq}: calldata does not carry qxtr:${a.headHash.slice(0, 12)}…`);
+      fail(`anchor seq ${a.seq}: calldata does not carry ${f.anchorPrefix}${a.headHash.slice(0, 12)}…`);
       continue;
     }
     ok(`seq ${a.seq} ${a.date} anchored in ${a.txHash.slice(0, 14)}… (block ${parseInt(receipt.blockNumber, 16)})`);

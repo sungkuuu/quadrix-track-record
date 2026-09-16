@@ -1,0 +1,1505 @@
+{
+  "AAVE": {
+    "census_status": "complete",
+    "chain": "ethereum",
+    "coingecko_id": "aave",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 15427715.742630178,
+      "max_supply": 16000000.0,
+      "total_supply": 16000000.0
+    },
+    "contract_address": "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9",
+    "decimals": 18,
+    "excluded_addresses": [
+      {
+        "address": "0x25f2226B597e8F9514B3F68F00f494cF4f286491",
+        "label": "Aave Ecosystem Reserve (V2, EIP-1967 proxy)",
+        "source_url": "https://etherscan.io/address/0x25f2226b597e8f9514b3f68f00f494cf4f286491"
+      }
+    ],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() flat at 16,000,000 at both 2024-06-02 and now (post the Oct-2020 AAVE/LEND migration). Ecosystem Reserve balance verified live: 572,284 AAVE (3.58% of supply).",
+    "supply_model": "premint",
+    "symbol": "AAVE"
+  },
+  "ABX": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "ABX"
+  },
+  "AERO": {
+    "census_status": "not_applicable",
+    "chain": "base",
+    "coingecko_id": "aerodrome-finance",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 988729344.8809525,
+      "max_supply": null,
+      "total_supply": 1978450301.483024
+    },
+    "contract_address": "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (mainnet.base.org): totalSupply() 1,074,039,674 at the 2024-06-02 block vs 1,978,450,301 now (+84.2%). Aerodrome emits AERO to veAERO/gauge voters weekly; no fixed cap.",
+    "supply_model": "mint",
+    "symbol": "AERO"
+  },
+  "ASTER": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "ASTER"
+  },
+  "AVAX": {
+    "census_status": "not_applicable",
+    "chain": "avalanche",
+    "coingecko_id": "avalanche-2",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 442515957.1607268,
+      "max_supply": 720000000.0,
+      "total_supply": 469184593.2333026
+    },
+    "contract_address": null,
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Current supply via CoinGecko only (442,515,957 circulating / 469,184,593 total / 720,000,000 max). Validator staking emissions continue toward the fixed 720M cap. history_available=false.",
+    "supply_model": "mint",
+    "symbol": "AVAX"
+  },
+  "BAL": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "BAL"
+  },
+  "BEAN": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "BEAN"
+  },
+  "BERA": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "BERA"
+  },
+  "BLACK": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "BLACK"
+  },
+  "BNB": {
+    "census_status": "not_applicable",
+    "chain": "bsc",
+    "coingecko_id": "binancecoin",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 133160792.93,
+      "max_supply": 200000000.0,
+      "total_supply": 133160787.36
+    },
+    "contract_address": null,
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "BNB is net deflationary (BEP-95 real-time gas burn plus historical quarterly auto-burn toward a 100,000,000 target), not a simple mint or premint model. Current supply via CoinGecko only (133,160,787 BNB); no free BSC archive RPC was available to measure historically (see README).",
+    "supply_model": "other",
+    "symbol": "BNB"
+  },
+  "BONK": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "BONK"
+  },
+  "CAKE": {
+    "census_status": "complete",
+    "chain": "bsc",
+    "coingecko_id": "pancakeswap-token",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 319428977.9397183,
+      "max_supply": 400000000.0,
+      "total_supply": 331093394.0100838
+    },
+    "contract_address": "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82",
+    "decimals": 18,
+    "excluded_addresses": [
+      {
+        "address": "0x000000000000000000000000000000000000dEaD",
+        "label": "Burn address (0x000...dEaD)",
+        "source_url": "https://bscscan.com/address/0x000000000000000000000000000000000000dead"
+      }
+    ],
+    "group": "A",
+    "notes": "No free BSC archive RPC was found in this session (blockpi 521, meowrpc 'eth_call is not supported', bsc-dataseed/1rpc 'missing trie node' / 'header not found', publicnode requires a paid archive token) -- see README for the exact errors. Classification is by documented tokenomics (PancakeSwap v3 'Tokenomics 3.0', Feb 2024: fixed weekly emission schedule with a 400,000,000 cap and ongoing burns) rather than by direct on-chain measurement. Current-only. CORRECTION (live balance check, 2026-09-15): raw totalSupply() on BSC (bsc-dataseed.binance.org) reads 5,328,111,959.75 CAKE -- ~16x CoinGecko's stated total_supply (331,093,394) -- because PancakeSwap burns CAKE by transferring to the dead-burn address rather than calling a supply-decrementing burn(); the dead address alone holds 4,991,087,156.72 CAKE (93.7% of raw totalSupply()). total - dead = 337,024,803, which reconciles with CoinGecko's total_supply (331,093,394, ~1.8% apart, plausible from burn-address inflows since CoinGecko's snapshot). This exclusion is applied only to the CURRENT snapshot (no BSC archive RPC for history, see README).",
+    "supply_model": "mint",
+    "symbol": "CAKE"
+  },
+  "CC": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "CC"
+  },
+  "CRV": {
+    "census_status": "not_applicable",
+    "chain": "ethereum",
+    "coingecko_id": "curve-dao-token",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 1557379888.0,
+      "max_supply": 3030303031.0,
+      "total_supply": 2418253503.366909
+    },
+    "contract_address": "0xd533a949740bb3306d119cc777fa900ba034cd52",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() 2,124,558,233 at 2024-06-02 vs 2,418,255,121 now (+13.8%). Curve DAO gauge emissions continue toward a 3.03B terminal supply.",
+    "supply_model": "mint",
+    "symbol": "CRV"
+  },
+  "CVX": {
+    "census_status": "not_applicable",
+    "chain": "ethereum",
+    "coingecko_id": "convex-finance",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 93194518.49512771,
+      "max_supply": 100000000.0,
+      "total_supply": 99990325.15616803
+    },
+    "contract_address": "0x4e3fbd56cd56c3e72c1403e103b45db9da5b9d2b",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() 99,606,562 at 2024-06-02 vs 99,990,325 now (+0.39%), converging on the 100,000,000 hard cap. Convex mints CVX as a reward for CRV lockers/liquidity providers.",
+    "supply_model": "mint",
+    "symbol": "CVX"
+  },
+  "DBR": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "DBR"
+  },
+  "DUST": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "DUST"
+  },
+  "DYDX": {
+    "census_status": "incomplete",
+    "chain": "cosmos",
+    "coingecko_id": "dydx-chain",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 846094216.4335754,
+      "max_supply": 1000000000.0,
+      "total_supply": 958342751.0
+    },
+    "contract_address": "adydx",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Current total supply fetched live via the dYdX chain LCD (dydx-rest.publicnode.com /cosmos/bank/v1beta1/supply, denom adydx): exactly 1,000,000,000,000,000,000,000,000,000 wei = 1,000,000,000 DYDX -- the full genesis max supply is already minted into module accounts (community treasury, staking rewards, investor/team vesting, etc.), i.e. a premint model. This is higher than CoinGecko's stated total_supply (958,342,751), implying CoinGecko already nets out some non-circulating pool -- flagged as a discrepancy. No single treasury account address was verified with citation this pass; census_status incomplete.",
+    "supply_model": "premint",
+    "symbol": "DYDX"
+  },
+  "EDGE": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "EDGE"
+  },
+  "ENA": {
+    "census_status": "incomplete",
+    "chain": "ethereum",
+    "coingecko_id": "ethena",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 10095312500.0,
+      "max_supply": 15000000000.0,
+      "total_supply": 15000000000.0
+    },
+    "contract_address": "0x57e114b691db790c35207b2e685d4a43181e6061",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() exactly 15,000,000,000 at both 2024-06-02 and now -- matches the brief's own premint example. A candidate 'Ethena Foundation' address surfaced by web search (0xd4B34207a671b813B5E66d31EA0b0A9849de9bc1) shows a ZERO live ENA balance, so it was NOT used; census_status incomplete since no verified exclusion address was found.",
+    "supply_model": "premint",
+    "symbol": "ENA"
+  },
+  "ETH": {
+    "census_status": "not_applicable",
+    "chain": "ethereum",
+    "coingecko_id": "ethereum",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 122050160.83564284,
+      "max_supply": null,
+      "total_supply": 122050160.8356428
+    },
+    "contract_address": null,
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Current total supply via CoinGecko only (122,050,161 ETH). Historical issuance series (ultrasound.money / beaconcha.in) was not pulled in this pass -- history_available=false. ETH issuance is gross mint (consensus-layer validator rewards) net of the EIP-1559 base-fee burn, and can be net deflationary during high-fee periods.",
+    "supply_model": "mint",
+    "symbol": "ETH"
+  },
+  "ETHFI": {
+    "census_status": "incomplete",
+    "chain": "ethereum",
+    "coingecko_id": "ether-fi",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 965350000.0,
+      "max_supply": 1000000000.0,
+      "total_supply": 965350000.0
+    },
+    "contract_address": "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() 1,000,000,000 at 2024-06-02 vs 998,535,999 now -- essentially fixed with a small net burn (-0.15%), i.e. premint. ether.fi's vesting docs describe Investor/Treasury/Core-Contributor allocations (1-year cliff + linear vesting) but no single canonical treasury address with citation was found this pass; census_status incomplete.",
+    "supply_model": "premint",
+    "symbol": "ETHFI"
+  },
+  "EUL": {
+    "census_status": "complete",
+    "chain": "ethereum",
+    "coingecko_id": "euler",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 24025172.314847562,
+      "max_supply": 27182818.0,
+      "total_supply": 27182818.28459
+    },
+    "contract_address": "0xd9fcd98c322942075a5c3860693e9f4f03aae07b",
+    "decimals": 18,
+    "excluded_addresses": [
+      {
+        "address": "0xC7C5aFDB61e08BE3e2FB09098412b5706EB5c550",
+        "label": "Euler DAO Treasury",
+        "source_url": "https://docs.euler.finance/euler-dao/treasury/"
+      }
+    ],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() exactly 27,182,818.284590452... (=1e7 x e) at both 2024-06-02 and now, matching the documented max_supply -- fixed since the 2024 Euler v2 relaunch. Treasury balance verified live: 3,905,615 EUL (14.37% of supply).",
+    "supply_model": "premint",
+    "symbol": "EUL"
+  },
+  "FIL": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "FIL"
+  },
+  "FLIP": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "FLIP"
+  },
+  "FLUID": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "FLUID"
+  },
+  "FWA": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "FWA"
+  },
+  "GEOD": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "GEOD"
+  },
+  "GMX": {
+    "census_status": "not_applicable",
+    "chain": "arbitrum",
+    "coingecko_id": "gmx",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 10457511.58935798,
+      "max_supply": 13250000.0,
+      "total_supply": 10457557.38133106
+    },
+    "contract_address": "0xfc5a1a6eb076a2c7ad06ed22c90d7e710e35ad0a",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call -- arb1.arbitrum.io/rpc, arbitrum.meowrpc.com, rpc.arb1.arbitrum.gateway.fm and arbitrum.drpc.org ALL served historical state in testing (only arbitrum.blockpi.network/v1/rpc/public failed, HTTP 521). This contradicts the brief's assumption that no free Arbitrum archive RPC exists -- see README. totalSupply() 10,033,596 at 2024-06-02 vs 10,985,596 now (+9.5%); esGMX vesting mints new GMX toward the 13,250,000 cap.",
+    "supply_model": "mint",
+    "symbol": "GMX"
+  },
+  "GNS": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "GNS"
+  },
+  "GODL": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "GODL"
+  },
+  "GRAM": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "GRAM"
+  },
+  "HNT": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "HNT"
+  },
+  "HYDX": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "HYDX"
+  },
+  "HYPE": {
+    "census_status": "not_applicable",
+    "chain": "hyperliquid",
+    "coingecko_id": "hyperliquid",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 222445714.07414138,
+      "max_supply": 1000000000.0,
+      "total_supply": 955307079.4341414
+    },
+    "contract_address": "0x0d01dc56dcaaca66ad901c959b4011ec",
+    "decimals": 8,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "No historical Hyperliquid supply API was identified in this pass; current-only. CoinGecko circulating 222,445,714 / total 955,307,079 / max 1,000,000,000 HYPE -- the large circulating/total gap reflects genesis-locked allocations unlocking over time, consistent with the brief's own 'mint' example.",
+    "supply_model": "mint",
+    "symbol": "HYPE"
+  },
+  "INDEX": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "INDEX"
+  },
+  "INJ": {
+    "census_status": "incomplete",
+    "chain": "cosmos",
+    "coingecko_id": "injective-protocol",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 100000000.0,
+      "max_supply": null,
+      "total_supply": 100000000.0
+    },
+    "contract_address": "inj",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Current total supply fetched live via Injective LCD (sentry.lcd.injective.network /cosmos/bank/v1beta1/supply/by_denom?denom=inj): 122,892,043 INJ. This is materially HIGHER than CoinGecko's stated circulating_supply/total_supply of 100,000,000 -- CoinGecko's INJ supply field looks stale (INJ's genesis supply was 100M in 2018; INJ 3.0 (2024) combines inflationary staking rewards with a weekly burn auction, net mint historically). Flagged as a >10% diff in the report. No single treasury/foundation address was verified with citation this pass.",
+    "supply_model": "mint",
+    "symbol": "INJ"
+  },
+  "JUP": {
+    "census_status": "incomplete",
+    "chain": "solana",
+    "coingecko_id": "jupiter-exchange-solana",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 3319369204.37,
+      "max_supply": 10000000000.0,
+      "total_supply": 6861487116.356125
+    },
+    "contract_address": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+    "decimals": 6,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "10,000,000,000 max supply fixed at the Jan-2024 genesis (per docs.jup.ag tokenomics). Team/investor/community vesting wallets are described in Jupiter's own 'Community Audit' reports but we did not locate a single cited, canonical exclusion-address list in this pass. Current total supply fetched live via Solana getTokenSupply (mint JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN): 6,861,487,028 JUP.",
+    "supply_model": "premint",
+    "symbol": "JUP"
+  },
+  "KITTEN": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "KITTEN"
+  },
+  "KNTQ": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "KNTQ"
+  },
+  "LDO": {
+    "census_status": "complete",
+    "chain": "ethereum",
+    "coingecko_id": "lido-dao",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 834151322.8543006,
+      "max_supply": 1000000000.0,
+      "total_supply": 1000000000.0
+    },
+    "contract_address": "0x5a98fcbea516cf06857215779fd812ca3bef1b32",
+    "decimals": 18,
+    "excluded_addresses": [
+      {
+        "address": "0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c",
+        "label": "Lido: Agent (Aragon DAO treasury)",
+        "source_url": "https://etherscan.io/address/0x3e40d73eb977dc6a537af587d48316fee66e9c8c"
+      }
+    ],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() exactly 1,000,000,000 at both 2024-06-02 and now -- fixed since the Dec-2020 genesis mint. Lido Agent balance verified live: 116,913,987 LDO (11.69% of supply).",
+    "supply_model": "premint",
+    "symbol": "LDO"
+  },
+  "LINK": {
+    "census_status": "incomplete",
+    "chain": "ethereum",
+    "coingecko_id": "chainlink",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 748099970.424884,
+      "max_supply": 1000000000.0,
+      "total_supply": 1000000000.0
+    },
+    "contract_address": "0x514910771af9ca656af840dff83e8264ecf986ca",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() exactly 1,000,000,000 at both 2024-06-02 and now -- fixed since the 2017 genesis mint. Chainlink Labs / SmartContract.com's reserve (commonly cited at roughly a third of supply) is discussed in aggregate across many secondary sources, but no single canonical on-chain address with a directly citable primary source was identified in this pass; census_status incomplete.",
+    "supply_model": "premint",
+    "symbol": "LINK"
+  },
+  "LIT": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "LIT"
+  },
+  "MET": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "MET"
+  },
+  "MON": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "MON"
+  },
+  "MPLX": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "MPLX"
+  },
+  "NEAR": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "NEAR"
+  },
+  "NEST": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "NEST"
+  },
+  "NXM": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "NXM"
+  },
+  "ONDO": {
+    "census_status": "incomplete",
+    "chain": "ethereum",
+    "coingecko_id": "ondo-finance",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 4869330647.0,
+      "max_supply": 10000000000.0,
+      "total_supply": 10000000000.0
+    },
+    "contract_address": "0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() flat at 10,000,000,000 at both 2024-06-02 and now -- matches the brief's own premint example. The unlock schedule (2024-01-18 to 2029-01-18, 17 events across Community/Foundation/Private/Public buckets) is documented on DefiLlama and Tokenomist, but no single cited on-chain foundation/treasury address was found for exclusion in this pass; census_status incomplete.",
+    "supply_model": "premint",
+    "symbol": "ONDO"
+  },
+  "ORCA": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "ORCA"
+  },
+  "ORE": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "ORE"
+  },
+  "OVER": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "OVER"
+  },
+  "PEA": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "PEA"
+  },
+  "PENDLE": {
+    "census_status": "not_applicable",
+    "chain": "ethereum",
+    "coingecko_id": "pendle",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 173481161.07393742,
+      "max_supply": null,
+      "total_supply": 281527448.4585314
+    },
+    "contract_address": "0x808507121b80c02388fad14726482e061b8da827",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() 258,446,028 at 2024-06-02 vs 281,527,448 now (+8.9%). Pendle's emission schedule targets a ~281M terminal supply by 2026, so growth is now nearly exhausted.",
+    "supply_model": "mint",
+    "symbol": "PENDLE"
+  },
+  "PHAR": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "PHAR"
+  },
+  "PLSX": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "PLSX"
+  },
+  "PNP": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "PNP"
+  },
+  "PONS": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "PONS"
+  },
+  "PUMP": {
+    "census_status": "incomplete",
+    "chain": "solana",
+    "coingecko_id": "pump-fun",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 468506740493.75183,
+      "max_supply": 1000000000000.0,
+      "total_supply": 834018560749.023
+    },
+    "contract_address": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+    "decimals": 6,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "1,000,000,000,000 max supply fixed at the July-2025 TGE. Team/foundation allocations are discussed publicly but no single cited canonical wallet list was located in this pass. Current total supply fetched live via Solana getTokenSupply (mint pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn): 834,010,388,784 PUMP.",
+    "supply_model": "premint",
+    "symbol": "PUMP"
+  },
+  "QUICK": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "QUICK"
+  },
+  "RAIL": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "RAIL"
+  },
+  "RAM": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "RAM"
+  },
+  "RAY": {
+    "census_status": "incomplete",
+    "chain": "solana",
+    "coingecko_id": "raydium",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 269738729.766044,
+      "max_supply": 555000000.0,
+      "total_supply": 555000000.0
+    },
+    "contract_address": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+    "decimals": 6,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "555,000,000 max supply fixed at genesis per Raydium docs. No cited exclusion addresses were located in this pass. Current total supply fetched live via Solana getTokenSupply (mint 4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R): 554,997,503 RAY.",
+    "supply_model": "premint",
+    "symbol": "RAY"
+  },
+  "REX": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "REX"
+  },
+  "REZ": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "REZ"
+  },
+  "RSUP": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "RSUP"
+  },
+  "SHADOW": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "SHADOW"
+  },
+  "SKY": {
+    "census_status": "not_applicable",
+    "chain": "ethereum",
+    "coingecko_id": "sky",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 23426517314.597916,
+      "max_supply": 23462665147.3,
+      "total_supply": 23459804203.60596
+    },
+    "contract_address": "0x56072c95faa701256059aa122697b133aded9279",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically volatile via archive eth_call (eth.drpc.org): totalSupply() not yet deployed at 2024-06-02 (MKR->SKY rebrand happened later in 2024); 1,666,504,001 at 2024-12-01; 26,954,455,323 at 2025-06-01; 23,459,804,204 now. Sky Farms mint new SKY as staking rewards while the Smart Burn Engine burns SKY bought with protocol surplus -- net mint model with a large burn offset, consistent with the brief's own 'mint' example.",
+    "supply_model": "mint",
+    "symbol": "SKY"
+  },
+  "SLVR": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "SLVR"
+  },
+  "SOL": {
+    "census_status": "not_applicable",
+    "chain": "solana",
+    "coingecko_id": "solana",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 587028182.2574142,
+      "max_supply": null,
+      "total_supply": 634111744.2213202
+    },
+    "contract_address": null,
+    "decimals": 9,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Current supply via CoinGecko only (587,028,182 circulating / 634,111,744 total). Solana's disinflationary issuance schedule (~4.6%/yr trending toward a 1.5% terminal rate) is well documented; historical supply was not pulled in this pass. history_available=false.",
+    "supply_model": "mint",
+    "symbol": "SOL"
+  },
+  "SPK": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "SPK"
+  },
+  "SSV": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "SSV"
+  },
+  "STONK": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "STONK"
+  },
+  "SYRUP": {
+    "census_status": "not_applicable",
+    "chain": "ethereum",
+    "coingecko_id": "syrup",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 1167271959.1810675,
+      "max_supply": null,
+      "total_supply": 1244677492.511099
+    },
+    "contract_address": "0x643c4e15d7d62ad0abec4a9bd4b001aa3ef52d66",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() not yet deployed at 2024-06-02; 1,154,930,098 at 2024-12-01; 1,189,633,000 at 2025-06-01; 1,244,677,493 now. Maple's SYRUP continues to mint via staking/drips rewards -- mint model.",
+    "supply_model": "mint",
+    "symbol": "SYRUP"
+  },
+  "THE": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "THE"
+  },
+  "THOR": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "THOR"
+  },
+  "TREE": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "TREE"
+  },
+  "TRX": {
+    "census_status": "not_applicable",
+    "chain": "tron",
+    "coingecko_id": "tron",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 94950365063.49529,
+      "max_supply": null,
+      "total_supply": 94951377543.99988
+    },
+    "contract_address": null,
+    "decimals": 6,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "TRON's supply mechanics do not fit a clean mint/premint binary (modest SR block-reward issuance plus periodic large burns since 2021); not modeled as either for this pipeline. Current total supply only, via CoinGecko (94,951,377,544 TRX) -- the free TronScan endpoints reachable in this session did not expose a simple current-supply field.",
+    "supply_model": "other",
+    "symbol": "TRX"
+  },
+  "UNI": {
+    "census_status": "complete",
+    "chain": "ethereum",
+    "coingecko_id": "uniswap",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 623212423.7271129,
+      "max_supply": 1000000000.0,
+      "total_supply": 890460420.0329479
+    },
+    "contract_address": "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
+    "decimals": 18,
+    "excluded_addresses": [
+      {
+        "address": "0x1a9C8182C09F50C8318d769245beA52c32BE35BC",
+        "label": "Uniswap V2: UNI Timelock (governance treasury)",
+        "source_url": "https://etherscan.io/address/0x1a9c8182c09f50c8318d769245bea52c32be35bc"
+      },
+      {
+        "address": "0x000000000000000000000000000000000000dEaD",
+        "label": "Burn address (0x000...dEaD)",
+        "source_url": "https://etherscan.io/address/0x000000000000000000000000000000000000dead"
+      }
+    ],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (eth.drpc.org): totalSupply() exactly 1,000,000,000 at both the 2024-06-02 block and latest -- fixed since the Sep-2020 genesis mint (the 2%/yr governance-activated inflation has evidently not been triggered as of 2026-09-15). Timelock balance verified live: 267,247,996 UNI (26.72% of supply). ADDITIONAL FINDING (live balance check, 2026-09-15): the dead-burn address also holds 111,419,581 UNI (11.14% of supply) -- not previously excluded. Adding it brings our circulating figure (total - timelock - dead) to ~621.3M, much closer to CoinGecko's own circulating_supply (623.2M) than the single-exclusion figure was; CoinGecko's own 'total_supply' field (890,460,420) also appears to already net out a dead-address-sized amount rather than being the raw ERC20 totalSupply(). Both exclusions are now applied historically (weekly) as well as currently.",
+    "supply_model": "premint",
+    "symbol": "UNI"
+  },
+  "VELO": {
+    "census_status": "not_applicable",
+    "chain": "optimism",
+    "coingecko_id": "velodrome-finance",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 1314933411.9231098,
+      "max_supply": null,
+      "total_supply": 2607646867.509095
+    },
+    "contract_address": "0x9560e827af36c94d2ac33a39bce1fe78631088db",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "Empirically confirmed via archive eth_call (mainnet.optimism.io): totalSupply() 1,679,444,324 at 2024-06-02 vs 2,607,646,868 now (+55.3%). Velodrome's ve(3,3) gauge emissions continue with no fixed cap.",
+    "supply_model": "mint",
+    "symbol": "VELO"
+  },
+  "VVV": {
+    "census_status": "not_applicable",
+    "chain": "base",
+    "coingecko_id": "venice-token",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 47973768.09419599,
+      "max_supply": null,
+      "total_supply": 81012279.86705972
+    },
+    "contract_address": "0xacfe6019ed1a7dc6f7b508c02d1b04ec88cc21bf",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "totalSupply() via archive eth_call (mainnet.base.org) was not yet deployed at 2024-06-02; 104,907,132 at 2025-06-01; 114,855,705 now -- mint model. NOTE: CoinGecko's market_data.total_supply for VVV (81,012,280) materially disagrees with our own live totalSupply() read (114,855,705, a ~42% gap) -- flagged as a >10% diff in the report; possibly a stale CoinGecko cache or a different accounting basis (e.g. excluding a burn or wrapped-supply contract).",
+    "supply_model": "mint",
+    "symbol": "VVV"
+  },
+  "XVS": {
+    "census_status": "incomplete",
+    "chain": "bsc",
+    "coingecko_id": "venus",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 16864545.55968783,
+      "max_supply": 30000000.0,
+      "total_supply": 29745107.91704284
+    },
+    "contract_address": "0xcf6bb5389c92bdda8a3747ddb454cb7a64626c63",
+    "decimals": 18,
+    "excluded_addresses": [
+      {
+        "address": "0x000000000000000000000000000000000000dEaD",
+        "label": "Burn address (0x000...dEaD)",
+        "source_url": "https://bscscan.com/address/0x000000000000000000000000000000000000dead"
+      }
+    ],
+    "group": "A",
+    "notes": "No free BSC archive RPC was found in this session (see README), so growth could not be measured directly. CoinGecko shows total_supply 29,745,108 vs max_supply 30,000,000 (99.2% of the way to the fixed cap), consistent with an emission-based mint model that is nearly exhausted. 'Venus: Treasury' (VTreasury) was located at 0xf322942f644a996a617bd29c16bd7d231d9f35e9 (BscScan) but its balance could not be verified live in this session (no BSC archive access, and Venus routes protocol revenue through this contract rather than holding a simple locked allocation); census_status incomplete. CORRECTION (live balance check, 2026-09-15): raw totalSupply() reads exactly 30,000,000.00 XVS (the max_supply cap) but the dead-burn address holds 254,892.09 XVS (0.85%); total - dead = 29,745,107.9, which matches CoinGecko's total_supply (29,745,107.92) almost exactly. This exclusion is applied only to the CURRENT snapshot (no BSC archive RPC for history, see README). The 'Venus: Treasury' address noted earlier (0xf322942f644a996a617bd29c16bd7d231d9f35e9) was NOT added as an exclusion -- it is a revenue-routing contract, not a locked/vesting allocation, and Venus's near-fully-minted 30M cap is now explained by the dead-address burn rather than by treasury custody. REVISED: total_supply now reconciles almost exactly with CoinGecko once the dead-burn address is excluded (diff <1%), so census_status covers total_supply well, but our circulating figure (29.75M, i.e. total minus only the dead burn) still runs ~76% above CoinGecko's stated circulating_supply (16.86M) -- CoinGecko is evidently also netting out XVS locked in Venus's staking/vault contracts, which we did not identify a specific, citable address for in this pass. census_status left as incomplete to reflect that the CIRCULATING (not total) figure is not fully reconciled.",
+    "supply_model": "mint",
+    "symbol": "XVS"
+  },
+  "YB": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "YB"
+  },
+  "ZINC": {
+    "census_status": "incomplete",
+    "chain": null,
+    "coingecko_id": null,
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": null,
+      "max_supply": null,
+      "total_supply": null
+    },
+    "contract_address": null,
+    "decimals": null,
+    "excluded_addresses": [],
+    "group": "B",
+    "notes": "Group B token per the task brief's priority order; not researched in this pass (Group A -- the 31 higher-priority names -- was done in full, including on-chain weekly history where the chain allows; Group B was left registry-only, as the brief explicitly permits when time is short).",
+    "supply_model": "unknown",
+    "symbol": "ZINC"
+  },
+  "ZRO": {
+    "census_status": "incomplete",
+    "chain": "ethereum",
+    "coingecko_id": "layerzero",
+    "coingecko_market_data_snapshot": {
+      "circulating_supply": 353313325.89,
+      "max_supply": 1000000000.0,
+      "total_supply": 1000000000.0
+    },
+    "contract_address": "0x6985884c4392d348587b19cb9eaaf157f13271cd",
+    "decimals": 18,
+    "excluded_addresses": [],
+    "group": "A",
+    "notes": "totalSupply() FELL via archive eth_call (eth.drpc.org) from 1,000,000,000 at 2024-06-02 to 951,073,953 now (-4.9%), i.e. tokens were burned rather than minted -- classified premint (fixed-then-burning) rather than mint. Two candidate treasury addresses surfaced by web search -- 'layerzero-foundation.eth' (0x2650e83effab4ca0fad4fbf91f70d17faeb24535) and 'LayerZero: Multisig Wallet' (0xCDa8e3ADD00c95E5035617F970096118Ca2F4C92) -- both show a ZERO live ZRO balance, so neither was used as an exclusion; census_status incomplete.",
+    "supply_model": "premint",
+    "symbol": "ZRO"
+  }
+}

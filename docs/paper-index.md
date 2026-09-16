@@ -1,0 +1,206 @@
+# Paper-index keeper — qREV, qDEFI
+
+**Status: rules-only reference levels. No vault, no capital, NOT IN FORCE.**
+Nothing here moves money and nothing here is a product yet. The series
+becomes a real track record only once an owner decision anchors an inception
+date (`keeper/rulebooks/qrev.json` / `qdefi.json`, field `inception`, is
+`null` until then). Until that happens this is exactly what
+`docs/track-record-spec.md` §6 calls a dry run for the operating record: the
+recording pipeline built and running before the thing it would record.
+
+Two independent series, same posture as the operating record (spec §8):
+`trackrecord/record-qrev.jsonl` and `trackrecord/record-qdefi.jsonl`, each
+hash-chained and (once an inception decision exists) anchored on GIWA
+Sepolia — never concatenated with each other or with the operating record.
+
+## What the series is
+
+A daily level, genesis 100 on the day the series starts, computed by
+re-running the index's own reconstitution and mark-to-market rules against
+live market data. It is the same idea as `keeper/update-nav.mjs` (the qX20
+NAV keeper) — model book, marked daily, reconstituted on a fixed cadence —
+but with no on-chain vault to post a NAV to: the record IS the product at
+this stage.
+
+## Files
+
+| File | What it is |
+|---|---|
+| `keeper/rulebooks/qrev.json` | Every qREV parameter as data: universe, eligibility gates, ranking, weighting, issuance definition, reconstitution cadence, tolerance, hysteresis. Mirrors `quadrix/docs/methodology/value-capture.md` with the 2026-09-15 owner decisions applied. |
+| `keeper/rulebooks/qdefi.json` | Same, for qDEFI, mirroring `quadrix/docs/methodology/qdefi.md`. |
+| `keeper/rulebooks/qrev-protocol-map.json` | The manual protocol-slug → symbol table qREV's rulebook requires (§1: "automatic name-matching is not used"). Copied verbatim from the site repo's `docs/research/qrev/hr-protocols.json`, 2026-09-15 snapshot. |
+| `keeper/supply/registry.json`, `keeper/supply/supply-weekly.json`, `keeper/supply/supply-current.json`, `keeper/supply/README.md` | The on-chain token-supply registry qREV's issuance calculation reads, plus its own README describing how it was built and its known gaps. Copied verbatim from the site repo's `docs/research/qrev/supply/`, 2026-09-15 snapshot. |
+| `keeper/paper-index.mjs` | The keeper itself. `node keeper/paper-index.mjs --index qrev\|qdefi [--dry-run] [--anchor]`. |
+| `keeper/cache/` | Raw API response cache (gitignored). |
+| `keeper/dryrun/` | Local dry-run output — state/record/anchor files with the same shape as production but never written to `trackrecord/` (gitignored going forward; the 2026-09-15 demonstration run in this directory is force-added once for review). |
+| `.github/workflows/paper-index.yml` | **`workflow_dispatch` only — no schedule.** Manual, reviewed runs until an inception decision exists. |
+
+## The rule set as implemented
+
+### qREV (Revenue Index)
+
+- **Universe**: protocol tokens with a DefiLlama `dailyHoldersRevenue`
+  adapter (per the manual map), plus chain-native tokens whose trailing-12m
+  burn/buyback revenue exceeds the value of new issuance over the same
+  window (`netBurn12m > 0`) — a token failing this test is excluded from the
+  universe outright, not merely down-weighted.
+- **Eligibility**: circulating market cap ≥ $150M, 24h volume ≥ $10M,
+  holder revenue positive for 6 consecutive 30-day buckets and ≥ $1M
+  trailing-12m, listing age ≥ 365 days (CoinGecko `ath_date`/`atl_date`
+  proxy, earliest of the two), value-trap filter (`hr30 ≥ 0.25 × hr12m/12`).
+  For chain tokens every one of these is evaluated on the **net-of-issuance**
+  figure, not gross — matching `qrev-backtest.py`'s `NET_OF_ISSUANCE='chains'`
+  mode, which nets `hr1y`/`hr30` before every downstream gate.
+- **Ranking**: P/HR = market cap ÷ trailing-12m holder revenue, ascending
+  (cheapest first). N = 10. Rank buffer: incumbents kept while rank ≤ 13,
+  outsiders forced in only at rank ≤ 8.
+- **Exit hysteresis**: an incumbent that fails a gate, or falls outside the
+  exit rank, gets one further quarter (flagged `onNotice`) before it is
+  actually removed — removal requires two consecutive failures.
+- **Weighting**: weight ∝ max(netRevenue, floor), where netRevenue =
+  trailing-12m holder revenue − trailing-12m issuance value (chain tokens:
+  already net by construction), and floor = 2% of the sum of *positive* net
+  revenues in the basket. If every member's net revenue is ≤ 0, the whole
+  basket falls back to gross-revenue weighting for that quarter only.
+- **Issuance**: on-chain circulating supply now (live CoinGecko) minus
+  circulating supply ~365 days ago. The 365-days-ago figure comes from
+  `keeper/supply/supply-weekly.json` when a data point exists within 10 days
+  of the target date (`issuanceSource: "onchain-registry"`); otherwise from
+  CoinGecko's `/coins/{id}/history` endpoint, using market_cap ÷ price at
+  that date as the supply proxy — the same proxy `qrev-backtest.py` itself
+  uses for its own point-in-time snapshots (`issuanceSource: "coingecko"`).
+  If neither is available, issuance is `null`: for a **protocol** token this
+  falls back to gross-revenue weighting for that name only (a documented
+  bias toward overweighting unmeasured names); for a **chain** token this
+  fails the `netBurn12m > 0` gate outright — an unmeasurable dilution is
+  never assumed to be zero for the universe test itself.
+- **Cap**: 35%, iterative proportional trim-and-redistribute (same shape as
+  `keeper/update-nav.mjs`'s `applyCap`).
+- **Reconstitution**: quarterly, first run after 00:00 UTC on Jan/Apr/Jul/Oct
+  1 — implemented as "the calendar quarter changed since the last
+  reconstitution," which is exactly that rule for a keeper that runs daily.
+- **Tolerance**: at reconstitution, a name within 5 points of its
+  mark-to-market drifted weight is not traded; anything drifted above 35% is
+  always cut to 35% regardless of the 5-point tolerance.
+- **Between reconstitutions**: no trading, no drift band — the book is only
+  marked to market.
+
+### qDEFI (DeFi Index)
+
+- **Universe**: CoinGecko category `decentralized-finance-defi` ∩ DefiLlama
+  protocol listing whose category is DeFi-family (Dexs, Lending,
+  Derivatives, Yield, Yield Aggregator, CDP, Liquid Staking, Liquid
+  Restaking, Restaking, Basis Trading, RWA, DEX Aggregator, Options,
+  Synthetics, Insurance, Leveraged Farming, Staking Pool). Chain-native gas
+  tokens (any symbol DefiLlama's `/chains` lists a `tokenSymbol` for) are
+  excluded. **Oracles are explicitly included** (LINK, PYTH, …) even though
+  DefiLlama tags them "Oracle"/"Services", not a DeFi-family category — this
+  is a named, closed policy override in the rulebook (§1: "follow the
+  data"), applied unconditionally, not gated by any allowlist.
+- **Eligibility**: market cap ≥ $150M, 24h volume ≥ $5M, listing age ≥ 365
+  days (same ath/atl proxy as qREV).
+- **Ranking**: market cap, descending. N = 15. Rank buffer: kept while rank
+  ≤ 17, forced in at rank ≤ 13. No exit hysteresis (the rulebook tested it —
+  qdefi.md §7 — and found it changed nothing, since exits are driven by
+  market-cap rank, which the rank buffer already smooths).
+- **Weighting**: market-cap proportional, 35% cap, same iterative trim.
+- **Reconstitution / tolerance / between-reconstitutions**: identical
+  cadence and mechanics to qREV (same calendar dates, same 5-point
+  tolerance, same always-cut-above-cap, no drift band).
+
+## Data sources and fallbacks
+
+| Use | Primary | Fallback | Notes |
+|---|---|---|---|
+| Market cap / price / volume (both indexes) | CoinGecko `coins/markets`, paginated to top 500 (2×250) | CoinPaprika `tickers` (price only) | CoinPaprika fallback cannot drive a reconstitution — matches both rulebooks' own §8 |
+| qDEFI category universe | CoinGecko `coins/markets?category=decentralized-finance-defi` | none | membership freezes if this is unreachable |
+| qDEFI DeFi-family / chain check | DefiLlama `/protocols`, `/chains` | none | |
+| qREV holder revenue | DefiLlama `summary/fees/{slug}?dataType=dailyHoldersRevenue`, per protocol slug from the manual map | none (rulebook §8: no substitute source for this definition exists) | a protocol whose fetch fails for every one of its adapters is dropped from that day's candidate list, not zero-filled |
+| qREV issuance | `keeper/supply/` on-chain registry | CoinGecko historical market_cap/price (≈ circulating supply) | see "Issuance" above for exactly when each applies |
+
+Rate-limit pacing uses `ruby -e 'sleep N'` throughout (never the shell
+`sleep`), with a retry-with-backoff around the CoinGecko history endpoint
+specifically, since it is the one most likely to 429 right after the
+500-name markets pull.
+
+## What is NOT implemented
+
+- **Special corporate events** (token migrations like MKR→SKY, hacks,
+  delistings) — explicitly out of scope for this pass. If one happens while
+  the keeper is running it will most likely surface as a missing price or a
+  sudden eligibility change; that day's run should be reviewed by a person,
+  not auto-resolved.
+- **Hourly / intraday checks** — the keeper is a once-a-day job, same
+  cadence as `scripts/track-record.mjs`. There is no sanity-move circuit
+  breaker like `keeper/update-nav.mjs`'s ±15% halt (nothing here posts an
+  on-chain NAV that a bad print could corrupt; the worst case is a bad
+  number in a rules-only jsonl line, which the next day's run does not
+  compound).
+- **Non-EVM on-chain issuance history** — the supply registry has weekly
+  history only for the EVM chains its own pipeline could reach with a free
+  archive RPC (Ethereum, Base, Optimism, Arbitrum). Solana/Tron/Hyperliquid/
+  Cosmos-chain tokens (JUP, RAY, PUMP, HYPE, TRX, INJ, AVAX, BNB, SOL, DYDX)
+  fall back to the CoinGecko mcap/price proxy for issuance; BSC (CAKE, XVS)
+  has no history at all (no free archive RPC found — see
+  `keeper/supply/README.md`, copied alongside the registry, for the exact
+  endpoints tried and their errors) and always uses the CoinGecko fallback.
+- **A qDEFI protocol/token manual mapping table.** qREV has one
+  (`qrev-protocol-map.json`); qDEFI does not yet, and qdefi.md's own D5 says
+  so ("표 없음"). Two concrete, rulebook-predicted consequences observed in
+  the 2026-09-15 dry run, below.
+- **BNB in the qREV chain-token universe.** The rulebook's 2026-09-15
+  decision treats BNB as a chain token subject to the net-burn test, but
+  the copied protocol map (dated 2026-09-14, before that decision) has no
+  BNB row at all. Adding one needs the same anchored-decision process as any
+  other change to the manual map (rulebook §1/§10).
+
+## Known gaps found by actually running it (2026-09-15 dry run)
+
+- **qDEFI + HYPE**: DefiLlama lists a "Hyperliquid L1" chain entry with
+  `tokenSymbol: HYPE`, so the mechanical "chains are out" rule (qdefi.md §1)
+  excludes HYPE — even though qdefi.md's own worked appendix includes HYPE
+  at #1 (35%, capped). The rulebook's D5 names exactly this ambiguity as
+  unresolved ("HYPE/PUMP cases — no table yet"). This implementation follows
+  the written mechanical rule as it stands today rather than quietly
+  special-casing HYPE; closing D5 with a manual override table (same
+  mechanism as qREV's protocol map) is an owner decision, not something to
+  infer from the appendix.
+- **qDEFI + PUMP**: qdefi.md §3 predicts, by name, that PUMP's DefiLlama
+  symbol lookup collides with an unrelated protocol ("PumpSwap", category
+  Dexs) and is wrongly classified as DeFi-family as a result, absent a
+  manual mapping table. The 2026-09-15 dry run reproduces exactly that:
+  PUMP appears in the qDEFI basket at ~6.3% via the PumpSwap collision, not
+  because pump.fun (a Launchpad, meant to be excluded) actually qualifies.
+  Same fix as HYPE: a manual protocol/token table, not yet built.
+
+## How to run
+
+```bash
+cd quadrix-track-record
+node keeper/paper-index.mjs --index qrev  --dry-run   # writes keeper/dryrun/
+node keeper/paper-index.mjs --index qdefi --dry-run
+node keeper/paper-index.mjs --index qrev              # writes trackrecord/
+KEEPER_PK=0x... node keeper/paper-index.mjs --index qrev --anchor
+```
+
+`--dry-run` does not de-duplicate by date (unlike the production path),
+specifically so it can be run more than once in one day to exercise both the
+reconstitution branch (first run / new quarter) and the mark-to-market-only
+branch (any other day) without waiting for a real quarter boundary.
+
+Refreshing the copied inputs (`keeper/rulebooks/qrev-protocol-map.json`,
+`keeper/supply/*.json`) is a manual step: re-run the site repo's
+`docs/research/qrev/supply/{build_registry.py,fetch-supply.py}` and the
+hr-protocols scrape, then copy the outputs over. Per both rulebooks (§1,
+§10), any change to the manual maps is itself a decision that should be
+anchored, not a silent data refresh — this keeper does not do it
+automatically, on purpose.
+
+## Verification
+
+`scripts/verify.mjs` now accepts `--series qrev` and `--series qdefi` in
+addition to the existing `dry`/`live`/`all` (which still means dry+live
+only — unchanged). Paper-index records hash-chain and anchor-check exactly
+like the operating record, under their own calldata prefix
+(`qxpi-qrev:`/`qxpi-qdefi:` vs. the operating record's `qxtr:`); they carry
+no `decisions` field, so that check is skipped for them rather than failing.
