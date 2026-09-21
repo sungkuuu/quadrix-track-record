@@ -20,7 +20,7 @@ qREV rulebook `docs/methodology/value-capture.md` (sha256
 `1fe29f501f3d5cbd62df778da98fbe068a568f07eaba7d875ff389983e274a3e`). Implemented in
 `keeper/rulebooks/triens.json` (sha256 `348a2633eacee9f54dacf2f12099c71daaa1b9bb5c7a6f8b5a61eef1594c518b`),
 `keeper/working-capital.mjs` (sha256 `c7a07b284565520915b2776c34c7690dc689215594381e75f6b0332eadaa43ee`)
-and `keeper/paper-index.mjs` at record-repo commit `816b55c`; protocol → token mapping
+and `keeper/paper-index.mjs` at record-repo commit `de4d1dc`; protocol → token mapping
 `keeper/rulebooks/qrev-protocol-map.json` (sha256 `18953ee95fa1fe40637d697d9c7e7867a8e1cf87d158792647cbadaa9372d686`),
 supply registry `keeper/supply/registry.json` (sha256 `12d79fbe2b6eca3ddb3f5106573a853d995ca2fa0a05ba3529c702f3f616c1d6`).
 In one paragraph:
@@ -66,4 +66,4 @@ canonical BTC.
 | Repository | HEAD at pinning |
 | --- | --- |
 | quadrix (site, rulebook, research, registry) | `e50d157` |
-| quadrix-track-record (keeper, this file) | `816b55c` |
+| quadrix-track-record (keeper, this file) | `de4d1dc` |

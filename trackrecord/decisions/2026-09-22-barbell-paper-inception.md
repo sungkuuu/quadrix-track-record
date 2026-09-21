@@ -17,7 +17,7 @@ The rulebook is `docs/methodology/barbell.md` in the site repository at commit `
 (sha256 `c1a95d093d37d42009064c7cc76bcb1ffc2fe261d9dac53163e35c19b6c98f1f`), as implemented in
 `keeper/rulebooks/barbell.json` (sha256 `2ee6cc8a54a4529f951813bb3d972653483af3c7f5b16e982d3c4323751b21cc`),
 `keeper/working-capital.mjs` (sha256 `c7a07b284565520915b2776c34c7690dc689215594381e75f6b0332eadaa43ee`)
-and `keeper/paper-index.mjs` at record-repo commit `816b55c`. In one paragraph:
+and `keeper/paper-index.mjs` at record-repo commit `de4d1dc`. In one paragraph:
 
 Two sleeves, BTC and working capital, at 60/40. The BTC sleeve is bitcoin alone; the working-capital
 sleeve is, by rule, fully-reserved fiat-backed stablecoins that pay interest (fiat or short-dated
@@ -51,4 +51,4 @@ decision and is not possible while GIWA carries no canonical BTC.
 | Repository | HEAD at pinning |
 | --- | --- |
 | quadrix (site, rulebook, research) | `e50d157` |
-| quadrix-track-record (keeper, this file) | `816b55c` |
+| quadrix-track-record (keeper, this file) | `de4d1dc` |
