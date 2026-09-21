@@ -2,7 +2,7 @@
   "ticker": "Triens",
   "name": "Triens",
   "kind": "paper-index-sleeve-basket",
-  "status": "NOT IN FORCE. Rules-only paper index, no vault and no capital. The rulebook it implements is itself a draft (quadrix/docs/methodology/triens.md: \"not in force until a decision document is anchored on chain\"), and `inception` below is null. The series starts only when an owner decision anchors an inception date, and it is not scheduled from .github/workflows/paper-index.yml until then.",
+  "status": "in force since 2026-09-22 — rules-only paper index, no vault and no capital; inception anchored (see decisions.jsonl, 2026-09-22-triens-paper-inception). The working-capital sleeve is a T-bill proxy (DTB3) until a fully-reserved fiat-backed stable exists on GIWA.",
   "asOf": "2026-09-21",
   "source": {
     "rulebook": "quadrix/docs/methodology/triens.md (site repo, private) — draft of 2026-09-21 with the owner's evening decisions D1-D5, D10, D11, D13, D15 applied",
@@ -190,8 +190,8 @@
     "note": "below five eligible names the product is not made at all (triens.md §12-1, draft value D18). The paper record still computes a level — it is a record of what the rule would have done, including the quarters where the rule says don't ship — and the seat count is on every record line."
   },
   "inception": {
-    "date": null,
-    "decision": null,
+    "date": "2026-09-22",
+    "decision": "2026-09-22-triens-paper-inception",
     "genesisLevel": 100
   },
   "genesisLevel": 100,

@@ -2,7 +2,7 @@
   "ticker": "Barbell",
   "name": "Barbell",
   "kind": "paper-index-sleeve-basket",
-  "status": "NOT IN FORCE. Rules-only paper index, no vault and no capital. The rulebook it implements is itself a draft (quadrix/docs/methodology/barbell.md: \"not in force until a decision document is anchored on chain\"), and `inception` below is null. The series starts only when an owner decision anchors an inception date, and it is not scheduled from .github/workflows/paper-index.yml until then.",
+  "status": "in force since 2026-09-22 — rules-only paper index, no vault and no capital; inception anchored (see decisions.jsonl, 2026-09-22-barbell-paper-inception). The working-capital sleeve is a T-bill proxy (DTB3) until a fully-reserved fiat-backed stable exists on GIWA.",
   "asOf": "2026-09-21",
   "source": {
     "rulebook": "quadrix/docs/methodology/barbell.md (site repo, private) — draft of 2026-09-21 with the owner's evening decisions D1/D2/D3/D5 applied",
@@ -95,8 +95,8 @@
     "note": "the paper level is GROSS, like qREV's and qDEFI's. Cost disclosure is a separate net-of-fee row in the research (net_multiple_05), not a second level in this record."
   },
   "inception": {
-    "date": null,
-    "decision": null,
+    "date": "2026-09-22",
+    "decision": "2026-09-22-barbell-paper-inception",
     "genesisLevel": 100
   },
   "genesisLevel": 100,
