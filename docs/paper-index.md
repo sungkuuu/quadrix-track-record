@@ -74,6 +74,10 @@ this stage.
   CoinGecko's `/coins/{id}/history` endpoint, using market_cap ÷ price at
   that date as the supply proxy — the same proxy `qrev-backtest.py` itself
   uses for its own point-in-time snapshots (`issuanceSource: "coingecko"`).
+  A symbol whose registry entry says `census_status: "incomplete"` is not read
+  from the registry at all (fixed 2026-09-22): its census was never finished,
+  so the series would measure zero issuance. It takes the CoinGecko fallback
+  and the record row says so.
   If neither is available, issuance is `null`: for a **protocol** token this
   falls back to gross-revenue weighting for that name only (a documented
   bias toward overweighting unmeasured names); for a **chain** token this
@@ -197,16 +201,23 @@ publishing a level built on a price nobody has seen in four days.
 
 #### Open, found by running it
 
-- **`census_status: "incomplete"` in the supply registry.** Some symbols in
-  `keeper/supply/registry.json` never had their control-address census
-  finished, so their weekly series is total supply, flat, and measured issuance
-  comes out as zero. The research engine skips those symbols and falls back to
-  market-data supply; the keeper's shared issuance path (written for qREV,
-  where issuance only nets a weight) does not check the field. For Triens,
-  where the same number is a gate, this is the difference between a name
-  passing and failing — LINK on 2026-09-21 is exactly that case. Left
-  unchanged on purpose: the fix is in the shared qREV path and moves qREV's
-  weights too, so it is a rule decision, not an implementation detail.
+- **`census_status: "incomplete"` in the supply registry — FIXED 2026-09-22
+  (owner).** Some symbols in `keeper/supply/registry.json` never had their
+  control-address census finished, so their weekly series is total supply with
+  `excluded: 0` — flat for a token that looks fixed-supply, which measures
+  issuance as zero. That is not a measurement, it is an unfinished one. The
+  shared issuance path now refuses the registry for those symbols and falls
+  back to the market-data supply series, with the fallback disclosed on the
+  record row as `issuanceSource: "coingecko-census-incomplete"` (or
+  `"unavailable-census-incomplete"` when there is no fallback either) — the
+  rule both rulebooks' §8 already stated, and what the research engine does.
+  LINK on 2026-09-21 is the case that surfaced it: issuance 0 and the θ ≤ 1
+  gate passed before the fix, $877M against $58.5M of holder revenue and ratio
+  14.99 after it — the rulebook appendix's own 15.0. **Every run before
+  2026-09-22 used on-chain supply for incomplete-census names, contrary to the
+  rulebook. Nothing is backfilled and no record line is rewritten**: the qREV
+  and qDEFI series stand as they were recorded, and the change takes effect
+  from the next reconstitution.
 - **The 5-point tolerance at the sleeve level** is this keeper's reading of
   the rulebooks' §6. The backtests reset sleeve weights exactly every quarter
   and applied their 5-point tolerance to whole-portfolio name weights instead.

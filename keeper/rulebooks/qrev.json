@@ -83,7 +83,8 @@
     "windowMonths": 12,
     "primarySource": "keeper/supply/registry.json + keeper/supply/supply-weekly.json (on-chain measurement, copied from quadrix/docs/research/qrev/supply/ 2026-09-15 snapshot; re-run that pipeline and re-copy to refresh)",
     "fallbackSource": "CoinGecko circulating_supply now vs. CoinGecko circulating_supply ~365 days ago (coins/{id}/history) when the on-chain registry has no >=365-day weekly history for a symbol",
-    "fallbackFlag": "issuance_source: \"coingecko\" is stamped on that member's record row whenever the fallback is used"
+    "fallbackFlag": "issuance_source: \"coingecko\" is stamped on that member's record row whenever the fallback is used",
+    "censusStatusRule": "A symbol whose registry entry carries census_status \"incomplete\" is NOT measured from the registry: the control-address census was never finished, so `excluded` is 0 and the weekly series is total supply, which measures issuance as zero. It falls back to the market-data supply series and the row is stamped issuanceSource \"coingecko-census-incomplete\" (or \"unavailable-census-incomplete\" when no fallback exists). Owner 2026-09-22, applying rulebook §8's existing fallback-and-disclose rule; the same thing the research engine does (ONCHAIN_SKIP). Runs BEFORE 2026-09-22 read the registry for these names regardless, contrary to the rulebook. The record is not rewritten and nothing is backfilled — the change takes effect from the next reconstitution. On the 2026-09-21 forced-reconstitution check the only qREV member affected was ZRO (issuance $3.9M -> $281.0M), whose weight did not move because it was at the 2% floor either way."
   },
   "reconstitution": {
     "cadence": "quarterly",

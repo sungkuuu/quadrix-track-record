@@ -506,7 +506,17 @@ async function buildQrevUniverse(dateStr, markets) {
 
 async function issuanceValue12m(sym, coingeckoId, priceNow, circulatingNow, dateStr, supplyRegistry, supplyWeekly) {
   const targetPast = daysBefore(dateStr, 365);
-  const weekly = supplyWeekly[sym];
+  // Census gate (owner 2026-09-22; value-capture.md §8, triens.md §8). A symbol
+  // whose registry entry says the control-address census was never finished
+  // carries a weekly series that is TOTAL supply with `excluded: 0` — for a
+  // fixed-supply-looking token that series is flat, and a flat series measures
+  // issuance as zero. It is not a measurement, it is an unfinished one. The
+  // rulebook says such a name falls back to the market-data supply series with
+  // the fallback disclosed, which is what the research engine does
+  // (qquality-backtest.py ONCHAIN_SKIP). Before this date every leg read the
+  // registry for these names regardless; see docs/paper-index.md.
+  const censusIncomplete = supplyRegistry?.[sym]?.census_status === 'incomplete';
+  const weekly = censusIncomplete ? null : supplyWeekly[sym];
   if (weekly && Object.keys(weekly).length) {
     const dates = Object.keys(weekly).sort();
     const earliest = dates[0];
@@ -541,10 +551,20 @@ async function issuanceValue12m(sym, coingeckoId, priceNow, circulatingNow, date
     const s0 = await coinGeckoHistoricalSupply(coingeckoId, targetPast);
     const s1 = circulatingNow;
     if (s0 != null && s1 != null) {
-      return { value: Math.max(0, s1 - s0) * priceNow, source: 'coingecko', s0, s1 };
+      return {
+        value: Math.max(0, s1 - s0) * priceNow,
+        source: censusIncomplete ? 'coingecko-census-incomplete' : 'coingecko',
+        s0,
+        s1,
+      };
     }
   }
-  return { value: null, source: 'unavailable', s0: null, s1: circulatingNow };
+  return {
+    value: null,
+    source: censusIncomplete ? 'unavailable-census-incomplete' : 'unavailable',
+    s0: null,
+    s1: circulatingNow,
+  };
 }
 
 function listingAgeDays(mkt, dateStr) {
@@ -577,7 +597,7 @@ async function evaluateRevenueUniverse(dateStr, markets, elig, { issuanceGateThe
   }
 
   const candidates = await buildQrevUniverse(dateStr, markets);
-  const sourceStats = { defillamaOk: 0, defillamaFail: 0, issuanceOnchain: 0, issuanceCoingecko: 0, issuanceUnavailable: 0 };
+  const sourceStats = { defillamaOk: 0, defillamaFail: 0, issuanceOnchain: 0, issuanceCoingecko: 0, issuanceUnavailable: 0, issuanceCensusIncomplete: 0 };
 
   const evaluated = [];
   for (const c of candidates) {
@@ -599,8 +619,9 @@ async function evaluateRevenueUniverse(dateStr, markets, elig, { issuanceGateThe
       supplyWeekly
     );
     if (issuance.source === 'onchain-registry') sourceStats.issuanceOnchain++;
-    else if (issuance.source === 'coingecko') sourceStats.issuanceCoingecko++;
+    else if (issuance.source.startsWith('coingecko')) sourceStats.issuanceCoingecko++;
     else sourceStats.issuanceUnavailable++;
+    if (issuance.source.endsWith('census-incomplete')) sourceStats.issuanceCensusIncomplete++;
     // Protocol tokens: the universe/eligibility TEST is on gross hr1y
     // (rulebook §1 — issuance nets the WEIGHT, not the gate); if issuance is
     // unavailable, net revenue for weighting purposes falls back to gross
