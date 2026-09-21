@@ -1,0 +1,206 @@
+{
+  "ticker": "Triens",
+  "name": "Triens",
+  "kind": "paper-index-sleeve-basket",
+  "status": "NOT IN FORCE. Rules-only paper index, no vault and no capital. The rulebook it implements is itself a draft (quadrix/docs/methodology/triens.md: \"not in force until a decision document is anchored on chain\"), and `inception` below is null. The series starts only when an owner decision anchors an inception date, and it is not scheduled from .github/workflows/paper-index.yml until then.",
+  "asOf": "2026-09-21",
+  "source": {
+    "rulebook": "quadrix/docs/methodology/triens.md (site repo, private) — draft of 2026-09-21 with the owner's evening decisions D1-D5, D10, D11, D13, D15 applied",
+    "backtestHarness": "quadrix/docs/research/qquality/qquality-backtest.py (eligible(): the Quality screen; sleeve_weights(): net-revenue weighting) with quadrix/docs/research/barbell/barbell_common.py (simulate_p2, cash_step)",
+    "sharedRulebook": "quadrix/docs/methodology/value-capture.md (qREV) — the Quality sleeve inherits its universe definition, exclusions, value-trap filter, rank buffer, hysteresis, floor and cap from it",
+    "ownerDecisionDate": "2026-09-21",
+    "note": "This file is the implemented parameter set; the prose rulebook is the narrative record of why. Where the two differ the prose rulebook governs and this file is wrong and should be fixed."
+  },
+  "sleeves": {
+    "order": [
+      "monetary",
+      "workingCapital",
+      "quality"
+    ],
+    "monetary": {
+      "targetWeight": 0.3,
+      "assets": [
+        "BTC"
+      ],
+      "rule": "fixed list, not a screen. BTC alone (triens.md §1, D5). A change to the list is a rule change (decision document, anchor, no retroactive effect).",
+      "note": "the BTC+ETH variant was behind in every window tested and the owner's ratio table is on a BTC-only basis."
+    },
+    "workingCapital": {
+      "targetWeight": 0.4,
+      "rule": "fiat-backed stablecoins, fully reserved in cash and short Treasuries, issuer attestation published, canonical on the settlement chain. Interest-bearing forms ARE allowed (owner 2026-09-21, D10). Partially-reserved, synthetic and crypto-collateralised forms are not.",
+      "nameList": null,
+      "nameListStatus": "open — the list itself is an anchored decision (D10-b) and cannot be written yet: no fiat-backed stablecoin is canonical on GIWA (미확인, triens.md §12-6).",
+      "paperProxy": {
+        "id": "DTB3",
+        "what": "a synthetic $1 unit accruing the 3-month Treasury bill rate daily: unitValue *= (1 + r/100)^(1/365) per calendar day, r = FRED DTB3, last published print carried forward on days with no print",
+        "source": "FRED DTB3 (3-Month Treasury Bill, Secondary Market Rate, Discount Basis, percent p.a.), https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3",
+        "why": "the sleeve's real assets do not exist on chain yet, so the paper record cannot hold them. The backtest ran the sleeve at the T-bill rate (barbell_common.py cash_step, mode 'tbill'); the paper record uses the same assumption rather than a zero-yield dollar, and stamps `wcProxy: \"DTB3\"` on every record line so the level is never mistaken for a held asset.",
+        "notModelled": "issuer spread, redemption risk, depeg, and any on-chain yield that is not the bill.",
+        "implementation": "keeper/working-capital.mjs"
+      },
+      "receivesEmptySeats": true,
+      "depeg": {
+        "rule": "a held stablecoin quoted below $0.98 for 72 consecutive hours on two price sources is replaced at the next run by the next name on the decision list; if there is no replacement the position is held and the event is recorded in a decision document",
+        "status": "draft threshold (triens.md D17) — no measurement behind $0.98 or 72h",
+        "implemented": false,
+        "implementedNote": "not implemented in the keeper: the paper record holds the DTB3 proxy, which has no peg to break."
+      }
+    },
+    "quality": {
+      "targetWeight": 0.3,
+      "rule": "the screen below, net-revenue weighted, capped at 35% WITHIN the sleeve (10.5% of the whole index)",
+      "emptySeats": {
+        "rule": "each of the N seats is 1/N of the sleeve. If fewer than N names pass the screen, each empty seat's 1/N of the sleeve goes to the working-capital sleeve — not to BTC (owner 2026-09-21, D4)",
+        "formula": "qualityWeight = 0.30 * eligible/N ; workingCapitalWeight = 0.40 + 0.30 * (N - eligible)/N",
+        "note": "the BTC variant produced higher multiples but made the product 70-80% BTC for most of the backtest, which is a different product than the one the name describes."
+      }
+    }
+  },
+  "universe": {
+    "definition": "the qREV universe: protocol tokens with a DefiLlama dailyHoldersRevenue adapter (manual map, no automatic name matching), plus chain-native tokens whose trailing-12-month burn exceeds the value of new issuance over the same period (netBurn12m > 0)",
+    "protocolMap": "keeper/rulebooks/qrev-protocol-map.json — the same manual table qREV uses, read by the same code",
+    "monetaryExcluded": "BTC and ETH are monetary assets and never enter the Quality sleeve (triens.md §3)",
+    "exclusions": {
+      "categories": [
+        "Launchpad",
+        "Meme",
+        "Gamified Mining"
+      ],
+      "assetTypeExclusions": "qREV §3 in full: stablecoins, yield-bearing stables, wrapped assets, liquid-staking derivatives, LP shares, off-chain-promise exchange tokens (OKB, CRO, LEO), tokenized RWA shares. BNB is a chain token (net-burn rule), not an exchange token.",
+      "gamblingAdapters": "included in the per-protocol sum, inherited from qREV D4",
+      "chainsOpen": "whether a net-burn chain counts as 'productive' at all is open (triens.md D12); the draft includes them and the backtest ran chains='netburn'"
+    }
+  },
+  "eligibility": {
+    "scope": "quality sleeve only",
+    "minCirculatingMarketCapUSD": 150000000,
+    "minVolume24hUSD": 10000000,
+    "minHolderRevenueTrailing12mUSD": 1000000,
+    "minConsecutivePositiveRevenueMonths": 6,
+    "minListingAgeDays": 365,
+    "valueTrapFilter": {
+      "description": "trailing-30-day holder revenue must be at least this fraction of the trailing-12m monthly average",
+      "thresholdFraction": 0.25,
+      "formula": "hr30 >= thresholdFraction * hr12m / 12"
+    },
+    "issuanceGate": {
+      "theta": 1,
+      "rule": "trailing-12-month issuance value / trailing-12-month holder revenue <= theta. This is a GATE here, not a weighting adjustment — that is the difference from qREV, where the same number nets the weight and a diluting name simply falls to the floor weight.",
+      "unknownIssuanceFails": true,
+      "unknownIssuanceNote": "a token whose issuance cannot be measured (no supply a year earlier: listed under a year in the registry's reach, or an id migration) FAILS the gate (triens.md §2, D7). Passing it would be waving A-1 through unverified.",
+      "chainTokens": "a chain token's revenue is already net of issuance by construction (netBurn12m), so the netBurn12m > 0 universe test IS its issuance gate; the ratio is not computed twice. Same treatment as qquality-backtest.py eligible() under chains='netburn'.",
+      "source": "owner 2026-09-21 (D3). theta 0.5 left the sleeve unable to fill its seats (median 2 names); theta 2 and no gate at all were behind over the 2024-> window."
+    }
+  },
+  "ranking": {
+    "metric": "net revenue = trailing-12m holder revenue - trailing-12m issuance value (chain tokens: netBurn12m)",
+    "direction": "descending (largest net revenue first)",
+    "note": "NO valuation ranking. 'Is it cheap' is the discretionary layer of the managed product (owner 2026-09-02), not a screen — this is the visible difference from qREV, which ranks by P/HR ascending.",
+    "targetCount": 10,
+    "rankBuffer": {
+      "entryMaxRank": 8,
+      "exitMinRank": 13,
+      "note": "floor(0.85 N) to enter, ceil(1.25 N) to stay — the same buffer shape as qREV at N = 10. Ranking has not yet bitten in any tested quarter (eligible <= 10)."
+    }
+  },
+  "exitHysteresis": {
+    "enabled": true,
+    "quarters": 2,
+    "description": "an incumbent that fails a gate or falls outside the exit rank is kept one further quarter, flagged onNotice, and removed only on a second consecutive failure (qREV §6, triens.md §6)"
+  },
+  "weighting": {
+    "method": "net-revenue-proportional",
+    "scope": "within the quality sleeve",
+    "netRevenueFormula": "netRevenue_i = holderRevenue12m_i - issuanceValue12m_i (chain tokens: netBurn12m_i, already net)",
+    "floor": {
+      "fractionOfPositiveNetRevenueSum": 0.02,
+      "note": "floor = 2% of the sum of POSITIVE net revenues in the sleeve, recomputed at each reconstitution; a name below it is weighted at the floor, never dropped by this rule alone"
+    },
+    "allNegativeFallback": "if every member's net revenue is <= 0 in a quarter, that quarter falls back to gross trailing-12m holder-revenue weighting (qREV §4)",
+    "cap": {
+      "maxWeight": 0.35,
+      "scope": "within the quality sleeve — 10.5% of the whole index",
+      "method": "immediate trim at reconstitution, excess redistributed pro rata among uncapped names, iterated to convergence (the same applyCap as qREV and keeper/update-nav.mjs). No drift corridor above the cap; a cap breach is always cut regardless of the reconstitution tolerance."
+    }
+  },
+  "issuance": {
+    "definition": "on-chain total supply minus balances of protocol-controlled addresses listed in keeper/supply/registry.json; voluntary lockups (vote-escrow) count as issued",
+    "windowMonths": 12,
+    "primarySource": "keeper/supply/registry.json + keeper/supply/supply-weekly.json (the same on-chain measurement qREV reads, read by the same code)",
+    "fallbackSource": "CoinGecko circulating supply now vs ~365 days ago (coins/{id}/history, market_cap / price as the supply proxy)",
+    "fallbackFlag": "issuanceSource: \"coingecko\" is stamped on that member's record row whenever the fallback is used",
+    "openQuestion": "SKY's issuance source is not yet unified between the registry's composite series and CMC (triens.md D9, open) — the keeper reads whatever the shared registry gives it, exactly as qREV does",
+    "censusStatusDivergence": "OPEN, found by running this leg on 2026-09-21. keeper/supply/registry.json marks some symbols census_status \"incomplete\" — the control-address census was never finished, so `excluded` is 0 and the weekly series is total supply, flat. The research engine skips those symbols and falls back to the market-data supply (qquality-backtest.py ONCHAIN_SKIP); the keeper's shared issuance path (paper-index.mjs issuanceValue12m, written for qREV) does not check the field and uses the flat series. For LINK on 2026-09-21 that is the difference between issuance 0 (gate passes) and the rulebook appendix's $876M against $59M of revenue, ratio 15.0 (gate fails). Unchanged here on purpose: the fix belongs to the shared qREV path and changes qREV's weights too, so it is a rule decision (triens.md D9, \"align with the qREV code\"), not an implementation detail. Until it is decided, LINK's seat in this record rests on an unfinished census."
+  },
+  "reconstitution": {
+    "cadence": "quarterly",
+    "rule": "first run after 00:00 UTC on Jan 1 / Apr 1 / Jul 1 / Oct 1 — the same day as qREV and qDEFI",
+    "resetTo": "the sleeve target weights above (30 / 40 / 30), adjusted for empty seats",
+    "tolerance": {
+      "thresholdPoints": 5,
+      "scope": "sleeve, and separately within the quality sleeve per name",
+      "rule": "if EVERY sleeve's drifted weight is within 5 percentage points of its target, no value moves between sleeves; otherwise every sleeve is reset to target. Inside the quality sleeve the same 5-point rule applies per name against its sleeve-internal weight, with the cap override: a name drifted above 35% of the sleeve is always cut.",
+      "source": "triens.md §6 (\"허용오차 5%p(캡 초과 예외) — qREV §6 그대로\")",
+      "divergenceFromBacktest": "the P2 grid reset the three sleeve weights exactly every quarter (barbell_common.py simulate_p2) — no sleeve tolerance — while the Quality sleeve's own engine applied the 5-point tolerance to whole-portfolio name weights (qquality-backtest.py run(), tol=0.05). Reading the rulebook's \"5%p\" as a sleeve-level no-trade band plus a name-level band inside the sleeve is this keeper's reading of §6, and it is the one place where the implementation had to choose. Flagged, not settled."
+    },
+    "betweenReconstitutions": "no trading, no drift band. Interest accrued in the working-capital sleeve stays in that sleeve and is redistributed only at the quarterly reset — which is what the backtest did (weekly accrual, quarterly reset)."
+  },
+  "driftBand": {
+    "enabled": false,
+    "note": "no drift band (triens.md §7), same conclusion as qREV and qDEFI. Do not re-propose."
+  },
+  "overlay": {
+    "enabled": false,
+    "note": "no trend or volatility overlay (triens.md §7, D11: \"index line — not allowed\"). The overlay grid never beat the fixed ratio consistently and ran two to three times the turnover."
+  },
+  "dataSources": {
+    "holderRevenue": {
+      "primary": "DefiLlama summary/fees/{slug}?dataType=dailyHoldersRevenue, per slug from the manual map",
+      "fallback": "none — a protocol whose every adapter fetch fails is dropped from that day's candidate list, not zero-filled"
+    },
+    "marketCapPriceVolume": {
+      "primary": "CoinGecko coins/markets (paginated to top 500)",
+      "fallback": "CoinPaprika tickers (price only, cannot drive a reconstitution)"
+    },
+    "btcPrice": {
+      "primary": "the same CoinGecko coins/markets snapshot",
+      "fallback": "CoinPaprika, then the last known price for at most 3 consecutive runs (qX20 §9); after that the run fails"
+    },
+    "supplyIssuance": {
+      "primary": "on-chain supply registry (keeper/supply/)",
+      "fallback": "CoinGecko circulating supply, current vs ~365 days ago"
+    },
+    "workingCapitalRate": {
+      "primary": "FRED DTB3 daily CSV",
+      "fallback": "the most recent cached copy of the same series; no second source"
+    }
+  },
+  "specialEvents": {
+    "inScope": false,
+    "note": "migrations, hacks and delistings are out of scope for this implementation pass, as for qREV/qDEFI. The rulebook's §9 triggers (-40% vs BTC with TVL -50%, control-address drain, price loss) are written down there and not implemented here."
+  },
+  "fees": {
+    "streamingAnnual": 0.01,
+    "decision": "owner 2026-09-22 (triens.md D19): 1% per year streaming, the same value as qREV and qDEFI, no performance fee, redemption fee permanently prohibited. The launch value is a permanent ceiling — the contract accepts reductions only.",
+    "appliedToPaperLevel": false,
+    "note": "the paper level is GROSS, like qREV's and qDEFI's. Cost disclosure is a separate net-of-fee row in the research (net_multiple_1), not a second level in this record."
+  },
+  "viability": {
+    "minimumEligibleNames": 5,
+    "note": "below five eligible names the product is not made at all (triens.md §12-1, draft value D18). The paper record still computes a level — it is a record of what the rule would have done, including the quarters where the rule says don't ship — and the seat count is on every record line."
+  },
+  "inception": {
+    "date": null,
+    "decision": null,
+    "genesisLevel": 100
+  },
+  "genesisLevel": 100,
+  "basket": {
+    "_doc": "No basket vault exists for this index and none can be deployed while GIWA carries no canonical BTC (triens.md §12-5). vault null = the keeper computes every mark and posts nothing.",
+    "chainId": 91342,
+    "vault": null,
+    "faucet": null,
+    "navBase": 100,
+    "assets": {}
+  }
+}

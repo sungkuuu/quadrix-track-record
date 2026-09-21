@@ -1,5 +1,7 @@
 /**
- * Paper-index keeper for qREV (Revenue Index) and qDEFI (DeFi Index).
+ * Paper-index keeper for qREV (Revenue Index), qDEFI (DeFi Index), and the
+ * two sleeve baskets Barbell (BTC / working capital) and Triens (BTC /
+ * working capital / Quality).
  *
  * These are RULES-ONLY index levels: no vault, no capital, not in force until
  * an owner decision anchors an inception date (keeper/rulebooks/{index}.json
@@ -17,10 +19,28 @@
  * parameter as data, and docs/paper-index.md for the full write-up.
  *
  * Usage:
- *   node keeper/paper-index.mjs --index qrev  --dry-run
- *   node keeper/paper-index.mjs --index qdefi --dry-run
+ *   node keeper/paper-index.mjs --index qrev    --dry-run
+ *   node keeper/paper-index.mjs --index qdefi   --dry-run
+ *   node keeper/paper-index.mjs --index barbell --dry-run
+ *   node keeper/paper-index.mjs --index triens  --dry-run
  *   node keeper/paper-index.mjs --index qrev             # writes trackrecord/
  *   KEEPER_PK=0x... node keeper/paper-index.mjs --index qrev --anchor
+ *
+ * Sleeve indexes (2026-09-22, barbell.json / triens.json): Barbell and Triens
+ * hold sleeves, not a single ranked basket — a monetary sleeve (BTC alone, a
+ * list and not a screen), a working-capital sleeve, and for Triens a Quality
+ * sleeve screened out of the SAME universe and the same data path as qREV,
+ * with one gate qREV does not have (issuance <= holder revenue) and no
+ * valuation ranking. Sleeve weights reset at the quarterly reconstitution and
+ * drift in between; there is no band and no conditional switch.
+ *
+ * The working-capital sleeve has no asset to hold: there is no fiat-backed
+ * stablecoin canonical on GIWA yet. The PAPER record therefore holds a proxy
+ * — a synthetic $1 unit accruing the 3-month T-bill rate daily (FRED DTB3,
+ * keeper/working-capital.mjs) — and stamps `wcProxy: "DTB3"` on every record
+ * line so the level is never read as a held asset. Neither index is in force:
+ * both rulebooks are drafts, `inception` is null in both, and the workflow
+ * steps for them are disabled until an inception decision is anchored.
  *
  * --dry-run writes to keeper/dryrun/{state,record,anchors}-{index}.* instead
  * of keeper/state-{index}.json / trackrecord/{record,anchors}-{index}.jsonl,
@@ -51,6 +71,7 @@ import { createWalletClient, createPublicClient, http, defineChain, toHex } from
 import { privateKeyToAccount } from 'viem/accounts';
 import { markBasket } from './basket-mark.mjs';
 import { rankingFor } from './rulebook-schedule.mjs';
+import { loadDTB3, rateOn, accrue, WC_PROXY_ID } from './working-capital.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -69,10 +90,12 @@ const opt = (name, fallback) => {
   return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
 };
 const INDEX = opt('--index', null);
-if (!['qrev', 'qdefi', 'qx20'].includes(INDEX)) {
-  console.error('usage: node keeper/paper-index.mjs --index qrev|qdefi|qx20 [--dry-run] [--anchor]');
+if (!['qrev', 'qdefi', 'qx20', 'barbell', 'triens'].includes(INDEX)) {
+  console.error('usage: node keeper/paper-index.mjs --index qrev|qdefi|qx20|barbell|triens [--dry-run] [--anchor]');
   process.exit(2);
 }
+/** Indexes whose book is a set of sleeves rather than one ranked basket. */
+const SLEEVE_INDEXES = new Set(['barbell', 'triens']);
 const DRY_RUN = flag('--dry-run');
 const DO_ANCHOR = flag('--anchor');
 
@@ -531,13 +554,21 @@ function listingAgeDays(mkt, dateStr) {
   return (Date.parse(dateStr + 'T00:00:00Z') - earliest) / 86_400_000;
 }
 
-async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
-  const rb = RULEBOOK;
-  const ranking = rankingFor(rb, dateStr); // targetCount / rank buffer as they stand on dateStr (dated decisions in ranking.scheduled)
-  console.log(
-    `  ranking parameters for ${dateStr}: targetCount ${ranking.targetCount}, rank buffer enter ≤ ${ranking.rankBuffer.entryMaxRank} / exit > ${ranking.rankBuffer.exitMinRank}` +
-      (ranking.appliedSchedule ? ` (scheduled change ${ranking.appliedSchedule.decision ?? ''} effective ${ranking.appliedSchedule.effectiveFrom})` : ' (base rulebook values)')
-  );
+/**
+ * Every candidate in the revenue universe with each eligibility gate
+ * evaluated. Shared by the qREV leg and by Triens's Quality sleeve, which
+ * screens the SAME universe from the SAME sources (DefiLlama holder revenue,
+ * the supply registry with its CoinGecko fallback, CoinGecko market data) —
+ * the two differ in what they do with the issuance number, not in how they
+ * measure it.
+ *
+ * `elig` is a rulebook eligibility block. `issuanceGateTheta` is null for
+ * qREV, where issuance nets the WEIGHT (value-capture.md §4) and never gates;
+ * Triens passes 1, where issuance IS a gate (triens.md §2, owner 2026-09-21).
+ * With theta null this function produces exactly the gate set and the
+ * `eligible` verdict qREV had before it was factored out.
+ */
+async function evaluateRevenueUniverse(dateStr, markets, elig, { issuanceGateTheta = null } = {}) {
   const supplyRegistry = JSON.parse(fs.readFileSync(path.join(HERE, 'supply', 'registry.json'), 'utf8'));
   const supplyWeeklyRaw = JSON.parse(fs.readFileSync(path.join(HERE, 'supply', 'supply-weekly.json'), 'utf8'));
   const supplyWeekly = {};
@@ -552,10 +583,10 @@ async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
   for (const c of candidates) {
     sourceStats.defillamaOk++;
     const gate = {};
-    gate.mcapOk = c.mkt.marketCap >= rb.eligibility.minCirculatingMarketCapUSD;
-    gate.volOk = (c.mkt.volume24h ?? 0) >= rb.eligibility.minVolume24hUSD;
+    gate.mcapOk = c.mkt.marketCap >= elig.minCirculatingMarketCapUSD;
+    gate.volOk = (c.mkt.volume24h ?? 0) >= elig.minVolume24hUSD;
     const age = listingAgeDays(c.mkt, dateStr);
-    gate.ageOk = age == null ? false : age >= rb.eligibility.minListingAgeDays;
+    gate.ageOk = age == null ? false : age >= elig.minListingAgeDays;
 
     const reg = supplyRegistry[c.sym];
     const issuance = await issuanceValue12m(
@@ -583,15 +614,38 @@ async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
 
     const hr30NetOfMonthlyIssuance = c.isChain && issuance.value != null ? c.hr30 - issuance.value / 12 : c.hr30;
     const effectiveHr12m = c.isChain ? (issuance.value == null ? null : netRevenue12m) : c.hr12mGross;
-    gate.hrFloorOk = effectiveHr12m != null && effectiveHr12m >= rb.eligibility.minHolderRevenueTrailing12mUSD;
-    gate.monthsOk = c.posMonths >= rb.eligibility.minConsecutivePositiveRevenueMonths;
+    gate.hrFloorOk = effectiveHr12m != null && effectiveHr12m >= elig.minHolderRevenueTrailing12mUSD;
+    gate.monthsOk = c.posMonths >= elig.minConsecutivePositiveRevenueMonths;
     gate.trapOk =
       effectiveHr12m != null &&
-      hr30NetOfMonthlyIssuance >= rb.eligibility.valueTrapFilter.thresholdFraction * (effectiveHr12m / 12);
+      hr30NetOfMonthlyIssuance >= elig.valueTrapFilter.thresholdFraction * (effectiveHr12m / 12);
     gate.chainNetBurnOk = c.isChain ? effectiveHr12m != null && netRevenue12m > 0 : true;
     gate.chainIssuanceMeasured = c.isChain ? issuance.value != null : true;
 
-    const eligible = gate.mcapOk && gate.volOk && gate.ageOk && gate.hrFloorOk && gate.monthsOk && gate.trapOk && gate.chainNetBurnOk;
+    // issuance / holder revenue over the trailing 12 months. A chain token is
+    // already net of its own issuance (netBurn12m), so its ratio is 0 once it
+    // passes the net-burn test — the same convention as the research engine
+    // (qquality-backtest.py eligible(), chains='netburn').
+    const issuanceRatio = c.isChain
+      ? (gate.chainNetBurnOk ? 0 : Infinity)
+      : issuance.value == null || !(c.hr12mGross > 0)
+        ? Infinity
+        : issuance.value / c.hr12mGross;
+    if (issuanceGateTheta != null) {
+      // triens.md §2 / D7: the gate, and "issuance unknown" FAILS it —
+      // Infinity above covers both the unmeasured case and hr12m <= 0.
+      gate.issuanceGateOk = issuanceRatio <= issuanceGateTheta;
+    }
+
+    const eligible =
+      gate.mcapOk &&
+      gate.volOk &&
+      gate.ageOk &&
+      gate.hrFloorOk &&
+      gate.monthsOk &&
+      gate.trapOk &&
+      gate.chainNetBurnOk &&
+      (gate.issuanceGateOk ?? true);
     const phr = effectiveHr12m > 0 ? c.mkt.marketCap / effectiveHr12m : Infinity;
 
     evaluated.push({
@@ -604,6 +658,7 @@ async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
       holderRevenue12mGross: Math.round(c.hr12mGross),
       issuance12m: issuance.value == null ? null : Math.round(issuance.value),
       issuanceSource: issuance.source,
+      issuanceRatio: Number.isFinite(issuanceRatio) ? Math.round(issuanceRatio * 100) / 100 : null,
       netRevenue12m: Math.round(netRevenue12m),
       phr: Number.isFinite(phr) ? Math.round(phr * 10) / 10 : null,
       posMonths: c.posMonths,
@@ -612,11 +667,16 @@ async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
       eligible,
     });
   }
+  return { evaluated, sourceStats };
+}
 
-  // Rank by P/HR ascending among those passing every gate.
-  const eligibleRanked = evaluated
-    .filter((e) => e.eligible)
-    .sort((a, b) => a.phr - b.phr);
+/**
+ * Rank buffer + exit hysteresis, shared by qREV and the Quality sleeve. The
+ * two differ only in `rank` (qREV: P/HR ascending; Quality: net revenue
+ * descending) — the seat mechanics are the same rule, written once.
+ */
+function resolveMembership({ evaluated, incumbents, onNotice, ranking, rank, shortRule }) {
+  const eligibleRanked = evaluated.filter((e) => e.eligible).sort(rank);
 
   const kept = bufferedMembership(
     eligibleRanked.map((e) => ({ symbol: e.symbol })),
@@ -649,23 +709,43 @@ async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
   if (finalMembers.size < ranking.targetCount) {
     console.log(
       `  universe short: ${finalMembers.size} member(s) vs target ${ranking.targetCount} ` +
-        `(${eligibleRanked.length} eligible this run) — rulebook §12 applies, held as-is`
+        `(${eligibleRanked.length} eligible this run) — ${shortRule}`
     );
   }
 
   const memberRows = [...finalMembers].map(
     (sym) => evaluated.find((e) => e.symbol === sym) || { symbol: sym, marketCap: null, netRevenue12m: 0 }
   );
+  return { memberRows, finalMembers, nextOnNotice, eligibleCount: eligibleRanked.length };
+}
 
-  printQrevLedger(evaluated, finalMembers);
+async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
+  const rb = RULEBOOK;
+  const ranking = rankingFor(rb, dateStr); // targetCount / rank buffer as they stand on dateStr (dated decisions in ranking.scheduled)
+  console.log(
+    `  ranking parameters for ${dateStr}: targetCount ${ranking.targetCount}, rank buffer enter ≤ ${ranking.rankBuffer.entryMaxRank} / exit > ${ranking.rankBuffer.exitMinRank}` +
+      (ranking.appliedSchedule ? ` (scheduled change ${ranking.appliedSchedule.decision ?? ''} effective ${ranking.appliedSchedule.effectiveFrom})` : ' (base rulebook values)')
+  );
+
+  const { evaluated, sourceStats } = await evaluateRevenueUniverse(dateStr, markets, rb.eligibility);
+  const { memberRows, finalMembers, nextOnNotice } = resolveMembership({
+    evaluated,
+    incumbents,
+    onNotice,
+    ranking,
+    rank: (a, b) => a.phr - b.phr, // cheapest P/HR first
+    shortRule: 'rulebook §12 applies, held as-is',
+  });
+
+  printRevenueLedger('  --- qREV eligibility ledger (all candidates considered) ---', evaluated, finalMembers, (a, b) => (a.phr ?? Infinity) - (b.phr ?? Infinity));
   return { memberRows, evaluated, nextOnNotice, sourceStats };
 }
 
 /** Full pass/fail ledger for every candidate considered — this is what makes
  *  "why isn't X in the basket" answerable with numbers instead of asserted. */
-function printQrevLedger(evaluated, finalMembers) {
-  console.log('  --- qREV eligibility ledger (all candidates considered) ---');
-  const rows = [...evaluated].sort((a, b) => (a.phr ?? Infinity) - (b.phr ?? Infinity));
+function printRevenueLedger(header, evaluated, finalMembers, sortFn, extra = () => '') {
+  console.log(header);
+  const rows = [...evaluated].sort(sortFn);
   for (const e of rows) {
     const g = e.gate;
     const failed = Object.entries(g)
@@ -676,6 +756,7 @@ function printQrevLedger(evaluated, finalMembers) {
       `  [${tag}] ${e.symbol.padEnd(7)} ${e.isChain ? 'chain' : 'proto'} mcap=${Math.round(e.marketCap ?? 0)} ` +
         `hr12m=${e.holderRevenue12m ?? '—'} hrGross=${e.holderRevenue12mGross} phr=${e.phr ?? '—'} ` +
         `months=${e.posMonths} age=${e.listingAgeDays ?? '—'}d issuance=${e.issuance12m ?? '—'}(${e.issuanceSource})` +
+        extra(e) +
         (failed.length ? `  FAILED: ${failed.join(',')}` : '')
     );
   }
@@ -790,7 +871,11 @@ function printQdefiLedger(evaluated, finalMembers) {
 // =========================================================================
 //  Weighting
 // =========================================================================
-function weightQrev(memberRows, floorFraction) {
+/** Net-revenue weighting with a floor and an iterative cap. qREV weights its
+ *  whole basket this way (value-capture.md §4); Triens weights its Quality
+ *  SLEEVE this way (triens.md §4-§5, same floor, same cap, cap measured
+ *  inside the sleeve) — one function, called with the cap that applies. */
+function weightQrev(memberRows, floorFraction, cap = RULEBOOK.weighting.cap.maxWeight) {
   const positiveSum = memberRows.reduce((s, m) => s + Math.max(0, m.netRevenue12m ?? 0), 0);
   let base;
   if (positiveSum <= 0) {
@@ -804,7 +889,7 @@ function weightQrev(memberRows, floorFraction) {
     const total = adj.reduce((s, x) => s + x.raw, 0) || 1;
     base = adj.map((x) => ({ symbol: x.symbol, weight: x.raw / total }));
   }
-  return applyCap(base, RULEBOOK.weighting.cap.maxWeight);
+  return applyCap(base, cap);
 }
 
 function weightQdefi(memberRows) {
@@ -819,8 +904,15 @@ function weightQdefi(memberRows) {
 /** Compares each target weight to its drifted (mark-to-market) weight from
  *  the existing unit book, and only trades a name if the gap is >= the
  *  tolerance OR the drifted weight is above the cap (which is always cut,
- *  regardless of tolerance). Returns the new unit map. */
-function applyToleranceAndTrade(targetWeights, priceNow, prevUnits, portfolioValue, toleranceFraction, capFraction) {
+ *  regardless of tolerance). Returns the new unit map.
+ *
+ *  `portfolioValue` is the book the DRIFTED weights are measured against;
+ *  `targetValue` is the book a traded name is sized into. They are the same
+ *  number for qREV and qDEFI (one book). They differ for a Triens Quality
+ *  sleeve whose sleeve value has just been reset at the sleeve level: drift is
+ *  still measured against what the sleeve was worth before the reset, and the
+ *  trade is sized into what it is worth after. */
+function applyToleranceAndTrade(targetWeights, priceNow, prevUnits, portfolioValue, toleranceFraction, capFraction, targetValue = portfolioValue) {
   const drifted = {};
   if (prevUnits) {
     for (const [sym, u] of Object.entries(prevUnits)) {
@@ -840,7 +932,7 @@ function applyToleranceAndTrade(targetWeights, priceNow, prevUnits, portfolioVal
       // within tolerance and not over cap — leave the unit count alone
       newUnits[symbol] = prevUnits[symbol];
     } else {
-      newUnits[symbol] = (portfolioValue * target) / px;
+      newUnits[symbol] = (targetValue * target) / px;
     }
   }
   return newUnits;
@@ -906,8 +998,462 @@ async function markQx20Basket() {
   });
 }
 
+// =========================================================================
+//  Sleeve indexes — Barbell (BTC / working capital), Triens (+ Quality)
+// =========================================================================
+/**
+ * These two hold SLEEVES, not one ranked basket. What a sleeve index does on a
+ * given day:
+ *
+ *   every day        mark BTC at today's price, accrue the working-capital
+ *                    proxy by one day per calendar day since the last run,
+ *                    mark the Quality names (Triens). No trading.
+ *   reconstitution   (first run after a quarter boundary) recompute the
+ *                    Quality basket, work out the sleeve targets including the
+ *                    empty-seat spill, and reset the sleeves to target unless
+ *                    every one of them is already within the tolerance.
+ *
+ * Interest accrued in working capital therefore stays in that sleeve between
+ * resets and is redistributed only at the quarterly reset — which is what the
+ * backtest did (barbell_common.py: weekly accrual, quarterly reset).
+ */
+
+/** Last-known-price carry (qX20 §9, cited by barbell.md §9 and triens.md §9):
+ *  a held constituent with no price today is marked at its last known price
+ *  for at most this many consecutive runs. After that the run FAILS rather
+ *  than reporting a level built on a price nobody has seen in four runs. */
+const MAX_STALE_RUNS = 3;
+
+function priceWithCarry(sym, priceNow, stale) {
+  const live = priceNow[sym];
+  if (live > 0) {
+    stale[sym] = { price: live, runs: 0 };
+    return live;
+  }
+  const s = stale[sym];
+  if (!s || !(s.price > 0)) {
+    throw new Error(`${sym}: no price today and no carried price — the book cannot be marked (rulebook §9)`);
+  }
+  s.runs = (s.runs ?? 0) + 1;
+  if (s.runs > MAX_STALE_RUNS) {
+    throw new Error(
+      `${sym}: no live price for ${s.runs} consecutive runs (limit ${MAX_STALE_RUNS}, rulebook §9) — run stopped, no record written`
+    );
+  }
+  console.warn(`  ${sym}: no live price today — marked at the last known ${s.price} (carry ${s.runs} of ${MAX_STALE_RUNS})`);
+  return s.price;
+}
+
+/** Sleeve target weights on a reconstitution day. Empty Quality seats spill to
+ *  working capital, 1/N of the Quality sleeve each (triens.md §6, owner
+ *  2026-09-21 D4) — not to BTC, which would quietly make the product 70-80%
+ *  BTC and a different product from the one the name describes. */
+function sleeveTargets(rb, seatsFilled, targetCount) {
+  const t = {
+    monetary: rb.sleeves.monetary.targetWeight,
+    workingCapital: rb.sleeves.workingCapital.targetWeight,
+  };
+  if (rb.sleeves.quality) {
+    const filled = Math.max(0, Math.min(seatsFilled ?? 0, targetCount));
+    t.quality = rb.sleeves.quality.targetWeight * (filled / targetCount);
+    t.workingCapital += rb.sleeves.quality.targetWeight * ((targetCount - filled) / targetCount);
+  }
+  return t;
+}
+
+/** Triens's Quality sleeve: the qREV universe and the qREV data path, with the
+ *  issuance ratio as a GATE (θ = 1) instead of a weight adjustment, and ranked
+ *  by net revenue instead of by P/HR. Everything else — the gates, the rank
+ *  buffer, the two-quarter hysteresis, the 2% floor, the 35% cap — is the same
+ *  rule, run by the same code. */
+async function computeQualityMembers(dateStr, markets, incumbents, onNotice, ranking) {
+  const rb = RULEBOOK;
+  const theta = rb.eligibility.issuanceGate.theta;
+  const byNetRevenue = (a, b) => (b.netRevenue12m ?? 0) - (a.netRevenue12m ?? 0);
+
+  const { evaluated, sourceStats } = await evaluateRevenueUniverse(dateStr, markets, rb.eligibility, {
+    issuanceGateTheta: theta,
+  });
+  const { memberRows, finalMembers, nextOnNotice, eligibleCount } = resolveMembership({
+    evaluated,
+    incumbents,
+    onNotice,
+    ranking,
+    rank: byNetRevenue,
+    shortRule: 'the empty seats go to the working-capital sleeve (rulebook §6)',
+  });
+
+  printRevenueLedger(
+    `  --- ${rb.ticker} quality-sleeve ledger (issuance gate θ ≤ ${theta}; all candidates considered) ---`,
+    evaluated,
+    finalMembers,
+    byNetRevenue,
+    (e) => ` netRev12m=${e.netRevenue12m} issuance/hr=${e.issuanceRatio ?? '∞ (unmeasured or no revenue)'}`
+  );
+  if (eligibleCount < rb.viability.minimumEligibleNames) {
+    console.log(
+      `  viability: ${eligibleCount} eligible name(s), below the rulebook's floor of ${rb.viability.minimumEligibleNames} (§12-1). ` +
+        'The level is still recorded — it is a record of what the rule would have done, including the quarters where the rule says do not launch.'
+    );
+  }
+  return { memberRows, evaluated, nextOnNotice, sourceStats, eligibleCount };
+}
+
+async function runSleeveIndex() {
+  const rb = RULEBOOK;
+  const dateStr = todayUTC();
+  const prevRecord = lastLine(RECORDS_PATH);
+
+  if (!DRY_RUN && prevRecord && prevRecord.date >= dateStr) {
+    // No basket vault exists for these indexes (and cannot while GIWA carries
+    // no canonical BTC), so unlike qREV there is nothing left to re-post.
+    console.log(`${INDEX}: record for ${dateStr} already exists (append-only — not rewritten)`);
+    return;
+  }
+
+  const state = fs.existsSync(STATE_PATH) ? JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')) : null;
+  const hasQuality = !!rb.sleeves.quality;
+  let qUnits = state?.sleeves?.quality?.units ?? null;
+  const incumbents = qUnits ? Object.keys(qUnits) : [];
+  const onNotice = new Set(state?.onNotice ?? []);
+  const stale = { ...(state?.stalePrices ?? {}) };
+
+  console.log(`\n=== ${rb.ticker} (${rb.name}) — ${dateStr}${DRY_RUN ? ' [DRY RUN]' : ''} ===`);
+  console.log(
+    `NOT IN FORCE — rules-only level; inception ${rb.inception.date ?? 'not anchored'}, ` +
+      `working capital held as the ${WC_PROXY_ID} proxy (keeper/rulebooks/${INDEX}.json)`
+  );
+
+  const markets = await fetchCoinGeckoMarketsTop500(dateStr);
+  const marketsBySym = bySymbol(markets);
+  const priceNow = Object.fromEntries([...marketsBySym.entries()].map(([s, m]) => [s, m.price]));
+
+  // ---------------------------------------------- working-capital accrual
+  const { series: dtb3, source: wcSource } = await loadDTB3({ cacheDir: CACHE_DIR, dateKey: dateStr });
+  const wcPrev = state?.sleeves?.workingCapital ?? null;
+  const wcUnitValuePrev = wcPrev?.unitValue ?? 1;
+  const { factor: wcFactor, days: wcDays } = accrue(dtb3, wcPrev?.lastAccrual ?? dateStr, dateStr);
+  const wcUnitValue = wcUnitValuePrev * wcFactor;
+  const wcRate = rateOn(dtb3, dateStr);
+  console.log(
+    `working capital (${WC_PROXY_ID} proxy): unit ${wcUnitValuePrev.toFixed(8)} → ${wcUnitValue.toFixed(8)} ` +
+      `over ${wcDays.length} day(s) (+${((wcFactor - 1) * 100).toFixed(6)}%), DTB3 ${wcRate.rate}% p.a. as of ${wcRate.asOf} [${wcSource}]`
+  );
+
+  // ------------------------------------------------- mark the existing book
+  const btcSym = rb.sleeves.monetary.assets[0];
+  const btcPrice = priceWithCarry(btcSym, priceNow, stale);
+  const qPrices = {};
+  if (qUnits) for (const sym of Object.keys(qUnits)) qPrices[sym] = priceWithCarry(sym, priceNow, stale);
+  const priceAll = { ...priceNow, ...qPrices, [btcSym]: btcPrice };
+
+  const qBookValue = (units) =>
+    units ? Object.entries(units).reduce((sum, [sym, u]) => sum + u * (priceAll[sym] ?? 0), 0) : 0;
+
+  let btcUnits = state?.sleeves?.monetary?.units?.[btcSym] ?? null;
+  let wcUnits = wcPrev?.units ?? null;
+  let btcValue = btcUnits ? btcUnits * btcPrice : 0;
+  let wcValue = wcUnits ? wcUnits * wcUnitValue : 0;
+  let qValue = qBookValue(qUnits);
+  let level = state ? btcValue + wcValue + qValue : rb.genesisLevel;
+
+  const shouldReconstitute = !state || state.lastReconQuarter !== quarterKey(dateStr);
+  const tol = rb.reconstitution.tolerance.thresholdPoints / 100;
+  let reconstituted = false;
+  let nextOnNotice = onNotice;
+  let qualityRows = [];
+  let seats = state?.seats ?? (hasQuality ? { filled: 0, target: rankingFor(rb, dateStr).targetCount } : null);
+  let targets = state?.targets ?? null;
+  const sourceInfo = {
+    marketsSource,
+    workingCapital: { proxy: WC_PROXY_ID, source: wcSource, ratePercent: wcRate.rate, rateAsOf: wcRate.asOf },
+  };
+
+  if (shouldReconstitute) {
+    reconstituted = true;
+    console.log(`reconstitution (${state ? 'quarterly trigger' : 'genesis'}) — quarter ${quarterKey(dateStr)}`);
+    let qualityWeights = null;
+
+    if (hasQuality) {
+      const ranking = rankingFor(rb, dateStr); // only the Quality sleeve has a ranking block at all
+      console.log(
+        `  ranking parameters for ${dateStr}: targetCount ${ranking.targetCount}, rank buffer enter ≤ ${ranking.rankBuffer.entryMaxRank} / exit > ${ranking.rankBuffer.exitMinRank}` +
+          (ranking.appliedSchedule ? ` (scheduled change ${ranking.appliedSchedule.decision ?? ''} effective ${ranking.appliedSchedule.effectiveFrom})` : ' (base rulebook values)') +
+          `; issuance gate θ ≤ ${rb.eligibility.issuanceGate.theta}, ranked by net revenue (descending)`
+      );
+      const res = await computeQualityMembers(dateStr, markets, incumbents, onNotice, ranking);
+      nextOnNotice = res.nextOnNotice;
+      sourceInfo.defillama = res.sourceStats;
+      qualityRows = res.memberRows;
+      seats = { filled: qualityRows.length, target: ranking.targetCount, eligible: res.eligibleCount };
+      qualityWeights = weightQrev(
+        qualityRows,
+        rb.weighting.floor.fractionOfPositiveNetRevenueSum,
+        rb.weighting.cap.maxWeight
+      );
+      for (const w of qualityWeights) if (!priceAll[w.symbol]) priceAll[w.symbol] = priceNow[w.symbol];
+    }
+
+    targets = sleeveTargets(rb, seats?.filled, seats?.target ?? 1);
+
+    if (!state) {
+      level = rb.genesisLevel;
+      btcValue = level * targets.monetary;
+      wcValue = level * targets.workingCapital;
+      qValue = hasQuality ? level * targets.quality : 0;
+      console.log(`  genesis: level ${level} split into the sleeve targets below (no prior book to compare against)`);
+    } else {
+      const drifted = { monetary: btcValue / level, workingCapital: wcValue / level };
+      if (hasQuality) drifted.quality = qValue / level;
+      let worst = { sleeve: null, gap: -1 };
+      for (const k of Object.keys(targets)) {
+        const gap = Math.abs(targets[k] - (drifted[k] ?? 0));
+        console.log(
+          `  sleeve ${k.padEnd(15)} target ${(targets[k] * 100).toFixed(1).padStart(5)}%  drifted ${((drifted[k] ?? 0) * 100).toFixed(1).padStart(5)}%  gap ${(gap * 100).toFixed(1)}pp`
+        );
+        if (gap > worst.gap) worst = { sleeve: k, gap };
+      }
+      if (worst.gap < tol) {
+        console.log(
+          `  every sleeve is within the ${rb.reconstitution.tolerance.thresholdPoints}-point tolerance ` +
+            `(worst ${(worst.gap * 100).toFixed(1)}pp, ${worst.sleeve}) — no value moves between sleeves`
+        );
+      } else {
+        console.log(
+          `  sleeve reset: ${worst.sleeve} is ${(worst.gap * 100).toFixed(1)}pp from target, outside the ` +
+            `${rb.reconstitution.tolerance.thresholdPoints}-point tolerance — every sleeve goes back to target`
+        );
+        btcValue = level * targets.monetary;
+        wcValue = level * targets.workingCapital;
+        qValue = hasQuality ? level * targets.quality : 0;
+      }
+    }
+
+    btcUnits = btcValue / btcPrice;
+    wcUnits = wcValue / wcUnitValue;
+
+    if (hasQuality) {
+      // Inside the sleeve: the qREV per-name rule (5 points, cap always cut),
+      // measured against the sleeve's pre-trade value and sized into its
+      // post-reset value.
+      const driftBase = qBookValue(qUnits) || qValue;
+      qUnits = applyToleranceAndTrade(qualityWeights, priceAll, qUnits, driftBase, tol, rb.weighting.cap.maxWeight, qValue);
+      // The reconstitution moves no money in or out of the index, so the book
+      // has to stay whole: the tolerance-retained names leave a residual, and
+      // it is normalised away inside the sleeve — the same thing the research
+      // engine does by renormalising its weight vector after the tolerance
+      // substitution (qquality-backtest.py run()).
+      const traded = qBookValue(qUnits);
+      if (traded > 0 && qValue > 0) {
+        const k = qValue / traded;
+        if (Math.abs(k - 1) > 1e-12) {
+          if (Math.abs(k - 1) > 0.005) console.log(`  quality sleeve normalised by ×${k.toFixed(6)} after the per-name tolerance (residual kept inside the sleeve)`);
+          for (const sym of Object.keys(qUnits)) qUnits[sym] *= k;
+        }
+      }
+    }
+  } else {
+    console.log('mark-to-market only — no reconstitution, no drift band, no trading');
+    if (!targets) targets = sleeveTargets(rb, seats?.filled, seats?.target ?? 1);
+  }
+
+  // The book after whatever the day did.
+  btcValue = btcUnits * btcPrice;
+  wcValue = wcUnits * wcUnitValue;
+  qValue = qBookValue(qUnits);
+  level = btcValue + wcValue + qValue;
+
+  const r4 = (x) => Math.round(x * 10000) / 10000;
+  const members = [
+    {
+      symbol: btcSym,
+      sleeve: 'monetary',
+      weight: r4(btcValue / level),
+      price: btcPrice,
+      units: btcUnits,
+      marketCap: marketsBySym.get(btcSym)?.marketCap ?? null,
+    },
+    {
+      symbol: 'WC',
+      sleeve: 'workingCapital',
+      weight: r4(wcValue / level),
+      price: Math.round(wcUnitValue * 1e8) / 1e8,
+      units: wcUnits,
+      proxy: WC_PROXY_ID,
+      ratePercent: wcRate.rate,
+      rateAsOf: wcRate.asOf,
+    },
+  ];
+  for (const [sym, u] of Object.entries(qUnits ?? {})) {
+    const row = qualityRows.find((m) => m.symbol === sym);
+    const m = {
+      symbol: sym,
+      sleeve: 'quality',
+      weight: r4((u * (priceAll[sym] ?? 0)) / level),
+      price: priceAll[sym] ?? null,
+      units: u,
+      marketCap: marketsBySym.get(sym)?.marketCap ?? null,
+    };
+    if (row) {
+      m.holderRevenue12m = row.holderRevenue12m ?? null;
+      m.issuance12m = row.issuance12m ?? null;
+      m.netRevenue12m = row.netRevenue12m ?? null;
+      m.issuanceRatio = row.issuanceRatio ?? null;
+      m.issuanceSource = row.issuanceSource ?? null;
+    }
+    members.push(m);
+  }
+
+  const record = {
+    seq: prevRecord ? prevRecord.seq + 1 : 0,
+    date: dateStr,
+    observedAt: new Date().toISOString(),
+    index: RULEBOOK.ticker,
+    level: Math.round(level * 1e6) / 1e6,
+    wcProxy: WC_PROXY_ID,
+    sleeves: {
+      monetary: { targetWeight: targets.monetary, weight: r4(btcValue / level), value: Math.round(btcValue * 1e6) / 1e6 },
+      workingCapital: {
+        targetWeight: Math.round(targets.workingCapital * 1e6) / 1e6,
+        weight: r4(wcValue / level),
+        value: Math.round(wcValue * 1e6) / 1e6,
+        unitValue: Math.round(wcUnitValue * 1e8) / 1e8,
+        proxy: WC_PROXY_ID,
+        ratePercent: wcRate.rate,
+        rateAsOf: wcRate.asOf,
+        daysAccrued: wcDays.length,
+      },
+      ...(hasQuality
+        ? {
+            quality: {
+              targetWeight: Math.round(targets.quality * 1e6) / 1e6,
+              weight: r4(qValue / level),
+              value: Math.round(qValue * 1e6) / 1e6,
+              seatsFilled: seats?.filled ?? 0,
+              seatsTarget: seats?.target ?? null,
+              emptySeats: Math.max(0, (seats?.target ?? 0) - (seats?.filled ?? 0)),
+            },
+          }
+        : {}),
+    },
+    members,
+    reconstituted,
+    sources: sourceInfo,
+    prevHash: prevRecord ? prevRecord.hash : null,
+  };
+  record.hash = sha256(JSON.stringify(record));
+
+  fs.mkdirSync(path.dirname(RECORDS_PATH), { recursive: true });
+  fs.appendFileSync(RECORDS_PATH, JSON.stringify(record) + '\n');
+  fs.writeFileSync(
+    STATE_PATH,
+    JSON.stringify(
+      {
+        updatedAt: record.observedAt,
+        level,
+        sleeves: {
+          monetary: { units: { [btcSym]: btcUnits } },
+          workingCapital: { units: wcUnits, unitValue: wcUnitValue, lastAccrual: dateStr, proxy: WC_PROXY_ID },
+          ...(hasQuality ? { quality: { units: qUnits ?? {} } } : {}),
+        },
+        targets,
+        seats,
+        lastReconQuarter: shouldReconstitute ? quarterKey(dateStr) : state?.lastReconQuarter,
+        onNotice: [...nextOnNotice],
+        stalePrices: stale,
+      },
+      null,
+      2
+    ) + '\n'
+  );
+
+  console.log(
+    `${RULEBOOK.ticker} #${record.seq} ${dateStr} level=${record.level} sleeves=${Object.keys(record.sleeves).length} ` +
+      `members=${members.length} reconstituted=${reconstituted} head=${record.hash.slice(0, 16)}…`
+  );
+  console.log('book:');
+  for (const m of [...members].sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))) {
+    const extra =
+      m.sleeve === 'workingCapital'
+        ? ` ${WC_PROXY_ID} unit=${m.price} (${m.ratePercent}% p.a. as of ${m.rateAsOf})`
+        : m.sleeve === 'quality' && m.netRevenue12m != null
+          ? ` netRev12m=${m.netRevenue12m} issuance/hr=${m.issuanceRatio ?? '—'} (${m.issuanceSource ?? '—'})`
+          : '';
+    console.log(`  ${m.sleeve.padEnd(14)} ${m.symbol.padEnd(8)} ${((m.weight ?? 0) * 100).toFixed(1).padStart(5)}%  price=${m.price ?? '—'}${extra}`);
+  }
+  if (hasQuality) {
+    console.log(
+      `quality seats: ${record.sleeves.quality.seatsFilled}/${record.sleeves.quality.seatsTarget} filled, ` +
+        `${record.sleeves.quality.emptySeats} empty seat(s) → working capital ` +
+        `(target ${(record.sleeves.workingCapital.targetWeight * 100).toFixed(1)}%)`
+    );
+  }
+
+  // No basket vault exists for either sleeve index; this call is the same
+  // no-op path every index takes when basket.vault is null.
+  await markBasket({
+    index: INDEX,
+    basket: RULEBOOK.basket,
+    level,
+    navBase: RULEBOOK.basket?.navBase ?? RULEBOOK.genesisLevel,
+    prices: priceAll,
+    members: members.map((m) => m.symbol),
+    reconstituted,
+    dryRun: DRY_RUN,
+    keeperDir: HERE,
+    date: dateStr,
+  });
+
+  await maybeAnchor(record, dateStr);
+}
+
+/** The anchor step, identical for every record-writing leg: calldata-as-
+ *  commitment on GIWA Sepolia under the prefix `qxpi-{index}:`, a genuine
+ *  no-op when KEEPER_PK is absent. Nonce-safe: the keeper key is shared with
+ *  the other crons and the desk. */
+async function maybeAnchor(record, dateStr) {
+  const giwaSepolia = defineChain({
+    id: 91342,
+    name: 'GIWA Sepolia',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrls: { default: { http: ['https://sepolia-rpc.giwa.io'] } },
+  });
+  if (DO_ANCHOR) {
+    const pk = process.env.KEEPER_PK;
+    if (!pk) {
+      console.log(`--anchor requested but KEEPER_PK is not set — skipping anchor (no-op), record above is unanchored.`);
+    } else {
+      const account = privateKeyToAccount(pk);
+      const wallet = createWalletClient({ account, chain: giwaSepolia, transport: http() });
+      const publicClient = createPublicClient({ chain: giwaSepolia, transport: http() });
+      // Shared key across crons and the desk: on a nonce race, wait and resend
+      // (viem refetches the nonce per call); anything else is rethrown.
+      let hash;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          hash = await wallet.sendTransaction({
+            to: account.address,
+            value: 0n,
+            data: toHex(`qxpi-${INDEX}:` + record.hash),
+          });
+          break;
+        } catch (e) {
+          if (attempt >= 4 || !/nonce/i.test(String(e && e.message))) throw e;
+          await new Promise((r) => setTimeout(r, 4000 * (attempt + 1)));
+        }
+      }
+      await publicClient.waitForTransactionReceipt({ hash });
+      fs.appendFileSync(ANCHORS_PATH, JSON.stringify({ date: dateStr, seq: record.seq, headHash: record.hash, txHash: hash }) + '\n');
+      console.log(`anchored on GIWA Sepolia: ${hash}`);
+    }
+  } else {
+    console.log('--anchor not passed — no on-chain anchor attempted for this run.');
+  }
+}
+
 async function main() {
   if (INDEX === 'qx20') return markQx20Basket();
+  if (SLEEVE_INDEXES.has(INDEX)) return runSleeveIndex();
 
   const dateStr = todayUTC();
   const prevRecord = lastLine(RECORDS_PATH);
@@ -1072,44 +1618,7 @@ async function main() {
     date: dateStr,
   });
 
-  // --------------------------------------------------------------- anchor
-  const giwaSepolia = defineChain({
-    id: 91342,
-    name: 'GIWA Sepolia',
-    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    rpcUrls: { default: { http: ['https://sepolia-rpc.giwa.io'] } },
-  });
-  if (DO_ANCHOR) {
-    const pk = process.env.KEEPER_PK;
-    if (!pk) {
-      console.log(`--anchor requested but KEEPER_PK is not set — skipping anchor (no-op), record above is unanchored.`);
-    } else {
-      const account = privateKeyToAccount(pk);
-      const wallet = createWalletClient({ account, chain: giwaSepolia, transport: http() });
-      const publicClient = createPublicClient({ chain: giwaSepolia, transport: http() });
-      // Shared key across crons and the desk: on a nonce race, wait and resend
-      // (viem refetches the nonce per call); anything else is rethrown.
-      let hash;
-      for (let attempt = 0; ; attempt++) {
-        try {
-          hash = await wallet.sendTransaction({
-            to: account.address,
-            value: 0n,
-            data: toHex(`qxpi-${INDEX}:` + record.hash),
-          });
-          break;
-        } catch (e) {
-          if (attempt >= 4 || !/nonce/i.test(String(e && e.message))) throw e;
-          await new Promise((r) => setTimeout(r, 4000 * (attempt + 1)));
-        }
-      }
-      await publicClient.waitForTransactionReceipt({ hash });
-      fs.appendFileSync(ANCHORS_PATH, JSON.stringify({ date: dateStr, seq: record.seq, headHash: record.hash, txHash: hash }) + '\n');
-      console.log(`anchored on GIWA Sepolia: ${hash}`);
-    }
-  } else {
-    console.log('--anchor not passed — no on-chain anchor attempted for this run.');
-  }
+  await maybeAnchor(record, dateStr);
 }
 
 main().catch((e) => {

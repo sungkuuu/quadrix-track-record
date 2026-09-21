@@ -189,6 +189,60 @@ are made by hand from the keeper key. The paper record does not wait for
 any of this: the level moves on day 0, the vault follows over the week, and
 the gap is a stated tracking difference.
 
+## Sleeve indexes — Barbell and Triens (added 2026-09-22, not running)
+
+Two more paper indexes exist in this repository and **neither one runs**. Their
+steps in `.github/workflows/paper-index.yml` carry `if: false`, their rulebooks
+(`keeper/rulebooks/{barbell,triens}.json`) have `inception: null`, and there is
+no `trackrecord/record-{barbell,triens}.jsonl` yet. That is the intended state:
+the rulebooks they implement are drafts in the site repo, and a paper series
+may not start before an owner decision anchors its inception date.
+
+**What the operator may do today:** dry runs only.
+
+```bash
+node keeper/paper-index.mjs --index barbell --dry-run
+node keeper/paper-index.mjs --index triens  --dry-run
+```
+
+A dry run writes `keeper/dryrun/{state,record}-{index}.*` and touches nothing
+else. It does not de-duplicate by date, so running it twice in one day
+exercises the reconstitution branch and then the mark-to-market branch.
+
+**Turning one on, when the owner has decided (all four steps, in order):**
+
+1. Write the inception decision document and anchor it (`anchor-decision`
+   workflow), as for qREV on 2026-09-16.
+2. Fill `inception.date` and `inception.decision` in that index's rulebook and
+   update its `status` string.
+3. Delete the `if: false` line from that index's step in
+   `.github/workflows/paper-index.yml`, and add its files to the "Commit
+   records" step's `git add` list (`trackrecord/record-{index}.jsonl`,
+   `trackrecord/anchors-{index}.jsonl`, `keeper/state-{index}.json`).
+4. Add the series to `scripts/verify.mjs`'s series table (one line beside the
+   `qrev`/`qdefi` entries: records, anchors, `anchorPrefix: 'qxpi-<index>:'`,
+   `checkDecisions: false`). It is not there today on purpose — there is no
+   series to verify until an inception decision exists.
+5. Run it once by hand with `--dry-run`, read the output, then let the schedule
+   take it. Do **not** run the non-dry path twice in one day: the record is
+   append-only and a day that already has a line is skipped, but the habit is
+   what protects it.
+
+Keep both steps in the same job. Every step there signs with the same
+`KEEPER_PK`, and the `keeper-key` concurrency group is what stopped the nonce
+race that killed the 2026-09-18 run. A separate workflow would sit outside the
+group.
+
+### What can go wrong in these two specifically
+
+| Symptom | What it means | What to do |
+| --- | --- | --- |
+| `FRED DTB3 unavailable and nothing cached` | the working-capital proxy's only source is unreachable on a cold cache | nothing: the next run retries. A run that fails writes no record, and a missing day is never backfilled. |
+| `using the cached copy fred-dtb3-…` | FRED was unreachable but a cached series exists | nothing. A missing recent print only carries the last rate forward one more day, which is the rule anyway. |
+| `no live price for N consecutive runs (limit 3)` | a held name has had no price for four runs | the run stopped on purpose and wrote nothing. Check the feed; if the name is genuinely gone, that is a rulebook §9 event and needs a person, not a re-run. |
+| `quality seats: 4/10` on Triens | fewer names passed the screen than the rulebook's viability floor of 5 | nothing operational — the level is still recorded. It is a signal for the owner: the rule says a product would not be launched on that quarter. |
+| `sleeve reset: … outside the 5-point tolerance` | the quarterly reset traded | expected on a reconstitution day after a large move. The line prints every sleeve's target, drifted weight and gap before it decides. |
+
 ## Manual run (local)
 
 ```bash

@@ -3,6 +3,8 @@ name: paper-index
 # Rules-only paper index levels (qREV, qDEFI). In force since the anchored
 # inception decisions of 2026-09-16 (trackrecord/decisions/2026-09-16-*-paper-inception.md).
 # Daily at 00:25 UTC, after the N1Q record at 00:10; manual dispatch kept for reruns.
+# Barbell and Triens have steps below, disabled (`if: false`) until their own
+# inception decisions are anchored — nothing of theirs runs on this schedule.
 on:
   workflow_dispatch:
   schedule:
@@ -44,6 +46,40 @@ jobs:
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 
+      # ------------------------------------------------------------------
+      # Barbell and Triens — the two sleeve indexes. DISABLED ON PURPOSE.
+      #
+      # `if: false` because neither index is in force: both rulebooks are
+      # drafts, `inception` is null in keeper/rulebooks/{barbell,triens}.json,
+      # and nothing may be appended to trackrecord/record-{barbell,triens}.jsonl
+      # until an owner decision anchors an inception date for each. Turning
+      # them on is: anchor the decision, fill `inception` in the rulebook,
+      # delete the `if: false` line from that step, add the step's files to
+      # the commit step below.
+      #
+      # They belong in THIS job, not a second workflow: every step here signs
+      # with the same KEEPER_PK, and the `keeper-key` concurrency group above
+      # is what keeps two runs from racing into the same nonce (the 2026-09-18
+      # failure). The anchor send inside paper-index.mjs retries on a nonce
+      # error for the same reason. A separate workflow would be outside the
+      # group and would reintroduce exactly that race.
+      # ------------------------------------------------------------------
+      - name: Barbell — compute and append today's record
+        if: false # not in force until the inception decision is anchored (owner)
+        run: |
+          set -o pipefail
+          node keeper/paper-index.mjs --index barbell --anchor 2>&1 | tee pi-barbell.log
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
+      - name: Triens — compute and append today's record
+        if: false # not in force until the inception decision is anchored (owner)
+        run: |
+          set -o pipefail
+          node keeper/paper-index.mjs --index triens --anchor 2>&1 | tee pi-triens.log
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
       - name: qX20 — mark the basket vault from keeper/state.json (no record append)
         run: |
           set -o pipefail
@@ -55,6 +91,11 @@ jobs:
         run: |
           git config user.name "qx-paper-index"
           git config user.email "keeper@quadrix.finance"
+          # Barbell/Triens files are deliberately absent from this list: their
+          # steps are disabled, so there is nothing of theirs to commit. Add
+          # trackrecord/record-{barbell,triens}.jsonl, the matching anchors
+          # files and keeper/state-{barbell,triens}.json here on the same day
+          # their steps are enabled.
           git add trackrecord/record-qrev.jsonl trackrecord/anchors-qrev.jsonl \
                   trackrecord/record-qdefi.jsonl trackrecord/anchors-qdefi.jsonl \
                   keeper/state-qrev.json keeper/state-qdefi.json 2>/dev/null || true

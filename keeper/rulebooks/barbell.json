@@ -1,0 +1,111 @@
+{
+  "ticker": "Barbell",
+  "name": "Barbell",
+  "kind": "paper-index-sleeve-basket",
+  "status": "NOT IN FORCE. Rules-only paper index, no vault and no capital. The rulebook it implements is itself a draft (quadrix/docs/methodology/barbell.md: \"not in force until a decision document is anchored on chain\"), and `inception` below is null. The series starts only when an owner decision anchors an inception date, and it is not scheduled from .github/workflows/paper-index.yml until then.",
+  "asOf": "2026-09-21",
+  "source": {
+    "rulebook": "quadrix/docs/methodology/barbell.md (site repo, private) — draft of 2026-09-21 with the owner's evening decisions D1/D2/D3/D5 applied",
+    "backtestHarness": "quadrix/docs/research/barbell/barbell_common.py (simulate_btc_cash, cash_step), grid barbell-p1-grid.csv",
+    "ownerDecisionDate": "2026-09-21",
+    "note": "This file is the implemented parameter set; the prose rulebook is the narrative record of why. Where the two differ the prose rulebook governs and this file is wrong and should be fixed."
+  },
+  "sleeves": {
+    "order": [
+      "monetary",
+      "workingCapital"
+    ],
+    "monetary": {
+      "targetWeight": 0.6,
+      "assets": [
+        "BTC"
+      ],
+      "rule": "fixed list, not a screen. BTC alone. A change to the list is a rule change (decision document, anchor, no retroactive effect).",
+      "note": "ETH was not tested in this product and is not in it (barbell.md §1)."
+    },
+    "workingCapital": {
+      "targetWeight": 0.4,
+      "rule": "fiat-backed stablecoins, fully reserved in cash and short Treasuries, issuer attestation published, canonical on the settlement chain. Interest-bearing forms ARE allowed (owner 2026-09-21, D3 = triens.md D10). Partially-reserved, synthetic and crypto-collateralised forms are not. Point-based yield instead of interest is not.",
+      "nameList": null,
+      "nameListStatus": "open — the list itself is an anchored decision (D3-b) and cannot be written yet: no fiat-backed stablecoin is canonical on GIWA (미확인, barbell.md §12-2).",
+      "paperProxy": {
+        "id": "DTB3",
+        "what": "a synthetic $1 unit accruing the 3-month Treasury bill rate daily: unitValue *= (1 + r/100)^(1/365) per calendar day, r = FRED DTB3, last published print carried forward on days with no print",
+        "source": "FRED DTB3 (3-Month Treasury Bill, Secondary Market Rate, Discount Basis, percent p.a.), https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3",
+        "why": "the sleeve's real assets do not exist on chain yet, so the paper record cannot hold them. The backtest ran the sleeve at the T-bill rate (barbell_common.py cash_step, mode 'tbill'); the paper record uses the same assumption rather than a zero-yield dollar, and stamps `wcProxy: \"DTB3\"` on every record line so the level is never mistaken for a held asset.",
+        "notModelled": "issuer spread (the issuer keeps part of the bill yield), redemption risk, depeg, and any on-chain yield that is not the bill. The real sleeve will differ by all of these.",
+        "implementation": "keeper/working-capital.mjs"
+      },
+      "depeg": {
+        "rule": "a held stablecoin quoted below $0.98 for 72 consecutive hours on two price sources is replaced at the next run by the next name on the decision list; if there is no replacement the position is held and the event is recorded in a decision document",
+        "status": "draft threshold (barbell.md D4 / triens.md D17) — no measurement behind $0.98 or 72h",
+        "implemented": false,
+        "implementedNote": "not implemented in the keeper: the paper record holds the DTB3 proxy, which has no peg to break. This block is carried so the parameter is written down before the sleeve holds a real name."
+      }
+    }
+  },
+  "eligibility": {
+    "applies": false,
+    "note": "no screen, no ranking, no weighting inside a sleeve: two assets at fixed weights (barbell.md §2~5). What the product does NOT hold is the only list: wrapped/bridged BTC, synthetic stablecoins, and stablecoins paying points instead of interest."
+  },
+  "reconstitution": {
+    "cadence": "quarterly",
+    "rule": "first run after 00:00 UTC on Jan 1 / Apr 1 / Jul 1 / Oct 1 — the same day as qREV and qDEFI",
+    "resetTo": "the sleeve target weights above (60 / 40)",
+    "tolerance": {
+      "thresholdPoints": 5,
+      "scope": "sleeve",
+      "rule": "if EVERY sleeve's drifted (mark-to-market) weight is within 5 percentage points of its target, no sleeve is traded at all; otherwise every sleeve is reset to target",
+      "source": "barbell.md §6 (\"5%p 안이면 거래하지 않는다\"), inherited from qREV §6 practice and not separately tested in this product (D8)",
+      "divergenceFromBacktest": "the P1 grid reset the ratio exactly at every quarter (barbell_common.py simulate_btc_cash, mode 'always'): it has no tolerance. The published multiples therefore come from a slightly higher-turnover rule than this one."
+    },
+    "betweenReconstitutions": "no trading. Interest accrued in the working-capital sleeve stays in that sleeve and is redistributed only at the quarterly reset — which is what the backtest did (weekly accrual, quarterly reset)."
+  },
+  "driftBand": {
+    "enabled": false,
+    "note": "no drift band (barbell.md §7). Quarterly-with-no-band beat monthly and beat ±5pp / ±10pp drift bands in all eight windows of the cadence comparison, at lower turnover. Do not re-propose."
+  },
+  "conditionalSwitch": {
+    "enabled": false,
+    "note": "no 6:4 <-> 4:6 conditional switch (barbell.md §7, owner 2026-09-21). Thirteen trend / volatility / drawdown rules were tested over eight windows; none beat the fixed ratio consistently and all ran two to three times the turnover. A weekly on/off rule belongs to the tools line, not the index line."
+  },
+  "dataSources": {
+    "btcPrice": {
+      "primary": "CoinGecko coins/markets (paginated to top 500) — the same snapshot keeper/paper-index.mjs marks qREV, qDEFI and the qX20 basket from",
+      "fallback": "CoinPaprika tickers (price only), then the last known price for at most 3 consecutive runs (qX20 §9); after that the run fails rather than marking a stale book"
+    },
+    "workingCapitalRate": {
+      "primary": "FRED DTB3 daily CSV",
+      "fallback": "the most recent cached copy of the same series; no second source"
+    },
+    "stablecoinClassification": {
+      "primary": "DefiLlama stablecoins, pegMechanism = fiat-backed, plus the anchored name list",
+      "fallback": "none",
+      "note": "not used by the paper record (the proxy has no name list)"
+    }
+  },
+  "specialEvents": {
+    "inScope": false,
+    "note": "migrations, hacks and delistings are out of scope for this implementation pass, as for qREV/qDEFI. BTC has no death trigger (barbell.md §9)."
+  },
+  "fees": {
+    "streamingAnnual": 0.005,
+    "decision": "owner 2026-09-22 (barbell.md D6): 0.5% per year streaming, no performance fee, redemption fee permanently prohibited. The launch value is a permanent ceiling — the contract accepts reductions only.",
+    "appliedToPaperLevel": false,
+    "note": "the paper level is GROSS, like qREV's and qDEFI's. Cost disclosure is a separate net-of-fee row in the research (net_multiple_05), not a second level in this record."
+  },
+  "inception": {
+    "date": null,
+    "decision": null,
+    "genesisLevel": 100
+  },
+  "genesisLevel": 100,
+  "basket": {
+    "_doc": "No basket vault exists for this index and none can be deployed while GIWA carries no canonical BTC (barbell.md §12-1, quadrix/docs/research/btc-representations.md). vault null = the keeper computes every mark and posts nothing.",
+    "chainId": 91342,
+    "vault": null,
+    "faucet": null,
+    "navBase": 100,
+    "assets": {}
+  }
+}

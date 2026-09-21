@@ -1,17 +1,19 @@
-# Paper-index keeper — qREV, qDEFI
+# Paper-index keeper — qREV, qDEFI, Barbell, Triens
 
 **Status: rules-only reference levels. No vault, no capital, NOT IN FORCE.**
-Nothing here moves money and nothing here is a product yet. The series
-becomes a real track record only once an owner decision anchors an inception
-date (`keeper/rulebooks/qrev.json` / `qdefi.json`, field `inception`, is
-`null` until then). Until that happens this is exactly what
+Nothing here moves money and nothing here is a product yet. A series becomes
+a real track record only once an owner decision anchors an inception date for
+it (`keeper/rulebooks/{index}.json`, field `inception`, is `null` until then).
+qREV and qDEFI have theirs, anchored 2026-09-16. **Barbell and Triens do not:
+their rulebooks are drafts, their `inception` is null, and their workflow
+steps are disabled.** Until an index has one, it is exactly what
 `docs/track-record-spec.md` §6 calls a dry run for the operating record: the
 recording pipeline built and running before the thing it would record.
 
-Two independent series, same posture as the operating record (spec §8):
-`trackrecord/record-qrev.jsonl` and `trackrecord/record-qdefi.jsonl`, each
-hash-chained and (once an inception decision exists) anchored on GIWA
-Sepolia — never concatenated with each other or with the operating record.
+Four independent series, same posture as the operating record (spec §8):
+`trackrecord/record-{qrev,qdefi,barbell,triens}.jsonl`, each hash-chained and
+(once an inception decision exists) anchored on GIWA Sepolia — never
+concatenated with each other or with the operating record.
 
 ## What the series is
 
@@ -28,12 +30,15 @@ this stage.
 |---|---|
 | `keeper/rulebooks/qrev.json` | Every qREV parameter as data: universe, eligibility gates, ranking, weighting, issuance definition, reconstitution cadence, tolerance, hysteresis. Mirrors `quadrix/docs/methodology/value-capture.md` with the 2026-09-15 owner decisions applied. |
 | `keeper/rulebooks/qdefi.json` | Same, for qDEFI, mirroring `quadrix/docs/methodology/qdefi.md`. |
+| `keeper/rulebooks/barbell.json` | Every Barbell parameter as data: two sleeves (BTC 60 / working capital 40), quarterly reset, tolerance, the working-capital definition and its paper proxy. `inception: null` — not in force. |
+| `keeper/rulebooks/triens.json` | Same, for Triens: three sleeves (BTC 30 / working capital 40 / Quality 30), the Quality screen including the issuance gate, the empty-seat rule. `inception: null` — not in force. |
+| `keeper/working-capital.mjs` | The working-capital proxy: FRED DTB3 fetch, parse, carry-forward and daily accrual. |
 | `keeper/rulebooks/qrev-protocol-map.json` | The manual protocol-slug → symbol table qREV's rulebook requires (§1: "automatic name-matching is not used"). Copied verbatim from the site repo's `docs/research/qrev/hr-protocols.json`, 2026-09-15 snapshot. |
 | `keeper/supply/registry.json`, `keeper/supply/supply-weekly.json`, `keeper/supply/supply-current.json`, `keeper/supply/README.md` | The on-chain token-supply registry qREV's issuance calculation reads, plus its own README describing how it was built and its known gaps. Copied verbatim from the site repo's `docs/research/qrev/supply/`, 2026-09-15 snapshot. |
-| `keeper/paper-index.mjs` | The keeper itself. `node keeper/paper-index.mjs --index qrev\|qdefi [--dry-run] [--anchor]`. |
+| `keeper/paper-index.mjs` | The keeper itself. `node keeper/paper-index.mjs --index qrev\|qdefi\|barbell\|triens\|qx20 [--dry-run] [--anchor]`. |
 | `keeper/cache/` | Raw API response cache (gitignored). |
 | `keeper/dryrun/` | Local dry-run output — state/record/anchor files with the same shape as production but never written to `trackrecord/` (gitignored going forward; the 2026-09-15 demonstration run in this directory is force-added once for review). |
-| `.github/workflows/paper-index.yml` | **`workflow_dispatch` only — no schedule.** Manual, reviewed runs until an inception decision exists. |
+| `.github/workflows/paper-index.yml` | Daily at 00:25 UTC for qREV, qDEFI and the qX20 basket mark, plus manual dispatch. The Barbell and Triens steps are present but **disabled (`if: false`)** — they go live only after their inception decisions are anchored. One job, one `keeper-key` concurrency group: every step signs with the same key. |
 
 ## The rule set as implemented
 
@@ -107,6 +112,109 @@ this stage.
 - **Reconstitution / tolerance / between-reconstitutions**: identical
   cadence and mechanics to qREV (same calendar dates, same 5-point
   tolerance, same always-cut-above-cap, no drift band).
+
+### Barbell and Triens (sleeve indexes, 2026-09-22)
+
+**Neither is in force.** Both rulebooks are drafts in the site repo, `inception`
+is `null` in both JSONs, and their steps in `.github/workflows/paper-index.yml`
+are disabled (`if: false`). Nothing is appended to `trackrecord/` for either
+index until an owner decision anchors an inception date, one per index.
+
+These two do not hold one ranked basket. They hold **sleeves**:
+
+| | Barbell | Triens |
+|---|---|---|
+| Monetary | BTC 60% | BTC 30% |
+| Working capital | 40% | 40% (+ empty seats) |
+| Quality | — | 30% |
+
+- **The monetary sleeve is a list, not a screen.** BTC alone. Changing the
+  list is a rule change, not a data refresh.
+- **Quality (Triens only)** is the qREV universe run through a different
+  question. Same manual protocol map, same DefiLlama holder-revenue series,
+  same supply registry with the same CoinGecko fallback, same market data,
+  same rank buffer (8/13), same two-quarter exit hysteresis, same 2% floor and
+  35% cap — one function, `evaluateRevenueUniverse`, serves both legs. Two
+  things differ, and they are the product: (1) the trailing-12m ratio
+  issuance ÷ holder revenue is a **gate** at θ = 1, where qREV lets the same
+  number net the weight and keeps the name at the floor; a name whose issuance
+  cannot be measured **fails** the gate rather than passing unverified; and
+  (2) ranking is by **net revenue, descending** — there is no valuation
+  ranking, because "is it cheap" is not a rule in this product.
+- **Empty seats go to working capital.** Each of the ten Quality seats is 1/10
+  of the sleeve. Eight eligible names means a 24% Quality sleeve and a 46%
+  working-capital sleeve, and the record line carries `seatsFilled`,
+  `seatsTarget` and `emptySeats` so the reader never has to infer it.
+- **Reconstitution** is quarterly, the same day as qREV and qDEFI. Sleeves
+  reset to target unless **every** sleeve is within 5 percentage points of its
+  target, in which case nothing moves between sleeves. Inside the Quality
+  sleeve the qREV per-name rule applies to sleeve-internal weights, with the
+  cap always cut. No drift band, no conditional switch, no overlay.
+- **Between reconstitutions** the book is only marked. Interest accrued in
+  working capital stays in that sleeve and is redistributed only at the
+  quarterly reset — which is what the backtest did.
+
+#### The working-capital proxy, and why the record says `wcProxy`
+
+The sleeve's rule is fiat-backed, fully-reserved stablecoins with a published
+issuer attestation; interest-bearing forms are allowed. **No such asset is
+canonical on GIWA yet**, and the name list is itself an undecided item. The
+paper record therefore cannot hold the sleeve's real assets, and it does not
+pretend to: it holds a synthetic $1 unit that accrues the 3-month Treasury
+bill rate daily,
+
+```
+unitValue *= (1 + DTB3/100) ** (1/365)      once per calendar day
+```
+
+with FRED's last published print carried forward on days FRED does not publish
+(weekends, holidays, and its two-to-three-day lag). Source: FRED `DTB3`, daily
+CSV, cached under `keeper/cache/`. Every record line carries
+`wcProxy: "DTB3"`, and the sleeve block carries the rate used, the date it was
+published, the accrued unit value and how many days were accrued.
+
+It is the same assumption the research ran on, which is the reason to use it
+rather than a zero-yield dollar. What it does **not** carry: the issuer's cut
+of the bill yield, redemption risk, depeg, and any on-chain yield that is not
+the bill. The real sleeve will differ by all of them. A same-day re-run accrues
+nothing (the accrual window is exclusive of the last accrual date), so running
+the keeper twice in one day cannot pay interest twice.
+
+One parsing trap, recorded because it was live for an hour: FRED writes an
+**empty** value field for a date with no print (800 of 18,970 rows in the
+2026-09-21 download), and `Number('')` is `0` in JavaScript. Read naively, the
+sleeve silently earns nothing on every holiday. `parseDTB3` drops empty fields;
+the accrual was then checked against an independent computation of the same
+series over the same window before it was believed.
+
+#### Prices, and a missing price
+
+BTC and the Quality names are marked from the same CoinGecko `coins/markets`
+snapshot the other legs use — no new price source was added. A held name with
+no price today is marked at its last known price for at most **three**
+consecutive runs; on the fourth the run fails and writes nothing, rather than
+publishing a level built on a price nobody has seen in four days.
+
+#### Open, found by running it
+
+- **`census_status: "incomplete"` in the supply registry.** Some symbols in
+  `keeper/supply/registry.json` never had their control-address census
+  finished, so their weekly series is total supply, flat, and measured issuance
+  comes out as zero. The research engine skips those symbols and falls back to
+  market-data supply; the keeper's shared issuance path (written for qREV,
+  where issuance only nets a weight) does not check the field. For Triens,
+  where the same number is a gate, this is the difference between a name
+  passing and failing — LINK on 2026-09-21 is exactly that case. Left
+  unchanged on purpose: the fix is in the shared qREV path and moves qREV's
+  weights too, so it is a rule decision, not an implementation detail.
+- **The 5-point tolerance at the sleeve level** is this keeper's reading of
+  the rulebooks' §6. The backtests reset sleeve weights exactly every quarter
+  and applied their 5-point tolerance to whole-portfolio name weights instead.
+  Both rulebook JSONs carry the divergence in
+  `reconstitution.tolerance.divergenceFromBacktest`.
+- **RENDER** is in the copied protocol map with no ticker (`sym: "-"`), so it
+  never enters the universe — the same known map gap listed further down, not
+  a screen result.
 
 ## Data sources and fallbacks
 
@@ -251,6 +359,8 @@ node keeper/paper-index.mjs --index qrev  --dry-run   # writes keeper/dryrun/
 node keeper/paper-index.mjs --index qdefi --dry-run
 node keeper/paper-index.mjs --index qrev              # writes trackrecord/
 KEEPER_PK=0x... node keeper/paper-index.mjs --index qrev --anchor
+node keeper/paper-index.mjs --index barbell --dry-run  # sleeve index, dry run only for now
+node keeper/paper-index.mjs --index triens  --dry-run
 node keeper/paper-index.mjs --index qx20 --dry-run    # basket leg only, from keeper/state.json
 KEEPER_PK=0x... node keeper/paper-index.mjs --index qx20   # posts the qX20 basket's marks (once basket.vault is set)
 ```
