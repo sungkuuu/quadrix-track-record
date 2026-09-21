@@ -1080,11 +1080,22 @@ async function main() {
       const account = privateKeyToAccount(pk);
       const wallet = createWalletClient({ account, chain: giwaSepolia, transport: http() });
       const publicClient = createPublicClient({ chain: giwaSepolia, transport: http() });
-      const hash = await wallet.sendTransaction({
-        to: account.address,
-        value: 0n,
-        data: toHex(`qxpi-${INDEX}:` + record.hash),
-      });
+      // Shared key across crons and the desk: on a nonce race, wait and resend
+      // (viem refetches the nonce per call); anything else is rethrown.
+      let hash;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          hash = await wallet.sendTransaction({
+            to: account.address,
+            value: 0n,
+            data: toHex(`qxpi-${INDEX}:` + record.hash),
+          });
+          break;
+        } catch (e) {
+          if (attempt >= 4 || !/nonce/i.test(String(e && e.message))) throw e;
+          await new Promise((r) => setTimeout(r, 4000 * (attempt + 1)));
+        }
+      }
       await publicClient.waitForTransactionReceipt({ hash });
       fs.appendFileSync(ANCHORS_PATH, JSON.stringify({ date: dateStr, seq: record.seq, headHash: record.hash, txHash: hash }) + '\n');
       console.log(`anchored on GIWA Sepolia: ${hash}`);

@@ -21,7 +21,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: keeper
+  group: keeper-key
   cancel-in-progress: false
 
 jobs:

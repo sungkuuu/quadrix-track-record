@@ -113,6 +113,21 @@ function log(index, msg) {
  * @param {string} args.keeperDir        where pending-registry-{index}.json goes
  * @param {string} args.date             YYYY-MM-DD
  */
+/** The keeper key is shared by three crons and the site's desk, so two
+ *  senders can race for the same nonce. viem fetches the nonce per call, so
+ *  a short wait and a resend is the whole fix; anything else is rethrown. */
+async function sendNonceSafe(fn, tries = 5) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try { return await fn(); } catch (e) {
+      last = e;
+      if (!/nonce/i.test(String(e && e.message))) throw e;
+      await new Promise((r) => setTimeout(r, 4000 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
 export async function markBasket(args) {
   const { index, basket, level, navBase, prices, members, reconstituted, dryRun, keeperDir, date } = args;
   if (!basket || !basket.vault) {
@@ -147,7 +162,7 @@ export async function markBasket(args) {
       log(index, `  would setNav(${step}) [${fmt6(step)}]`);
       continue;
     }
-    const hash = await wallet.writeContract({ address: vault, abi: VAULT_ABI, functionName: 'setNav', args: [step] });
+    const hash = await sendNonceSafe(() => wallet.writeContract({ address: vault, abi: VAULT_ABI, functionName: 'setNav', args: [step] }));
     await publicClient.waitForTransactionReceipt({ hash });
     posted.nav.push({ nav: step.toString(), txHash: hash });
     log(index, `  setNav(${step}) [${fmt6(step)}] tx=${hash}`);
@@ -176,9 +191,9 @@ export async function markBasket(args) {
         log(index, `  would setRefPrice(${a.address}, ${step})`);
         continue;
       }
-      const hash = await wallet.writeContract({
+      const hash = await sendNonceSafe(() => wallet.writeContract({
         address: vault, abi: VAULT_ABI, functionName: 'setRefPrice', args: [a.address, step],
-      });
+      }));
       await publicClient.waitForTransactionReceipt({ hash });
       posted.ref[a.symbol].push({ price: step.toString(), txHash: hash });
       log(index, `  setRefPrice(${a.symbol}, ${step}) tx=${hash}`);

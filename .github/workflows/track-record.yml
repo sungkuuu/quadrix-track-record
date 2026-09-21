@@ -10,7 +10,7 @@ permissions:
   issues: write # failure alert, keeper-style
 
 concurrency:
-  group: track-record
+  group: keeper-key
   cancel-in-progress: false
 
 jobs:

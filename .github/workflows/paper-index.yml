@@ -13,7 +13,7 @@ permissions:
   issues: write # failure alert, same pattern as track-record.yml
 
 concurrency:
-  group: paper-index
+  group: keeper-key
   cancel-in-progress: false
 
 jobs:
@@ -41,6 +41,13 @@ jobs:
         run: |
           set -o pipefail
           node keeper/paper-index.mjs --index qdefi --anchor 2>&1 | tee pi-qdefi.log
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
+      - name: qX20 — mark the basket vault from keeper/state.json (no record append)
+        run: |
+          set -o pipefail
+          node keeper/paper-index.mjs --index qx20 2>&1 | tee pi-qx20.log
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 

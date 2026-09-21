@@ -16,7 +16,7 @@ permissions:
   contents: write # appends trackrecord/decisions.jsonl to main
 
 concurrency:
-  group: anchor-decision
+  group: keeper-key
   cancel-in-progress: false
 
 jobs:
