@@ -50,6 +50,7 @@ import { fileURLToPath } from 'node:url';
 import { createWalletClient, createPublicClient, http, defineChain, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { markBasket } from './basket-mark.mjs';
+import { rankingFor } from './rulebook-schedule.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -532,6 +533,11 @@ function listingAgeDays(mkt, dateStr) {
 
 async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
   const rb = RULEBOOK;
+  const ranking = rankingFor(rb, dateStr); // targetCount / rank buffer as they stand on dateStr (dated decisions in ranking.scheduled)
+  console.log(
+    `  ranking parameters for ${dateStr}: targetCount ${ranking.targetCount}, rank buffer enter ≤ ${ranking.rankBuffer.entryMaxRank} / exit > ${ranking.rankBuffer.exitMinRank}` +
+      (ranking.appliedSchedule ? ` (scheduled change ${ranking.appliedSchedule.decision ?? ''} effective ${ranking.appliedSchedule.effectiveFrom})` : ' (base rulebook values)')
+  );
   const supplyRegistry = JSON.parse(fs.readFileSync(path.join(HERE, 'supply', 'registry.json'), 'utf8'));
   const supplyWeeklyRaw = JSON.parse(fs.readFileSync(path.join(HERE, 'supply', 'supply-weekly.json'), 'utf8'));
   const supplyWeekly = {};
@@ -615,9 +621,9 @@ async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
   const kept = bufferedMembership(
     eligibleRanked.map((e) => ({ symbol: e.symbol })),
     incumbents,
-    rb.ranking.rankBuffer.entryMaxRank,
-    rb.ranking.rankBuffer.exitMinRank,
-    rb.ranking.targetCount
+    ranking.rankBuffer.entryMaxRank,
+    ranking.rankBuffer.exitMinRank,
+    ranking.targetCount
   );
 
   // Exit hysteresis: an incumbent NOT retained by the buffer above (failed a
@@ -640,9 +646,9 @@ async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
     finalMembers.add(sym);
     nextOnNotice.add(sym);
   }
-  if (finalMembers.size < rb.ranking.targetCount) {
+  if (finalMembers.size < ranking.targetCount) {
     console.log(
-      `  universe short: ${finalMembers.size} member(s) vs target ${rb.ranking.targetCount} ` +
+      `  universe short: ${finalMembers.size} member(s) vs target ${ranking.targetCount} ` +
         `(${eligibleRanked.length} eligible this run) — rulebook §12 applies, held as-is`
     );
   }
@@ -751,12 +757,13 @@ async function computeQdefiMembers(dateStr, markets, incumbents) {
   }
 
   const eligibleRanked = evaluated.filter((e) => e.eligible).sort((a, b) => b.marketCap - a.marketCap);
+  const ranking = rankingFor(rb, dateStr); // same dated-parameter resolution as qREV; qDEFI has no scheduled entry today
   const kept = bufferedMembership(
     eligibleRanked.map((e) => ({ symbol: e.symbol })),
     incumbents,
-    rb.ranking.rankBuffer.entryMaxRank,
-    rb.ranking.rankBuffer.exitMinRank,
-    rb.ranking.targetCount
+    ranking.rankBuffer.entryMaxRank,
+    ranking.rankBuffer.exitMinRank,
+    ranking.targetCount
   );
   // No hysteresis for qDEFI (rulebook: exitHysteresis.enabled = false).
   const memberRows = kept.map((sym) => evaluated.find((e) => e.symbol === sym)).filter(Boolean);

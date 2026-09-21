@@ -2,13 +2,13 @@
   "ticker": "qREV",
   "name": "Revenue Index",
   "kind": "paper-index",
-  "status": "in force since 2026-09-16 — rules-only paper index, no vault; inception anchored (see decisions.jsonl)",
-  "asOf": "2026-09-15",
+  "status": "in force since 2026-09-16 — rules-only paper index with a testnet basket; inception anchored (see decisions.jsonl). Fifteen names from the 2026-10-01 reconstitution (ranking.scheduled, decision 2026-09-21-qrev-fifteen-names); ten until then.",
+  "asOf": "2026-09-21",
   "source": {
     "rulebook": "quadrix/docs/methodology/value-capture.md (site repo, private)",
     "backtestHarness": "quadrix/docs/research/qrev/qrev-backtest.py",
     "ownerDecisionDate": "2026-09-15",
-    "note": "Owner decisions of 2026-09-15 supersede earlier rulebook draft text where they differ. This file is the implemented parameter set; the prose rulebook is the narrative record of why."
+    "note": "Owner decisions of 2026-09-15 supersede earlier rulebook draft text where they differ; the owner decision of 2026-09-21 (rulebook D23: fifteen names from 2026-10-01) is carried as a dated entry in ranking.scheduled so the keeper needs no edit on the day. This file is the implemented parameter set; the prose rulebook is the narrative record of why."
   },
   "universe": {
     "definition": "protocol tokens with a DefiLlama dailyHoldersRevenue adapter, plus chain-native tokens whose trailing-12-month burn exceeds the value of new issuance over the same period",
@@ -45,12 +45,24 @@
     "rankBuffer": {
       "entryMaxRank": 8,
       "exitMinRank": 13,
-      "note": "an incumbent is kept while its rank is <= exitMinRank; an outsider is force-added only at rank <= entryMaxRank; seats are filled to targetCount by best remaining rank"
-    }
+      "note": "an incumbent is kept while its rank is <= exitMinRank; an outsider is force-added only at rank <= entryMaxRank; seats are filled to targetCount by best remaining rank. The buffer scales with targetCount as floor(0.85 N) to enter and ceil(1.25 N) to stay (the backtest's rounding, qrev-backtest.py in_buf/out_buf): 8/13 at N=10, 12/19 at N=15."
+    },
+    "scheduled": [
+      {
+        "effectiveFrom": "2026-10-01",
+        "decision": "2026-09-21-qrev-fifteen-names",
+        "targetCount": 15,
+        "rankBuffer": {
+          "entryMaxRank": 12,
+          "exitMinRank": 19
+        },
+        "note": "Owner 2026-09-21 (rulebook D23): fifteen names, rank buffer floor(0.85×15)=12 / ceil(1.25×15)=19, market-cap floor $150M and everything else unchanged. Resolved by keeper/rulebook-schedule.mjs rankingFor(rulebook, date): applies at the first reconstitution on or after this date (the 2026-10-01 quarterly run); every run before it — the daily marks and any re-run — uses the base values above, so the record keeps the ten members selected 2026-09-16 until then. Basis: the point-in-time parameter grid (site repo public/methodology/qrev/qrev-parameter-grid.csv, row Q·6M·N15·$150M) — a diversification choice, not a return claim; the shuffled-weights resample cannot separate the two rules."
+      }
+    ]
   },
   "exitHysteresis": {
     "enabled": true,
-    "description": "an incumbent that fails an eligibility gate, or whose rank falls below exitMinRank (i.e. > 13), is not removed immediately. It is kept for one further quarter (weighted by the normal rule, using whatever data is available), flagged 'onNotice'. It is removed only if it fails again (a gate failure or rank > 13) at the following reconstitution — two consecutive failures to exit."
+    "description": "an incumbent that fails an eligibility gate, or whose rank falls below exitMinRank (> 13 at ten names, > 19 at fifteen), is not removed immediately. It is kept for one further quarter (weighted by the normal rule, using whatever data is available), flagged 'onNotice'. It is removed only if it fails again (a gate failure or rank > exitMinRank) at the following reconstitution — two consecutive failures to exit."
   },
   "weighting": {
     "method": "net-revenue-proportional",
