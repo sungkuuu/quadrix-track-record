@@ -1416,9 +1416,29 @@ async function runSleeveIndex() {
   const prevRecord = lastLine(RECORDS_PATH);
 
   if (!DRY_RUN && prevRecord && prevRecord.date >= dateStr) {
-    // No basket vault exists for these indexes (and cannot while GIWA carries
-    // no canonical BTC), so unlike qREV there is nothing left to re-post.
     console.log(`${INDEX}: record for ${dateStr} already exists (append-only — not rewritten)`);
+    // Same re-post path as the ranked indexes (2026-09-22, testnet baskets for
+    // the sleeve indexes): a re-run after a deploy or a failed chain leg marks
+    // the basket from the state the earlier run left, without touching the
+    // record. Working capital is one registry asset, symbol WC, priced at the
+    // sleeve's unit value.
+    const st = fs.existsSync(STATE_PATH) ? JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')) : null;
+    if (st?.sleeves && RULEBOOK.basket?.vault) {
+      const mk = await fetchCoinGeckoMarketsTop500(dateStr);
+      const px = Object.fromEntries([...bySymbol(mk).entries()].map(([s, m]) => [s, m.price]));
+      const btcSym = rb.sleeves.monetary.assets[0];
+      const wcSt = st.sleeves.workingCapital ?? {};
+      px.WC = wcSt.unitValue ?? 1;
+      const qUnitsSt = st.sleeves.quality?.units ?? {};
+      let lv = (st.sleeves.monetary?.units?.[btcSym] ?? 0) * (px[btcSym] ?? 0) + (wcSt.units ?? 0) * px.WC;
+      for (const [sym, u] of Object.entries(qUnitsSt)) if (px[sym] > 0) lv += u * px[sym];
+      await markBasket({
+        index: INDEX, basket: RULEBOOK.basket, level: lv || st.level,
+        navBase: RULEBOOK.basket.navBase ?? RULEBOOK.genesisLevel, prices: px,
+        members: [btcSym, 'WC', ...Object.keys(qUnitsSt)], reconstituted: prevRecord.reconstituted === true,
+        dryRun: DRY_RUN, keeperDir: HERE, date: dateStr,
+      });
+    }
     return;
   }
 
@@ -1700,14 +1720,15 @@ async function runSleeveIndex() {
     );
   }
 
-  // No basket vault exists for either sleeve index; this call is the same
-  // no-op path every index takes when basket.vault is null.
+  // Basket marks (testnet baskets from 2026-09-22; a no-op while
+  // basket.vault is null). The working-capital sleeve is one registry asset,
+  // symbol WC, whose reference price is the sleeve's unit value.
   await markBasket({
     index: INDEX,
     basket: RULEBOOK.basket,
     level,
     navBase: RULEBOOK.basket?.navBase ?? RULEBOOK.genesisLevel,
-    prices: priceAll,
+    prices: { ...priceAll, WC: wcUnitValue },
     members: members.map((m) => m.symbol),
     reconstituted,
     dryRun: DRY_RUN,
