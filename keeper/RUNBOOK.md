@@ -259,7 +259,8 @@ with three additions specific to this leg:
 - Before step 1, close the open items the keeper is currently resolving by
   reading the rulebook one way rather than the other — they are listed in
   `docs/paper-index.md` under "qAI … open, found by running it". The bucket-table
-  coverage question (§8/D6) is the one that can change membership.
+  coverage question (§8/D6) is the one that can change membership. D5 (listing
+  date) was closed on 2026-09-22 in favour of CoinMarketCap's `dateAdded`.
 - The classification sources have **no fallback**. Watch the first scheduled
   run's `sources:` line; a run that cannot reach either source writes no
   record for that day, and a missing day is never backfilled.
@@ -271,7 +272,9 @@ with three additions specific to this leg:
 | `CoinMarketCap listing returned no rows` | the tag source answered but with nothing usable — membership cannot be decided | nothing on the day: the run fails and writes no record. If it repeats across a reconstitution the membership is frozen at the last one (qai.md §8); two quarters of that is a §12 question for the owner, not an operator fix. |
 | `HTTP 4xx/5xx for https://api.coinmarketcap.com/...` | same, from the other side | as above. There is no API key to rotate — the endpoint is public and unauthenticated. |
 | `§12-1 WATCH: only N eligible name(s)` | fewer than 5 names cleared both sources and all three gates | nothing operational — the level is recorded as-is and the empty seats sit in cash. It is a signal for the owner: on that quarter the rule says the product would not be launched. |
-| `seats 7/10 filled … cash 0.00%` | normal for a thin category | expected. Empty seats do **not** by themselves create cash — the weights normalise across the names that are there. Cash appears only when the hard cap has a residue with nowhere to go, or when nothing at all is eligible (then 100%). |
+| `seats 7/10 filled … cash 0.00%` | normal for a thin category | expected. Empty seats do **not** by themselves create cash — the weights renormalise across the names that are there. Cash appears only when the caps leave weight with nowhere to go, or when nothing at all is eligible (then 100%). |
+| `cmcMcap=…=disagrees` on a member | the two sources' market caps differ by 2× or more | nothing operational. The gate is on CoinGecko, the house source; both numbers are in the record so the disagreement is auditable. It is an open rulebook item, not a rule the keeper applies. |
+| `age=…d(ath-atl-proxy)` on a member | CoinMarketCap had no `dateAdded` for that name, so the fallback proxy decided its age | check the name by hand before a reconstitution acts on it — the proxy is wrong for anything whose all-time high or low is recent. |
 | a member's market cap jumps between the ledger line and the basket line | the ledger prints the CoinGecko *category* row, the basket prints whichever row won the daily price map | both are CoinGecko; the two endpoints are snapshotted at different moments. Only the basket line feeds the record. |
 
 ### What can go wrong in these two specifically

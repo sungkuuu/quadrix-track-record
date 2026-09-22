@@ -928,12 +928,18 @@ const CASH_SYM = '__CASH__';
  *  can pass — but the count is logged every run so a shrinking window is
  *  visible before it bites.
  *
+ *  It returns three things per symbol: the tags, the listing's own
+ *  `dateAdded` (this leg's listing date — see qaiListingAge) and CMC's market
+ *  cap, which is recorded beside CoinGecko's so a disagreement between the
+ *  two is visible in the record rather than only in whichever screen someone
+ *  happens to open. CMC's cap never gates anything.
+ *
  *  FAILURE MODE (rulebook §8): no fallback. If this throws, the run throws,
  *  no record is written for the day, and a missing day is never backfilled —
  *  which is what "membership is frozen" means for a source that decides
  *  membership. Two quarters of that is a §12 condition for the owner. */
-async function fetchCmcTagMap(dateKey) {
-  const key = `cmc-listing-tags-${dateKey}.json`;
+async function fetchCmcListing(dateKey) {
+  const key = `cmc-listing-${dateKey}.json`;
   const cached = cacheGet(key, DAY);
   if (cached) return new Map(Object.entries(cached));
   const url =
@@ -948,10 +954,36 @@ async function fetchCmcTagMap(dateKey) {
   for (const c of list) {
     const sym = String(c.symbol || '').toUpperCase();
     if (!sym || out[sym]) continue; // highest-cap listing per symbol wins, as on the CoinGecko side
-    out[sym] = c.tags || [];
+    out[sym] = {
+      tags: c.tags || [],
+      // The listing RECORD's own date — the day the asset was first listed —
+      // not an inference from where its high or low happens to sit.
+      dateAdded: typeof c.dateAdded === 'string' ? c.dateAdded.slice(0, 10) : null,
+      marketCap: c.quotes?.[0]?.marketCap ?? null,
+    };
   }
   cacheSet(key, out);
   return new Map(Object.entries(out));
+}
+
+/** Listing age for qAI only (owner 2026-09-22, closing qai.md appendix B D5).
+ *  The house convention elsewhere in this file is the earlier of a name's ath
+ *  and atl date, which is a PROXY and fails for any name whose all-time high
+ *  or low is recent: measured on 2026-09-22 it read VVV at 295 days against a
+ *  listing of 2025-01-28, and AKE at 73 against 2025-08-19. CoinMarketCap's
+ *  `dateAdded` is the listing record itself, so this leg uses it and falls
+ *  back to the proxy only when it is missing. The member row carries
+ *  `listingSource` so which one was used is never a guess. The other legs are
+ *  deliberately untouched — changing their age rule would change their
+ *  baskets, and that is a different decision. */
+function qaiListingAge(coin, cmcRow, dateStr) {
+  const added = cmcRow?.dateAdded;
+  if (added && /^\d{4}-\d{2}-\d{2}$/.test(added)) {
+    const days = (Date.parse(dateStr + 'T00:00:00Z') - Date.parse(added + 'T00:00:00Z')) / 86_400_000;
+    if (Number.isFinite(days)) return { days, source: 'cmc-date-added' };
+  }
+  const proxy = listingAgeDays(coin, dateStr);
+  return { days: proxy, source: proxy == null ? 'unavailable' : 'ath-atl-proxy' };
 }
 
 /** Tag-priority bucket, used ONLY for a symbol the disclosure table does not
@@ -1016,8 +1048,8 @@ async function computeQaiMembers(dateStr, incumbents) {
   for (const cat of rb.universe.coingeckoCategories) {
     cgRows.push(...(await fetchCoinGeckoCategory(cat, dateStr)));
   }
-  const cmcTags = await fetchCmcTagMap(dateStr);
-  console.log(`  sources: CoinGecko AI categories ${cgRows.length} rows (${rb.universe.coingeckoCategories.join(' + ')}), CoinMarketCap tagged listings ${cmcTags.size}`);
+  const cmcRows = await fetchCmcListing(dateStr);
+  console.log(`  sources: CoinGecko AI categories ${cgRows.length} rows (${rb.universe.coingeckoCategories.join(' + ')}), CoinMarketCap listings ${cmcRows.size}`);
 
   const AI_TAGS = new Set(rb.universe.cmcAiTags);
   const chainTag = rb.universe.chainRule.tag;
@@ -1031,8 +1063,9 @@ async function computeQaiMembers(dateStr, incumbents) {
     seen.add(coin.symbol);
     if (QX20_EXCLUDE.has(coin.symbol)) continue;
 
-    const tags = cmcTags.get(coin.symbol);
-    if (!tags) continue; // not in CMC's top 1000 at all — the intersection cannot be satisfied
+    const cmcRow = cmcRows.get(coin.symbol);
+    if (!cmcRow) continue; // not in CMC's top 1000 at all — the intersection cannot be satisfied
+    const tags = cmcRow.tags;
     const matched = [...AI_TAGS].filter((t) => tags.includes(t));
     if (matched.length === 0) continue; // CoinGecko says AI, CoinMarketCap does not — out (§1)
 
@@ -1047,18 +1080,28 @@ async function computeQaiMembers(dateStr, incumbents) {
     }
 
     const gate = {};
+    // The gate is on CoinGecko's market cap — the house source — and stays
+    // there even when CMC's number disagrees. The disagreement is RECORDED,
+    // not acted on: it is an open item in the rulebook, not a second gate.
     gate.mcapOk = (coin.marketCap ?? 0) >= rb.eligibility.minCirculatingMarketCapUSD;
     gate.volOk = (coin.volume24h ?? 0) >= rb.eligibility.minVolume24hUSD;
-    const age = listingAgeDays(coin, dateStr);
-    gate.ageOk = age == null ? false : age >= rb.eligibility.minListingAgeDays;
+    const age = qaiListingAge(coin, cmcRow, dateStr);
+    gate.ageOk = age.days == null ? false : age.days >= rb.eligibility.minListingAgeDays;
     const eligible = gate.mcapOk && gate.volOk && gate.ageOk;
+
+    const cgCap = coin.marketCap ?? null;
+    const cmcCap = cmcRow.marketCap ?? null;
+    const ratio = cgCap > 0 && cmcCap > 0 ? Math.max(cgCap / cmcCap, cmcCap / cgCap) : null;
 
     evaluated.push({
       symbol: coin.symbol,
       price: coin.price,
-      marketCap: coin.marketCap,
+      marketCap: cgCap,
+      marketCapCmc: cmcCap,
+      capDisagreement: ratio != null && ratio >= rb.eligibility.capDisagreementRatio,
       volume24h: coin.volume24h,
-      listingAgeDays: age == null ? null : Math.round(age),
+      listingAgeDays: age.days == null ? null : Math.round(age.days),
+      listingSource: age.source,
       tagsMatched: matched,
       ...qaiDisclosure(coin.symbol, tags),
       gate,
@@ -1086,7 +1129,7 @@ async function computeQaiMembers(dateStr, incumbents) {
     evaluated,
     eligibleCount: eligibleRanked.length,
     emptySeats,
-    sourceStats: { coingeckoAiCategoryRows: cgRows.length, cmcTaggedListings: cmcTags.size, evaluated: evaluated.length, eligible: eligibleRanked.length },
+    sourceStats: { coingeckoAiCategoryRows: cgRows.length, cmcListings: cmcRows.size, evaluated: evaluated.length, eligible: eligibleRanked.length },
   };
 }
 
@@ -1097,8 +1140,8 @@ function printQaiLedger(evaluated, finalMembers, chainDropped) {
     const failed = Object.entries(e.gate).filter(([, ok]) => !ok).map(([k]) => k);
     const tag = finalMembers.has(e.symbol) ? 'IN ' : failed.length ? 'OUT' : 'buf';
     console.log(
-      `  [${tag}] ${e.symbol.padEnd(9)} mcap=${Math.round(e.marketCap ?? 0)} vol24h=${Math.round(e.volume24h ?? 0)} ` +
-        `age=${e.listingAgeDays ?? '—'}d bucket=${e.bucket}(${e.bucketSource}) chain=${e.originChain} giwa=${e.holdableOnGiwa} ` +
+      `  [${tag}] ${e.symbol.padEnd(9)} mcap=${Math.round(e.marketCap ?? 0)}${e.capDisagreement ? `/cmc=${Math.round(e.marketCapCmc ?? 0)}!` : ''} vol24h=${Math.round(e.volume24h ?? 0)} ` +
+        `age=${e.listingAgeDays ?? '—'}d(${e.listingSource}) bucket=${e.bucket}(${e.bucketSource}) chain=${e.originChain} giwa=${e.holdableOnGiwa} ` +
         `tags=${e.tagsMatched.join('+')}` +
         (failed.length ? `  FAILED: ${failed.join(',')}` : '')
     );
@@ -1815,7 +1858,17 @@ async function main() {
       const invested = weights.reduce((t, w) => t + w.weight, 0);
       const cashFrac = Math.max(0, 1 - invested);
       qaiMeta = Object.fromEntries(
-        memberRows.map((m) => [m.symbol, { bucket: m.bucket, bucketSource: m.bucketSource, originChain: m.originChain, holdableOnGiwa: m.holdableOnGiwa }])
+        memberRows.map((m) => [
+          m.symbol,
+          {
+            bucket: m.bucket,
+            bucketSource: m.bucketSource,
+            originChain: m.originChain,
+            holdableOnGiwa: m.holdableOnGiwa,
+            listingSource: m.listingSource,
+            capDisagreement: m.capDisagreement === true,
+          },
+        ])
       );
       console.log(
         `  seats ${memberRows.length}/${RULEBOOK.ranking.targetCount} filled (${res.eligibleCount} eligible, ` +
@@ -1856,6 +1909,10 @@ async function main() {
       const out = { symbol: w.symbol, weight: Math.round(w.weight * 10000) / 10000, price: priceNow[w.symbol] ?? null, marketCap: row.marketCap ?? null };
       if (INDEX === 'qai' && w.symbol !== CASH_SYM) {
         out.volume24h = row.volume24h ?? null;
+        out.marketCapCmc = row.marketCapCmc ?? null;
+        out.capDisagreement = row.capDisagreement === true;
+        out.listingAgeDays = row.listingAgeDays ?? null;
+        out.listingSource = row.listingSource ?? null;
         out.bucket = row.bucket ?? null;
         out.bucketSource = row.bucketSource ?? null;
         out.originChain = row.originChain ?? null;
@@ -1888,6 +1945,12 @@ async function main() {
       if (INDEX === 'qai' && sym !== CASH_SYM) {
         out.volume24h = marketsBySym.get(sym)?.volume24h ?? null;
         const meta = qaiMeta[sym] ?? {};
+        // Carried from the last reconstitution: membership (and therefore the
+        // classification read behind these) is frozen between reconstitutions.
+        out.capDisagreement = meta.capDisagreement === true;
+        out.listingSource = meta.listingSource ?? '미확인';
+        out.marketCapCmc = null; // not re-read on a mark day
+        out.listingAgeDays = null;
         out.bucket = meta.bucket ?? '미확인';
         out.bucketSource = meta.bucketSource ?? '미확인';
         out.originChain = meta.originChain ?? '미확인';
@@ -1950,7 +2013,14 @@ async function main() {
     const extra = INDEX === 'qrev' ? ` P/HR=${m.phr ?? '—'} netRev12m=${m.netRevenue12m ?? '—'} issuance12m=${m.issuance12m ?? '—'} (${m.issuanceSource ?? '—'})` : '';
     const qai =
       INDEX === 'qai'
-        ? ` vol24h=${m.volume24h ?? '—'} bucket=${m.bucket ?? '—'}(${m.bucketSource ?? '—'}) chain=${m.originChain ?? '—'} giwa=${m.holdableOnGiwa ?? '—'}`
+        ? ` vol24h=${m.volume24h ?? '—'}` +
+          (m.capDisagreement ? ` cmcMcap${m.marketCapCmc != null ? `=${Math.round(m.marketCapCmc)}` : ''}=disagrees` : '') +
+          // Age and CMC's cap are measured at a reconstitution; a mark-to-market
+          // day does not re-read the classification sources (membership is
+          // frozen), so they are simply not printed rather than printed as a
+          // dash that would read as missing data.
+          (m.listingAgeDays != null ? ` age=${m.listingAgeDays}d(${m.listingSource ?? '—'})` : '') +
+          ` bucket=${m.bucket ?? '—'}(${m.bucketSource ?? '—'}) chain=${m.originChain ?? '—'} giwa=${m.holdableOnGiwa ?? '—'}`
         : '';
     console.log(`  ${m.symbol.padEnd(8)} ${((m.weight ?? 0) * 100).toFixed(1).padStart(5)}%  mcap=${m.marketCap ?? '—'}${extra}${qai}`);
   }

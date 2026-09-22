@@ -164,8 +164,15 @@ qDEFI's "chains out, one named exception". On 2026-09-22 this keeps TAO
 (`layer-1` + `generative-ai`) and removes NEAR and ICP, which carry `layer-1`
 and `ai-big-data` and nothing else from the AI family.
 
-**Eligibility**: market cap ≥ $150M, 24h volume ≥ $10M, listing age ≥ 365 days
-(the same ath/atl proxy qREV and qDEFI use). **Ranking**: market cap,
+**Eligibility**: market cap ≥ $150M, 24h volume ≥ $10M, listing age ≥ 365
+days. Listing age here is **CoinMarketCap's `dateAdded`** from the same call
+that supplies the tags — the listing record itself, not the earlier-of-ath/atl
+proxy the other legs use, which breaks for any name whose high or low is
+recent (measured 2026-09-22: it read VVV at 295 days against a listing of
+2025-01-28, and AKE at 73 against 2025-08-19). The proxy remains the fallback
+when `dateAdded` is missing, and every member row carries `listingSource` so
+which one was used is never a guess. The other legs are unchanged on purpose.
+**Ranking**: market cap,
 descending, N = 10, rank buffer kept while rank ≤ 13 and forced in at rank ≤ 8,
 no exit hysteresis. **Weighting**: market-cap proportional with a 35%
 single-name cap. **Reconstitution**: quarterly, same calendar dates and the
@@ -178,10 +185,12 @@ DTB3 proxy). Cash rides inside the unit book as `__CASH__` at price 1, so the
 tolerance test and the daily mark treat it as one more position; the record
 reports it as a top-level `cashWeight` beside `eligibleCount` and `emptySeats`.
 Note what that does **not** say: an empty seat does not by itself create cash,
-because the weights normalise across the names that are actually there. Cash
-appears when the cap has nowhere to put a residue, or when nothing is eligible
-at all — the backtest's 2023-Q1 quarter had zero eligible names and is recorded
-as 100% cash, not as a missing day.
+because the weights renormalise across the names that are actually there
+(owner 2026-09-22) — `emptySeats` is recorded as a count beside the level, not
+converted into a cash weight. Cash appears when the caps leave weight with
+nowhere to go, or when nothing is eligible at all — the backtest's 2023-Q1
+quarter had zero eligible names and is recorded as 100% cash, not as a missing
+day.
 
 **Buckets are disclosure, never a rule.** Every member row carries `bucket`
 (A compute/infrastructure, B base protocols and agents, C data/storage,
@@ -190,9 +199,9 @@ anything: the owner's 2026-09-22 decision put the paper index on the full
 universe, non-EVM names included, and made holdability a column. There is no
 bucket cap.
 
-**A thin category, stated plainly.** On 2026-09-22 nine names clear both
-sources and all three gates, one seat of ten goes unfilled, and the top name
-sits at the 35% cap. That concentration is the category's shape, not an
+**A thin category, stated plainly.** On 2026-09-22 eleven names clear both
+sources and all three gates, so all ten seats fill and the top name sits at the
+35% cap. That concentration is the category's shape, not an
 artefact of the rule, and it is printed at every reconstitution.
 
 **No vault.** `basket.vault` is `null` and stays null: today's largest members
@@ -214,26 +223,19 @@ the rulebook's own condition for not building one.
    the names present, leaving no cash. The two statements are inconsistent.
    This keeper implements the engine's behaviour, which is what reproduces the
    quoted weights. Flagged, not decided.
-3. **The listing-age proxy (D5) is wrong for at least two names today.** The
-   backtest measured age from a symbol's first appearance in the weekly
-   snapshot series; this keeper uses the earlier of ath/atl date, as every
-   other leg here does. That proxy only works for a name whose all-time high
-   *or* low is old. Measured on 2026-09-22: VVV reads 295 days (its all-time
-   high was yesterday, its all-time low 2025-12-01) against a first listing of
-   2025-01-28, about 600 days; AKE reads 73 days against a first listing of
-   2025-08-19, about 400 days. Both therefore fail a 365-day gate they would
-   pass, and both would otherwise be members — VVV at roughly the size that
-   makes it the second name in the index. KITE, by contrast, is genuinely
-   younger than a year and is correctly out either way. The rulebook's own D5
-   is open between the two conventions; until it closes, this leg's baskets
-   will differ from the research snapshot on exactly this point.
+3. ~~The listing-age proxy (D5)~~ — **closed, owner 2026-09-22**: the listing
+   date is CoinMarketCap's `dateAdded`, with the ath/atl proxy only as a
+   fallback and `listingSource` stamped on the row. VVV and AKE pass the
+   365-day gate on the listing record and are members; KITE is genuinely
+   younger than a year and stays out either way.
 4. **The two sources' market caps disagree, sometimes by a lot.** GRASS, a
-   member today, reads $295.6M on CoinGecko and $106.6M on CoinMarketCap —
+   member today, reads $295.6M on CoinGecko and $106.1M on CoinMarketCap —
    different circulating-supply conventions, and on the CMC figure it would
-   fail the $150M floor outright. Which number is right is 미확인. Only
-   CoinGecko's figure is used for eligibility and weighting; CMC supplies tags
-   and nothing else. Worth knowing before anyone reconciles a basket against a
-   CMC screen.
+   fail the $150M floor outright. Which number is right is 미확인. The gate
+   stays on CoinGecko, the house source; the member row records both
+   (`marketCap`, `marketCapCmc`) and sets `capDisagreement: true` whenever the
+   two differ by 2× or more. Disclosure, not a second gate — an open item for
+   the rulebook (owner 2026-09-22), not a rule this keeper applies.
 
 ### Barbell and Triens (sleeve indexes, 2026-09-22)
 
@@ -352,7 +354,8 @@ publishing a level built on a price nobody has seen in four days.
 | Market cap / price / volume (both indexes) | CoinGecko `coins/markets`, paginated to top 500 (2×250) | CoinPaprika `tickers` (price only) | CoinPaprika fallback cannot drive a reconstitution — matches both rulebooks' own §8 |
 | qDEFI category universe | CoinGecko `coins/markets?category=decentralized-finance-defi` | none | membership freezes if this is unreachable |
 | qAI classification (both sides must agree) | CoinMarketCap public `data-api/v3/cryptocurrency/listing` (unauthenticated, top 1000, `tags`) ∩ CoinGecko `coins/markets?category=artificial-intelligence` and `?category=ai-agents` | none | either source down → membership frozen at the last reconstitution (qai.md §8); two quarters → §12. No API key exists or is needed |
-| qAI price / market cap / volume | the two CoinGecko AI category pulls, overlaid on the top-500 markets pull | CoinPaprika (price only) | the overlay runs every day, not only at a reconstitution — several members sit below the top-500 cut |
+| qAI price / market cap / volume | the two CoinGecko AI category pulls, overlaid on the top-500 markets pull | CoinPaprika (price only) | the overlay runs every day, not only at a reconstitution — several members sit below the top-500 cut. CMC's own market cap is recorded beside CoinGecko's and gates nothing |
+| qAI listing date | CoinMarketCap `dateAdded`, from the same listing call as the tags | earlier of ath/atl date (the other legs' proxy) | `listingSource` on each member says which was used |
 | qDEFI DeFi-family / chain check | DefiLlama `/protocols`, `/chains` | none | |
 | qREV holder revenue | DefiLlama `summary/fees/{slug}?dataType=dailyHoldersRevenue`, per protocol slug from the manual map | none (rulebook §8: no substitute source for this definition exists) | a protocol whose fetch fails for every one of its adapters is dropped from that day's candidate list, not zero-filled |
 | qREV issuance | `keeper/supply/` on-chain registry | CoinGecko historical market_cap/price (≈ circulating supply) | see "Issuance" above for exactly when each applies |

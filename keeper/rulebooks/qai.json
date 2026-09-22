@@ -38,7 +38,10 @@
   "eligibility": {
     "minCirculatingMarketCapUSD": 150000000,
     "minVolume24hUSD": 10000000,
-    "minListingAgeDays": 365
+    "minListingAgeDays": 365,
+    "listingDateSource": "CoinMarketCap `dateAdded` from the same listing call that supplies the tags — the listing record itself, not an inference. Falls back to the earlier of ath/atl date (the convention the other legs use) only when `dateAdded` is missing; the member row carries `listingSource` either way. Owner 2026-09-22, closing qai.md appendix B D5. The other legs keep the proxy.",
+    "capDisagreementRatio": 2.0,
+    "capDisagreementNote": "When the two sources' market caps differ by this factor or more, the member row records BOTH (`marketCap` from CoinGecko, `marketCapCmc`) and sets `capDisagreement: true`. It is disclosure, not a gate: eligibility and weighting stay on CoinGecko, the house source. Open item for the rulebook (owner 2026-09-22) — measured today at GRASS, CoinGecko $295.6M against CoinMarketCap $106.6M."
   },
   "ranking": {
     "metric": "circulating market cap",
@@ -65,7 +68,8 @@
   "cash": {
     "emptySeatsAndCapResidue": "held as cash at a constant 1.0 unit price, no interest (qai.md §6, D8 draft = 0%). Not the Barbell/Triens DTB3 proxy.",
     "yield": 0,
-    "note": "qai.md §12-1: a quarter with zero eligible names is recorded as 100% cash, not as a missing day. The backtest's 2023-Q1 quarter was exactly that."
+    "note": "qai.md §12-1: a quarter with zero eligible names is recorded as 100% cash, not as a missing day. The backtest's 2023-Q1 quarter was exactly that.",
+    "emptySeats": "An empty seat does NOT by itself create cash: the weights renormalise across the names that are present, as the research engine does (owner 2026-09-22). `emptySeats` is recorded as a count. Cash exists only when the caps leave weight with nowhere to go, or when nothing at all is eligible (then 100%)."
   },
   "reconstitution": {
     "cadence": "quarterly",
@@ -83,7 +87,7 @@
   },
   "dataSources": {
     "sectorClassification": {
-      "primary": "CoinMarketCap public data-api `cryptocurrency/listing` (unauthenticated, top 1000 by market cap, `tags` array) — the same public listing family the research used (docs/research/ai/fetch-cmc-weekly.py). No CMC_API_KEY secret exists in this repository.",
+      "primary": "CoinMarketCap public data-api `cryptocurrency/listing` (unauthenticated, top 1000 by market cap) — supplies the `tags` array, the listing `dateAdded` used as this leg's listing date, and CMC's own market cap for the disagreement check. Same public listing family the research used (docs/research/ai/fetch-cmc-weekly.py). No CMC_API_KEY secret exists in this repository.",
       "secondary": "CoinGecko `coins/markets?category=artificial-intelligence` and `?category=ai-agents` (2×250 each)",
       "fallback": "none — if EITHER source is unreachable the membership is frozen at the last reconstitution (qai.md §8). Two quarters frozen is a §12 condition."
     },
