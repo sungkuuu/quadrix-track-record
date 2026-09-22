@@ -1,4 +1,4 @@
-# Paper-index keeper — qREV, qDEFI, qDUO (Barbell), qTRI (Triens)
+# Paper-index keeper — qREV, qDEFI, qDUO (Barbell), qTRI (Triens), qAI
 
 **Status: rules-only reference levels. No vault, no capital.**
 Nothing here moves money and nothing here is a product. A series becomes
@@ -35,6 +35,8 @@ this stage.
 | `keeper/rulebooks/qrev.json` | Every qREV parameter as data: universe, eligibility gates, ranking, weighting, issuance definition, reconstitution cadence, tolerance, hysteresis. Mirrors `quadrix/docs/methodology/value-capture.md` with the 2026-09-15 owner decisions applied. |
 | `keeper/rulebooks/qdefi.json` | Same, for qDEFI, mirroring `quadrix/docs/methodology/qdefi.md`. |
 | `keeper/rulebooks/barbell.json` | Every Barbell parameter as data: two sleeves (BTC 60 / working capital 40), quarterly reset, tolerance, the working-capital definition and its paper proxy. `inception: null` — not in force. |
+| `keeper/rulebooks/qai.json` | Same, for qAI, mirroring `quadrix/docs/methodology/qai.md` (a draft). Carries the disclosure table — bucket, origin chain, holdability per symbol — copied from `docs/research/ai/ai-bucket-map.csv` joined to `ai-universe.csv`. `inception: null` — not in force. |
+| `keeper/rulebooks/qai-exclusions.json` | qAI's named §3 exclusions with the reason for each: stablecoin / wrapped / staking-and-subnet-derivative / memecoin tag rules, plus the named symbols (SN0 and the `SN<n>` subnet pattern, and the superseded listings RNDR and AGIX). |
 | `keeper/rulebooks/triens.json` | Same, for Triens: three sleeves (BTC 30 / working capital 40 / Quality 30), the Quality screen including the issuance gate, the empty-seat rule. `inception: null` — not in force. |
 | `keeper/working-capital.mjs` | The working-capital proxy: FRED DTB3 fetch, parse, carry-forward and daily accrual. |
 | `keeper/rulebooks/qrev-protocol-map.json` | The manual protocol-slug → symbol table qREV's rulebook requires (§1: "automatic name-matching is not used"). Copied verbatim from the site repo's `docs/research/qrev/hr-protocols.json`, 2026-09-15 snapshot. |
@@ -120,6 +122,118 @@ this stage.
 - **Reconstitution / tolerance / between-reconstitutions**: identical
   cadence and mechanics to qREV (same calendar dates, same 5-point
   tolerance, same always-cut-above-cap, no drift band).
+
+### qAI (AI Index, 2026-09-22) — NOT IN FORCE
+
+**Nothing is appended to `trackrecord/` for this index.** The rulebook is a
+draft, `inception` is `null` in `keeper/rulebooks/qai.json`, and the step in
+`.github/workflows/paper-index.yml` carries `if: false` with its commit paths
+commented out. Dry runs only, until an owner decision anchors an inception
+date.
+
+**What it is.** A market-cap tracker of the AI theme — the same family as
+qDEFI (a sector index of size), not qREV or Triens (quality screens). The
+category has too few names with holder-attributable revenue for a quality
+method to mean anything. The rulebook promises that the names two independent
+sources both call AI are held in proportion to their size under a cap. It does
+not promise that AI goes up: the research behind it lost to BTC in all six
+backtest windows.
+
+**The two-source rule.** A name must appear on **both** sides on the run day:
+
+- CoinMarketCap's AI-family tag union — `ai-big-data`, `generative-ai`,
+  `ai-agents`, `ai-agent-launchpad`, `ai-applications`, `defai` — read from
+  the public, unauthenticated `data-api` listing endpoint (top 1000 by market
+  cap, `tags` array). There is no API key in this repository and this call
+  needs none; it is the "latest" sibling of the historical endpoint the
+  research used for its weekly snapshots.
+- CoinGecko's `artificial-intelligence` or `ai-agents` category, which also
+  supplies this leg's price, market cap, volume and listing-age proxy. Several
+  eligible AI names sit outside the top-500 markets pull, so these category
+  rows are overlaid onto the daily price map on **every** run, not only at a
+  reconstitution.
+
+Either source unreachable means membership freezes at the last reconstitution;
+there is no third source. Two quarters frozen is a §12 question for the owner.
+
+**The chain exception.** A name carrying CMC's `layer-1` tag is out **unless**
+it also carries `generative-ai` or `ai-agents` — the chain itself has to be the
+AI product, not a platform that collects the tag because anything can be built
+on it. `ai-big-data` alone is never grounds for a chain token. Same shape as
+qDEFI's "chains out, one named exception". On 2026-09-22 this keeps TAO
+(`layer-1` + `generative-ai`) and removes NEAR and ICP, which carry `layer-1`
+and `ai-big-data` and nothing else from the AI family.
+
+**Eligibility**: market cap ≥ $150M, 24h volume ≥ $10M, listing age ≥ 365 days
+(the same ath/atl proxy qREV and qDEFI use). **Ranking**: market cap,
+descending, N = 10, rank buffer kept while rank ≤ 13 and forced in at rank ≤ 8,
+no exit hysteresis. **Weighting**: market-cap proportional with a 35%
+single-name cap. **Reconstitution**: quarterly, same calendar dates and the
+same 5-point tolerance as qREV/qDEFI, no drift band.
+
+**Cash, and what it does and does not mean.** The cap here is a *hard* cap: a
+residue it cannot redistribute is not forced back into the basket, it is held
+as cash at a constant 1.0 with no interest (this is not the Barbell/Triens
+DTB3 proxy). Cash rides inside the unit book as `__CASH__` at price 1, so the
+tolerance test and the daily mark treat it as one more position; the record
+reports it as a top-level `cashWeight` beside `eligibleCount` and `emptySeats`.
+Note what that does **not** say: an empty seat does not by itself create cash,
+because the weights normalise across the names that are actually there. Cash
+appears when the cap has nowhere to put a residue, or when nothing is eligible
+at all — the backtest's 2023-Q1 quarter had zero eligible names and is recorded
+as 100% cash, not as a missing day.
+
+**Buckets are disclosure, never a rule.** Every member row carries `bucket`
+(A compute/infrastructure, B base protocols and agents, C data/storage,
+D consumer apps), `originChain` and `holdableOnGiwa`. None of the three gates
+anything: the owner's 2026-09-22 decision put the paper index on the full
+universe, non-EVM names included, and made holdability a column. There is no
+bucket cap.
+
+**A thin category, stated plainly.** On 2026-09-22 nine names clear both
+sources and all three gates, one seat of ten goes unfilled, and the top name
+sits at the 35% cap. That concentration is the category's shape, not an
+artefact of the rule, and it is printed at every reconstitution.
+
+**No vault.** `basket.vault` is `null` and stays null: today's largest members
+are non-EVM and fewer than five eligible names could be held on GIWA, which is
+the rulebook's own condition for not building one.
+
+#### qAI — open, found by running it
+
+1. **The bucket table's coverage gap (rulebook §8 vs §1).** §8's fallback row
+   and appendix-B item D6 say a name missing from the bucket table is held back
+   from inclusion; §1 and the owner's decision say the bucket is a disclosure
+   column and never a rule. Both cannot hold. This keeper follows §1 — the
+   bucket never gates — and stamps `bucketSource: "tag-fallback"` on a row
+   classified by the tag ladder instead, so the gap shows up in the record
+   rather than silently removing names. On 2026-09-22 this decides two of the
+   nine members. **Owner decision, not a worker's.**
+2. **Appendix A's "three empty seats = 30% cash".** The weights quoted beside
+   it sum to 100%, and the research engine that produced them normalises across
+   the names present, leaving no cash. The two statements are inconsistent.
+   This keeper implements the engine's behaviour, which is what reproduces the
+   quoted weights. Flagged, not decided.
+3. **The listing-age proxy (D5) is wrong for at least two names today.** The
+   backtest measured age from a symbol's first appearance in the weekly
+   snapshot series; this keeper uses the earlier of ath/atl date, as every
+   other leg here does. That proxy only works for a name whose all-time high
+   *or* low is old. Measured on 2026-09-22: VVV reads 295 days (its all-time
+   high was yesterday, its all-time low 2025-12-01) against a first listing of
+   2025-01-28, about 600 days; AKE reads 73 days against a first listing of
+   2025-08-19, about 400 days. Both therefore fail a 365-day gate they would
+   pass, and both would otherwise be members — VVV at roughly the size that
+   makes it the second name in the index. KITE, by contrast, is genuinely
+   younger than a year and is correctly out either way. The rulebook's own D5
+   is open between the two conventions; until it closes, this leg's baskets
+   will differ from the research snapshot on exactly this point.
+4. **The two sources' market caps disagree, sometimes by a lot.** GRASS, a
+   member today, reads $295.6M on CoinGecko and $106.6M on CoinMarketCap —
+   different circulating-supply conventions, and on the CMC figure it would
+   fail the $150M floor outright. Which number is right is 미확인. Only
+   CoinGecko's figure is used for eligibility and weighting; CMC supplies tags
+   and nothing else. Worth knowing before anyone reconciles a basket against a
+   CMC screen.
 
 ### Barbell and Triens (sleeve indexes, 2026-09-22)
 
@@ -237,6 +351,8 @@ publishing a level built on a price nobody has seen in four days.
 |---|---|---|---|
 | Market cap / price / volume (both indexes) | CoinGecko `coins/markets`, paginated to top 500 (2×250) | CoinPaprika `tickers` (price only) | CoinPaprika fallback cannot drive a reconstitution — matches both rulebooks' own §8 |
 | qDEFI category universe | CoinGecko `coins/markets?category=decentralized-finance-defi` | none | membership freezes if this is unreachable |
+| qAI classification (both sides must agree) | CoinMarketCap public `data-api/v3/cryptocurrency/listing` (unauthenticated, top 1000, `tags`) ∩ CoinGecko `coins/markets?category=artificial-intelligence` and `?category=ai-agents` | none | either source down → membership frozen at the last reconstitution (qai.md §8); two quarters → §12. No API key exists or is needed |
+| qAI price / market cap / volume | the two CoinGecko AI category pulls, overlaid on the top-500 markets pull | CoinPaprika (price only) | the overlay runs every day, not only at a reconstitution — several members sit below the top-500 cut |
 | qDEFI DeFi-family / chain check | DefiLlama `/protocols`, `/chains` | none | |
 | qREV holder revenue | DefiLlama `summary/fees/{slug}?dataType=dailyHoldersRevenue`, per protocol slug from the manual map | none (rulebook §8: no substitute source for this definition exists) | a protocol whose fetch fails for every one of its adapters is dropped from that day's candidate list, not zero-filled |
 | qREV issuance | `keeper/supply/` on-chain registry | CoinGecko historical market_cap/price (≈ circulating supply) | see "Issuance" above for exactly when each applies |
@@ -374,6 +490,7 @@ node keeper/paper-index.mjs --index qrev  --dry-run   # writes keeper/dryrun/
 node keeper/paper-index.mjs --index qdefi --dry-run
 node keeper/paper-index.mjs --index qrev              # writes trackrecord/
 KEEPER_PK=0x... node keeper/paper-index.mjs --index qrev --anchor
+node keeper/paper-index.mjs --index qai    --dry-run   # AI index, dry run only (not in force)
 node keeper/paper-index.mjs --index barbell --dry-run  # sleeve index, dry run only for now
 node keeper/paper-index.mjs --index triens  --dry-run
 node keeper/paper-index.mjs --index qx20 --dry-run    # basket leg only, from keeper/state.json

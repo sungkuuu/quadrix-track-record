@@ -233,6 +233,47 @@ Keep both steps in the same job. Every step there signs with the same
 race that killed the 2026-09-18 run. A separate workflow would sit outside the
 group.
 
+## qAI — AI sector index (added 2026-09-22, NOT running)
+
+`keeper/rulebooks/qai.json` has `inception: null`, the qAI step in
+`.github/workflows/paper-index.yml` carries `if: false`, its files are
+commented out of that workflow's "Commit records" `git add` list, and there is
+no `trackrecord/record-qai.jsonl`. That is the intended state: the rulebook it
+implements (`quadrix/docs/methodology/qai.md`) is a draft and a paper series
+may not start before an owner decision anchors its inception date.
+
+**What the operator may do today:** dry runs only.
+
+```bash
+node keeper/paper-index.mjs --index qai --dry-run   # 1st run: reconstitution
+node keeper/paper-index.mjs --index qai --dry-run   # 2nd run: mark-to-market
+```
+
+**Turning it on** follows the same five steps as the sleeve indexes above,
+with three additions specific to this leg:
+
+- Step 3 also means *uncommenting* the three qAI paths already written into
+  the "Commit records" step (`trackrecord/record-qai.jsonl`,
+  `trackrecord/anchors-qai.jsonl`, `keeper/state-qai.json`), not just deleting
+  the `if: false`.
+- Before step 1, close the open items the keeper is currently resolving by
+  reading the rulebook one way rather than the other — they are listed in
+  `docs/paper-index.md` under "qAI … open, found by running it". The bucket-table
+  coverage question (§8/D6) is the one that can change membership.
+- The classification sources have **no fallback**. Watch the first scheduled
+  run's `sources:` line; a run that cannot reach either source writes no
+  record for that day, and a missing day is never backfilled.
+
+### What can go wrong in qAI specifically
+
+| Symptom | What it means | What to do |
+| --- | --- | --- |
+| `CoinMarketCap listing returned no rows` | the tag source answered but with nothing usable — membership cannot be decided | nothing on the day: the run fails and writes no record. If it repeats across a reconstitution the membership is frozen at the last one (qai.md §8); two quarters of that is a §12 question for the owner, not an operator fix. |
+| `HTTP 4xx/5xx for https://api.coinmarketcap.com/...` | same, from the other side | as above. There is no API key to rotate — the endpoint is public and unauthenticated. |
+| `§12-1 WATCH: only N eligible name(s)` | fewer than 5 names cleared both sources and all three gates | nothing operational — the level is recorded as-is and the empty seats sit in cash. It is a signal for the owner: on that quarter the rule says the product would not be launched. |
+| `seats 7/10 filled … cash 0.00%` | normal for a thin category | expected. Empty seats do **not** by themselves create cash — the weights normalise across the names that are there. Cash appears only when the hard cap has a residue with nowhere to go, or when nothing at all is eligible (then 100%). |
+| a member's market cap jumps between the ledger line and the basket line | the ledger prints the CoinGecko *category* row, the basket prints whichever row won the daily price map | both are CoinGecko; the two endpoints are snapshotted at different moments. Only the basket line feeds the record. |
+
 ### What can go wrong in these two specifically
 
 | Symptom | What it means | What to do |

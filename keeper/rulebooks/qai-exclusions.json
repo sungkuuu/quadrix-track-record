@@ -1,0 +1,40 @@
+{
+  "_doc": "qAI named exclusions (qai.md §3). Every entry cites the rule it implements. Automatic tag matching alone is not allowed to decide membership where a structural exclusion applies; changes here are rule changes under §10 and need an anchored decision. Symbols already carried by keeper/paper-index.mjs's shared QX20_EXCLUDE set (stablecoins, wrapped majors, exchange tokens) are not repeated.",
+  "tagRules": {
+    "stablecoins": {
+      "cmcTags": ["stablecoin", "asset-backed-stablecoin", "algorithmic-stablecoin", "fiat-stablecoin"],
+      "reason": "§3: a stablecoin is not an AI asset however it is tagged."
+    },
+    "wrappedOrBridged": {
+      "cmcTags": ["wrapped-tokens", "tokenized-btc"],
+      "reason": "§3: a wrapped or bridged LISTING is a representation, not the asset. The issuer decides which listing is canonical; a third-party bridge's listing is out. wTAO carries no AI tag at all, so it is excluded structurally rather than by name."
+    },
+    "stakingAndSubnetDerivatives": {
+      "cmcTags": ["liquid-staking-derivatives", "bittensor-subnets"],
+      "reason": "§3: staking and derivative representations are out — a claim on stake inside a network is not an independent holding of that network."
+    },
+    "memecoins": {
+      "cmcTags": ["ai-memes"],
+      "reason": "§3: AI-tagged memecoins are excluded by default (the `memes-in` variant stays in the research CSV). A meme market belongs to the Meme rulebook, not here."
+    }
+  },
+  "namedSymbols": {
+    "SN0": {
+      "reason": "§3: staked TAO (\"Root\"), a derivative of validator stake, not an independent asset. Named here because CoinGecko's `artificial-intelligence` category carries SN0 while the CMC cache never did — the name must not enter through the CoinGecko side of the intersection.",
+      "source": "qai.md §3; docs/research/ai/ai-backtest.py DERIVATIVE_TAGS note"
+    },
+    "SN_SUBNETS": {
+      "symbolPattern": "^SN[0-9]+$",
+      "reason": "§3: Bittensor dTAO subnet (\"alpha\") tokens — SN4, SN9, SN51, SN64 and the rest — are derivatives of validator stake within a subnet. CoinGecko lists them in `artificial-intelligence`; the CMC `bittensor-subnets` tag catches most, this pattern catches the rest.",
+      "source": "qai.md §3"
+    },
+    "RNDR": {
+      "reason": "§3 / one-listing-per-asset: RNDR is the superseded ticker of the same asset now listed as RENDER. Holding both would double-count one network.",
+      "source": "docs/research/ai/ai-bucket-map.csv carries both rows"
+    },
+    "AGIX": {
+      "reason": "§3 / one-listing-per-asset: SingularityNET's AGIX migrated into the Artificial Superintelligence Alliance token, which is listed as FET. Kept here so a stale listing cannot re-enter beside FET.",
+      "source": "docs/research/ai/ai-bucket-map.csv carries both rows"
+    }
+  }
+}

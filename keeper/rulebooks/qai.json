@@ -1,0 +1,390 @@
+{
+  "ticker": "qAI",
+  "name": "AI Index",
+  "kind": "paper-index",
+  "status": "NOT IN FORCE — draft rulebook (quadrix/docs/methodology/qai.md), no inception decision anchored; the workflow step is disabled (if: false) and nothing is appended to trackrecord/",
+  "asOf": "2026-09-22",
+  "source": {
+    "rulebook": "quadrix/docs/methodology/qai.md (site repo, private) — DRAFT",
+    "research": "quadrix/docs/research/ai/ (README 3rd pass, ai-bucket-map.csv, ai-universe.csv, weighting-study.md)",
+    "ownerDecisionDate": "2026-09-22 (paper index starts on the full universe, non-EVM names included; holdability is a column, not a screen)"
+  },
+  "universe": {
+    "definition": "tokens both classification sources carry as AI on the run day",
+    "sourcePair": "CoinMarketCap AI-family tag union INTERSECT CoinGecko category `artificial-intelligence` or `ai-agents` (qai.md §1). Both must agree on the run day.",
+    "cmcAiTags": [
+      "ai-big-data",
+      "generative-ai",
+      "ai-agents",
+      "ai-agent-launchpad",
+      "ai-applications",
+      "defai"
+    ],
+    "coingeckoCategories": [
+      "artificial-intelligence",
+      "ai-agents"
+    ],
+    "chainRule": {
+      "tag": "layer-1",
+      "exceptionTags": [
+        "generative-ai",
+        "ai-agents"
+      ],
+      "note": "qai.md §1 (owner 2026-09-22 evening): a name carrying CMC `layer-1` is excluded unless it also carries `generative-ai` or `ai-agents` — the chain itself has to be the AI product. TAO stays (layer-1 + generative-ai); NEAR and ICP leave (layer-1 + ai-big-data only). `ai-big-data` alone is never grounds for a chain token. Same shape as qDEFI's 'chains out, HYPE exception'."
+    },
+    "holdability": "informational only (qai.md §1, owner 2026-09-22): originChain / holdableOnGiwa are disclosure columns on every member row and never gate membership. The paper index holds non-EVM names.",
+    "instrumentExclusions": "qX20 rulebook §3 categories in full (stablecoins, yield-bearing stables, wrapped/bridged listings, LSD/LRT wrappers, LP/vault shares, exchange tokens, tokenized RWA shares) plus qAI-specific named exclusions in keeper/rulebooks/qai-exclusions.json (§3: wrapped/bridged by issuer, staking and subnet derivatives, AI-tagged memecoins)"
+  },
+  "eligibility": {
+    "minCirculatingMarketCapUSD": 150000000,
+    "minVolume24hUSD": 10000000,
+    "minListingAgeDays": 365
+  },
+  "ranking": {
+    "metric": "circulating market cap",
+    "direction": "descending",
+    "targetCount": 10,
+    "rankBuffer": {
+      "entryMaxRank": 8,
+      "exitMinRank": 13,
+      "note": "qai.md §6 inherits qDEFI's convention: entry at ⌊0.85N⌋ = 8, exit kept while rank ≤ ⌈1.25N⌉ = 13. Untested for this index (qai.md appendix B, D7)."
+    }
+  },
+  "exitHysteresis": {
+    "enabled": false,
+    "note": "qai.md §6: no grace quarter, same as qDEFI — a name failing eligibility or falling past exitMinRank leaves at that reconstitution."
+  },
+  "weighting": {
+    "method": "market-cap-proportional",
+    "rejected": "√market-cap and equal weighting were compared across qAI/qDEFI/qX20 and not adopted (qai.md §4, docs/research/ai/weighting-study.md). Not to be re-proposed.",
+    "cap": {
+      "maxWeight": 0.35,
+      "method": "immediate hard trim to cap at reconstitution, excess redistributed pro rata among uncapped names, iterated to convergence; a residue with nowhere left to go is NOT redistributed — it is held as cash (qai.md §5/§6). This differs from qREV/qDEFI's applyCap, which raises the cap to 1/n rather than leaving a residue."
+    }
+  },
+  "cash": {
+    "emptySeatsAndCapResidue": "held as cash at a constant 1.0 unit price, no interest (qai.md §6, D8 draft = 0%). Not the Barbell/Triens DTB3 proxy.",
+    "yield": 0,
+    "note": "qai.md §12-1: a quarter with zero eligible names is recorded as 100% cash, not as a missing day. The backtest's 2023-Q1 quarter was exactly that."
+  },
+  "reconstitution": {
+    "cadence": "quarterly",
+    "rule": "first run after 00:00 UTC on Jan 1 / Apr 1 / Jul 1 / Oct 1 (same dates as qREV/qDEFI)",
+    "tolerance": {
+      "thresholdPoints": 5,
+      "rule": "a name whose target weight differs from its drifted (mark-to-market) weight by less than 5 percentage points is NOT traded at reconstitution; cash is treated as one more position for this test, as the research engine does",
+      "capOverride": "any name whose drifted weight is above 35% is ALWAYS cut to 35% regardless of the 5-point tolerance"
+    },
+    "betweenReconstitutions": "no trading; the book is only marked to market daily. No drift band (qai.md §7)."
+  },
+  "specialEvents": {
+    "inScope": false,
+    "note": "qai.md §9 points at qX20 §9 (fallback source → at most 3 runs at the last known price → 0 valuation, anchored decision). Not implemented in this pass, same as qREV/qDEFI."
+  },
+  "dataSources": {
+    "sectorClassification": {
+      "primary": "CoinMarketCap public data-api `cryptocurrency/listing` (unauthenticated, top 1000 by market cap, `tags` array) — the same public listing family the research used (docs/research/ai/fetch-cmc-weekly.py). No CMC_API_KEY secret exists in this repository.",
+      "secondary": "CoinGecko `coins/markets?category=artificial-intelligence` and `?category=ai-agents` (2×250 each)",
+      "fallback": "none — if EITHER source is unreachable the membership is frozen at the last reconstitution (qai.md §8). Two quarters frozen is a §12 condition."
+    },
+    "marketCapPriceVolume": {
+      "primary": "CoinGecko coins/markets — the two AI category pulls carry price/market cap/volume/ath/atl for every candidate, and the top-500 pull covers the rest of the book",
+      "fallback": "CoinPaprika tickers (price only, no reconstitution)"
+    },
+    "buckets": {
+      "primary": "docs/research/ai/ai-bucket-map.csv, copied into `disclosure.table` below (2026-09-22 snapshot)",
+      "fallback": "tag-priority classification for a symbol the table does not cover; the member row then carries bucketSource `tag-fallback`"
+    }
+  },
+  "disclosure": {
+    "_doc": "Buckets are a DISCLOSURE column, never a rule (qai.md §1, owner 2026-09-22: the bucket cap was a worker proposal and was not adopted). originChain / holdableOnGiwa likewise: informational, never a screen. Table copied from docs/research/ai/ai-bucket-map.csv joined to ai-universe.csv, 2026-09-22 snapshot; a change to it is a rule change under §10 and needs an anchored decision.",
+    "bucketNames": {
+      "A": "compute / infrastructure",
+      "B": "base protocols and agents",
+      "C": "data / storage",
+      "D": "consumer applications"
+    },
+    "table": {
+      "0x0": {
+        "bucket": "D",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "ABT": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "AGI": {
+        "bucket": "D",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "AGIX": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "AIOZ": {
+        "bucket": "A",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "AKT": {
+        "bucket": "A",
+        "originChain": "akash",
+        "holdableOnGiwa": "no"
+      },
+      "ARKM": {
+        "bucket": "C",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "ATH": {
+        "bucket": "A",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "BAT": {
+        "bucket": "D",
+        "originChain": "미확인",
+        "holdableOnGiwa": "미확인"
+      },
+      "BDX": {
+        "bucket": "A",
+        "originChain": "binance-smart-chain",
+        "holdableOnGiwa": "no"
+      },
+      "CGPT": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "CHR": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "CQT": {
+        "bucket": "C",
+        "originChain": "미확인",
+        "holdableOnGiwa": "미확인"
+      },
+      "CSPR": {
+        "bucket": "B",
+        "originChain": "CSPR 자체 체인",
+        "holdableOnGiwa": "no"
+      },
+      "DEXE": {
+        "bucket": "D",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "FET": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "FIL": {
+        "bucket": "C",
+        "originChain": "FIL 자체 체인",
+        "holdableOnGiwa": "no"
+      },
+      "FLUX": {
+        "bucket": "A",
+        "originChain": "미확인",
+        "holdableOnGiwa": "no"
+      },
+      "GLM": {
+        "bucket": "A",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "GRT": {
+        "bucket": "C",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "HOOK": {
+        "bucket": "D",
+        "originChain": "binance-smart-chain",
+        "holdableOnGiwa": "no"
+      },
+      "ICP": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "INJ": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "IOTX": {
+        "bucket": "A",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "IP": {
+        "bucket": "B",
+        "originChain": "IP 자체 체인",
+        "holdableOnGiwa": "미확인"
+      },
+      "IQ": {
+        "bucket": "C",
+        "originChain": "미확인",
+        "holdableOnGiwa": "미확인"
+      },
+      "KAITO": {
+        "bucket": "D",
+        "originChain": "base",
+        "holdableOnGiwa": "미확인"
+      },
+      "KDA": {
+        "bucket": "B",
+        "originChain": "KDA 자체 체인",
+        "holdableOnGiwa": "no"
+      },
+      "LPT": {
+        "bucket": "A",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "NEAR": {
+        "bucket": "B",
+        "originChain": "NEAR 자체 체인",
+        "holdableOnGiwa": "no"
+      },
+      "NMR": {
+        "bucket": "A",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "NOS": {
+        "bucket": "A",
+        "originChain": "solana",
+        "holdableOnGiwa": "no"
+      },
+      "OCEAN": {
+        "bucket": "C",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "ORAI": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "PAAL": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "PHA": {
+        "bucket": "A",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "POND": {
+        "bucket": "A",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "PRIME": {
+        "bucket": "D",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "QUBIC": {
+        "bucket": "A",
+        "originChain": "QUBIC 자체 체인",
+        "holdableOnGiwa": "no"
+      },
+      "RENDER": {
+        "bucket": "A",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "RLC": {
+        "bucket": "A",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "RNDR": {
+        "bucket": "A",
+        "originChain": "미확인",
+        "holdableOnGiwa": "미확인"
+      },
+      "ROSE": {
+        "bucket": "A",
+        "originChain": "binance-smart-chain",
+        "holdableOnGiwa": "no"
+      },
+      "RSS3": {
+        "bucket": "C",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "SIREN": {
+        "bucket": "D",
+        "originChain": "binance-smart-chain",
+        "holdableOnGiwa": "no"
+      },
+      "SURE": {
+        "bucket": "D",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "TAO": {
+        "bucket": "B",
+        "originChain": "TAO 자체 체인",
+        "holdableOnGiwa": "no"
+      },
+      "TFUEL": {
+        "bucket": "A",
+        "originChain": "미확인",
+        "holdableOnGiwa": "no"
+      },
+      "THETA": {
+        "bucket": "A",
+        "originChain": "THETA 자체 체인",
+        "holdableOnGiwa": "no"
+      },
+      "TRAC": {
+        "bucket": "C",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "TURBO": {
+        "bucket": "D",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "VIRTUAL": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      },
+      "VVV": {
+        "bucket": "B",
+        "originChain": "base",
+        "holdableOnGiwa": "미확인"
+      },
+      "ZIG": {
+        "bucket": "B",
+        "originChain": "ethereum",
+        "holdableOnGiwa": "yes"
+      }
+    }
+  },
+  "inception": null,
+  "genesisLevel": 100,
+  "basket": {
+    "_doc": "No basket and no vault. qai.md §12-3: a vault is not built while fewer than 5 eligible names can be held on GIWA — today's top names are non-EVM. The paper record runs without one.",
+    "chainId": 91342,
+    "vault": null,
+    "faucet": null,
+    "navBase": 100,
+    "assets": {}
+  }
+}

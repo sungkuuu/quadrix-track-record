@@ -21,10 +21,27 @@
  * Usage:
  *   node keeper/paper-index.mjs --index qrev    --dry-run
  *   node keeper/paper-index.mjs --index qdefi   --dry-run
+ *   node keeper/paper-index.mjs --index qai     --dry-run
  *   node keeper/paper-index.mjs --index barbell --dry-run
  *   node keeper/paper-index.mjs --index triens  --dry-run
  *   node keeper/paper-index.mjs --index qrev             # writes trackrecord/
  *   KEEPER_PK=0x... node keeper/paper-index.mjs --index qrev --anchor
+ *
+ * qAI (2026-09-22, qai.json): a market-cap sector tracker of the AI theme,
+ * the same family as qDEFI. Two differences from every other leg here. (a) Its
+ * universe needs BOTH classification sources to agree on the run day —
+ * CoinMarketCap's AI-family tag union INTERSECT CoinGecko's
+ * artificial-intelligence / ai-agents categories — so the keeper reads CMC's
+ * unauthenticated public listing endpoint (no API key exists in this
+ * repository) and freezes membership if either source is unreachable. (b) It
+ * can hold CASH: the cap is a HARD cap and empty seats are not refilled, so a
+ * quarter with fewer than N eligible names, or a residue the cap cannot
+ * redistribute, sits in a constant 1.0 cash unit earning nothing (qai.md §6,
+ * D8 draft). Cash rides in `units.__CASH__` at price 1 so the tolerance and
+ * mark-to-market code paths treat it as one more position, exactly as the
+ * research engine does; the record reports it as a top-level `cashWeight`.
+ * NOT IN FORCE: qai.json has `inception: null` and the workflow step is
+ * disabled.
  *
  * Sleeve indexes (2026-09-22, barbell.json / triens.json): Barbell and Triens
  * hold sleeves, not a single ranked basket — a monetary sleeve (BTC alone, a
@@ -90,8 +107,8 @@ const opt = (name, fallback) => {
   return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
 };
 const INDEX = opt('--index', null);
-if (!['qrev', 'qdefi', 'qx20', 'barbell', 'triens'].includes(INDEX)) {
-  console.error('usage: node keeper/paper-index.mjs --index qrev|qdefi|qx20|barbell|triens [--dry-run] [--anchor]');
+if (!['qrev', 'qdefi', 'qai', 'qx20', 'barbell', 'triens'].includes(INDEX)) {
+  console.error('usage: node keeper/paper-index.mjs --index qrev|qdefi|qai|qx20|barbell|triens [--dry-run] [--anchor]');
   process.exit(2);
 }
 /** Indexes whose book is a set of sleeves rather than one ranked basket. */
@@ -889,6 +906,236 @@ function printQdefiLedger(evaluated, finalMembers) {
   }
 }
 
+
+// =========================================================================
+//  qAI — universe, eligibility, ranking, weighting
+// =========================================================================
+const QAI_EXCLUSIONS = JSON.parse(fs.readFileSync(path.join(HERE, 'rulebooks', 'qai-exclusions.json'), 'utf8'));
+/** Cash rides inside `units` as one more position priced at a constant 1.0,
+ *  so the tolerance test and the daily mark treat it exactly like a name —
+ *  the same shape the research engine used (`__CASH__` in its unit book). */
+const CASH_SYM = '__CASH__';
+
+/** CoinMarketCap tags, live, from the PUBLIC data-api listing endpoint —
+ *  unauthenticated, the same endpoint family `docs/research/ai/fetch-cmc-weekly.py`
+ *  used for its weekly snapshots (that one takes `listings/historical?date=`;
+ *  this one is the "latest" sibling, because a daily keeper needs today's
+ *  tags and a historical snapshot for today does not exist yet at 00:25 UTC).
+ *  There is no CMC_API_KEY secret in this repository and this call needs none.
+ *
+ *  Top 1000 by market cap. The eligibility floor is $150M and CMC rank 1000
+ *  sat near $9M when this was written, so the cut is far below anything that
+ *  can pass — but the count is logged every run so a shrinking window is
+ *  visible before it bites.
+ *
+ *  FAILURE MODE (rulebook §8): no fallback. If this throws, the run throws,
+ *  no record is written for the day, and a missing day is never backfilled —
+ *  which is what "membership is frozen" means for a source that decides
+ *  membership. Two quarters of that is a §12 condition for the owner. */
+async function fetchCmcTagMap(dateKey) {
+  const key = `cmc-listing-tags-${dateKey}.json`;
+  const cached = cacheGet(key, DAY);
+  if (cached) return new Map(Object.entries(cached));
+  const url =
+    'https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing' +
+    '?start=1&limit=1000&sortBy=market_cap&sortType=desc&convert=USD&cryptoType=all&tagType=all&audited=false';
+  const raw = await fetchJSON(url, { headers: { 'user-agent': 'Mozilla/5.0' } });
+  const list = raw?.data?.cryptoCurrencyList;
+  if (!Array.isArray(list) || list.length === 0) {
+    throw new Error('CoinMarketCap listing returned no rows — membership source down (qai.md §8)');
+  }
+  const out = {};
+  for (const c of list) {
+    const sym = String(c.symbol || '').toUpperCase();
+    if (!sym || out[sym]) continue; // highest-cap listing per symbol wins, as on the CoinGecko side
+    out[sym] = c.tags || [];
+  }
+  cacheSet(key, out);
+  return new Map(Object.entries(out));
+}
+
+/** Tag-priority bucket, used ONLY for a symbol the disclosure table does not
+ *  cover. Same ladder as docs/research/ai/ai-backtest.py's classify_bucket.
+ *
+ *  NOTE (open, flagged for the owner): qai.md §8's fallback row and appendix B
+ *  D6 say a name missing from the bucket table is HELD BACK from inclusion,
+ *  while §1 and the owner's 2026-09-22 decision say the bucket is a disclosure
+ *  column and "never a rule". Those two cannot both hold. This keeper follows
+ *  §1 — the bucket never gates — and stamps `bucketSource: "tag-fallback"` on
+ *  the row so the table's coverage gap is visible in the record instead of
+ *  silently removing names. If the owner closes D6 the other way, this
+ *  function becomes an exclusion. */
+function qaiBucketFallback(tags) {
+  const t = new Set(tags);
+  const any = (...xs) => xs.some((x) => t.has(x));
+  if (any('analytics', 'data-availability', 'storage', 'filesharing', 'indexing', 'enterprise-solutions')) return 'C';
+  if (any('depin', 'distributed-computing', 'iot', 'zero-knowledge-proofs', 'privacy', 'privacy-blockchain')) return 'A';
+  if (any('ai-agents', 'ai-agent-launchpad', 'defai', 'layer-1', 'platform', 'smart-contracts', 'interoperability', 'oracles', 'account-abstraction')) return 'B';
+  return 'D';
+}
+
+/** The disclosure trio for one symbol: bucket (A/B/C/D), origin chain and
+ *  whether it could be held on GIWA. All three are informational — the owner's
+ *  2026-09-22 decision put the paper index on the FULL universe, non-EVM names
+ *  included, and made holdability a column rather than a screen. */
+function qaiDisclosure(sym, tags) {
+  const row = RULEBOOK.disclosure?.table?.[sym];
+  if (row) return { bucket: row.bucket, bucketSource: 'table', originChain: row.originChain, holdableOnGiwa: row.holdableOnGiwa };
+  return { bucket: qaiBucketFallback(tags), bucketSource: 'tag-fallback', originChain: '미확인', holdableOnGiwa: '미확인' };
+}
+
+/** §3 structural exclusions, read from keeper/rulebooks/qai-exclusions.json. */
+function qaiExcludedReason(sym, tags) {
+  const t = new Set(tags);
+  for (const [name, rule] of Object.entries(QAI_EXCLUSIONS.tagRules || {})) {
+    const hit = (rule.cmcTags || []).find((x) => t.has(x));
+    if (hit) return `${name}:${hit}`;
+  }
+  for (const [name, rule] of Object.entries(QAI_EXCLUSIONS.namedSymbols || {})) {
+    if (rule.symbolPattern) {
+      if (new RegExp(rule.symbolPattern).test(sym)) return `named:${name}`;
+    } else if (name === sym) {
+      return `named:${name}`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Both sources, intersected, on the run day.
+ *
+ * CoinGecko side: the union of the `artificial-intelligence` and `ai-agents`
+ * categories, which also carries this leg's price / market cap / volume /
+ * ath-atl rows (the top-500 markets pull does not reach far enough down —
+ * several eligible AI names sit outside the top 500 by market cap).
+ * CoinMarketCap side: tags only. A name must appear on both.
+ */
+async function computeQaiMembers(dateStr, incumbents) {
+  const rb = RULEBOOK;
+  const cgRows = [];
+  for (const cat of rb.universe.coingeckoCategories) {
+    cgRows.push(...(await fetchCoinGeckoCategory(cat, dateStr)));
+  }
+  const cmcTags = await fetchCmcTagMap(dateStr);
+  console.log(`  sources: CoinGecko AI categories ${cgRows.length} rows (${rb.universe.coingeckoCategories.join(' + ')}), CoinMarketCap tagged listings ${cmcTags.size}`);
+
+  const AI_TAGS = new Set(rb.universe.cmcAiTags);
+  const chainTag = rb.universe.chainRule.tag;
+  const chainException = new Set(rb.universe.chainRule.exceptionTags);
+
+  const evaluated = [];
+  const seen = new Set();
+  const chainDropped = [];
+  for (const coin of cgRows) {
+    if (seen.has(coin.symbol)) continue; // highest-cap listing per symbol
+    seen.add(coin.symbol);
+    if (QX20_EXCLUDE.has(coin.symbol)) continue;
+
+    const tags = cmcTags.get(coin.symbol);
+    if (!tags) continue; // not in CMC's top 1000 at all — the intersection cannot be satisfied
+    const matched = [...AI_TAGS].filter((t) => tags.includes(t));
+    if (matched.length === 0) continue; // CoinGecko says AI, CoinMarketCap does not — out (§1)
+
+    const excl = qaiExcludedReason(coin.symbol, tags);
+    if (excl) continue;
+
+    // §1 general-purpose chain rule: layer-1 is out unless the chain itself is
+    // the AI product (generative-ai / ai-agents). ai-big-data alone never counts.
+    if (tags.includes(chainTag) && !tags.some((t) => chainException.has(t))) {
+      chainDropped.push({ symbol: coin.symbol, marketCap: coin.marketCap, tags: matched });
+      continue;
+    }
+
+    const gate = {};
+    gate.mcapOk = (coin.marketCap ?? 0) >= rb.eligibility.minCirculatingMarketCapUSD;
+    gate.volOk = (coin.volume24h ?? 0) >= rb.eligibility.minVolume24hUSD;
+    const age = listingAgeDays(coin, dateStr);
+    gate.ageOk = age == null ? false : age >= rb.eligibility.minListingAgeDays;
+    const eligible = gate.mcapOk && gate.volOk && gate.ageOk;
+
+    evaluated.push({
+      symbol: coin.symbol,
+      price: coin.price,
+      marketCap: coin.marketCap,
+      volume24h: coin.volume24h,
+      listingAgeDays: age == null ? null : Math.round(age),
+      tagsMatched: matched,
+      ...qaiDisclosure(coin.symbol, tags),
+      gate,
+      eligible,
+    });
+  }
+
+  const eligibleRanked = evaluated.filter((e) => e.eligible).sort((a, b) => b.marketCap - a.marketCap);
+  const ranking = rankingFor(rb, dateStr);
+  const kept = bufferedMembership(
+    eligibleRanked.map((e) => ({ symbol: e.symbol })),
+    incumbents.filter((s) => s !== CASH_SYM),
+    ranking.rankBuffer.entryMaxRank,
+    ranking.rankBuffer.exitMinRank,
+    ranking.targetCount
+  );
+  const memberRows = kept.map((sym) => evaluated.find((e) => e.symbol === sym)).filter(Boolean);
+  printQaiLedger(evaluated, new Set(kept), chainDropped);
+  const emptySeats = Math.max(0, ranking.targetCount - memberRows.length);
+  if (eligibleRanked.length < 5) {
+    console.log(`  §12-1 WATCH: only ${eligibleRanked.length} eligible name(s) this reconstitution (floor 5) — recorded as-is, cash holds the rest.`);
+  }
+  return {
+    memberRows,
+    evaluated,
+    eligibleCount: eligibleRanked.length,
+    emptySeats,
+    sourceStats: { coingeckoAiCategoryRows: cgRows.length, cmcTaggedListings: cmcTags.size, evaluated: evaluated.length, eligible: eligibleRanked.length },
+  };
+}
+
+function printQaiLedger(evaluated, finalMembers, chainDropped) {
+  console.log('  --- qAI eligibility ledger (every name both sources call AI) ---');
+  const rows = [...evaluated].sort((a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0));
+  for (const e of rows) {
+    const failed = Object.entries(e.gate).filter(([, ok]) => !ok).map(([k]) => k);
+    const tag = finalMembers.has(e.symbol) ? 'IN ' : failed.length ? 'OUT' : 'buf';
+    console.log(
+      `  [${tag}] ${e.symbol.padEnd(9)} mcap=${Math.round(e.marketCap ?? 0)} vol24h=${Math.round(e.volume24h ?? 0)} ` +
+        `age=${e.listingAgeDays ?? '—'}d bucket=${e.bucket}(${e.bucketSource}) chain=${e.originChain} giwa=${e.holdableOnGiwa} ` +
+        `tags=${e.tagsMatched.join('+')}` +
+        (failed.length ? `  FAILED: ${failed.join(',')}` : '')
+    );
+  }
+  console.log('  --- dropped by the general-purpose chain rule (§1: layer-1 without generative-ai/ai-agents) ---');
+  for (const c of [...chainDropped].sort((a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0))) {
+    console.log(`  [CHAIN] ${c.symbol.padEnd(9)} mcap=${Math.round(c.marketCap ?? 0)} aiTags=${c.tags.join('+')} + layer-1`);
+  }
+}
+
+/** Market-cap weighting with a HARD 35% cap (qai.md §4/§5). Unlike applyCap
+ *  above — which raises the cap to 1/n so the weights always sum to 1 — this
+ *  one leaves a residue it cannot redistribute unallocated, and the caller
+ *  holds that residue as cash. Same algorithm as the research engine's
+ *  cap_weights (docs/research/ai/ai-backtest.py). */
+function weightQai(memberRows, cap = RULEBOOK.weighting.cap.maxWeight) {
+  const total = memberRows.reduce((s, m) => s + (m.marketCap || 0), 0);
+  if (total <= 0) return [];
+  const w = new Map(memberRows.map((m) => [m.symbol, (m.marketCap || 0) / total]));
+  const capped = new Set();
+  for (let i = 0; i <= w.size; i++) {
+    let excess = 0;
+    for (const [s, v] of w) {
+      if (!capped.has(s) && v > cap) {
+        excess += v - cap;
+        w.set(s, cap);
+        capped.add(s);
+      }
+    }
+    if (excess <= 1e-12) break;
+    const uncapped = [...w].reduce((t, [s, v]) => (capped.has(s) ? t : t + v), 0);
+    if (uncapped <= 0) break; // nowhere to put it — it becomes cash
+    for (const [s, v] of w) if (!capped.has(s)) w.set(s, v + (v / uncapped) * excess);
+  }
+  return memberRows.map((m) => ({ symbol: m.symbol, weight: w.get(m.symbol) }));
+}
+
 // =========================================================================
 //  Weighting
 // =========================================================================
@@ -1510,6 +1757,22 @@ async function main() {
   const marketsBySym = bySymbol(markets);
   const priceNow = Object.fromEntries([...marketsBySym.entries()].map(([s, m]) => [s, m.price]));
 
+  // qAI holds names below the top-500 cut (KAITO, GRT and the like), so the
+  // two AI category pulls — which carry price and market cap of their own —
+  // are overlaid onto the daily price map on EVERY run, not only at a
+  // reconstitution. Without this a mark-to-market day would silently value a
+  // held name at nothing. Cash is priced at a constant 1.0 (qai.md §6: no
+  // interest) so it rides through the tolerance and mark paths as a position.
+  if (INDEX === 'qai') {
+    for (const cat of RULEBOOK.universe.coingeckoCategories) {
+      for (const row of await fetchCoinGeckoCategory(cat, dateStr)) {
+        if (!(priceNow[row.symbol] > 0) && row.price > 0) priceNow[row.symbol] = row.price;
+        if (!marketsBySym.has(row.symbol)) marketsBySym.set(row.symbol, row);
+      }
+    }
+    priceNow[CASH_SYM] = 1;
+  }
+
   // Reconstitute if there's no prior state (genesis), or the calendar quarter
   // has changed since the last reconstitution — "first run after 00:00 UTC on
   // Jan/Apr/Jul/Oct 1" reduces to exactly this for a keeper that runs daily.
@@ -1522,6 +1785,12 @@ async function main() {
   let members = [];
   let sourceInfo = { marketsSource };
   let nextOnNotice = onNotice;
+  // qAI only: seat accounting for the record line, and the disclosure trio per
+  // member carried in state so a mark-to-market day can restate it without
+  // re-reading the classification sources (membership is frozen between
+  // reconstitutions anyway — qai.md §8).
+  let qaiCounts = state?.qaiCounts ?? null;
+  let qaiMeta = state?.qaiMeta ?? {};
 
   if (shouldReconstitute) {
     reconstituted = true;
@@ -1534,6 +1803,25 @@ async function main() {
       nextOnNotice = res.nextOnNotice;
       sourceInfo.defillama = res.sourceStats;
       weights = weightQrev(memberRows, RULEBOOK.weighting.floor.fractionOfPositiveNetRevenueSum);
+    } else if (INDEX === 'qai') {
+      const res = await computeQaiMembers(dateStr, incumbents);
+      memberRows = res.memberRows;
+      sourceInfo.categoryUniverse = res.sourceStats;
+      qaiCounts = { eligibleCount: res.eligibleCount, emptySeats: res.emptySeats };
+      weights = weightQai(memberRows);
+      // Empty seats and whatever the hard cap could not redistribute are cash
+      // (qai.md §6). Carried as one more position at price 1 so the tolerance
+      // test and the daily mark need no special case.
+      const invested = weights.reduce((t, w) => t + w.weight, 0);
+      const cashFrac = Math.max(0, 1 - invested);
+      qaiMeta = Object.fromEntries(
+        memberRows.map((m) => [m.symbol, { bucket: m.bucket, bucketSource: m.bucketSource, originChain: m.originChain, holdableOnGiwa: m.holdableOnGiwa }])
+      );
+      console.log(
+        `  seats ${memberRows.length}/${RULEBOOK.ranking.targetCount} filled (${res.eligibleCount} eligible, ` +
+          `${res.emptySeats} empty) — cash ${(cashFrac * 100).toFixed(2)}%`
+      );
+      if (cashFrac > 1e-9) weights = [...weights, { symbol: CASH_SYM, weight: cashFrac }];
     } else {
       const res = await computeQdefiMembers(dateStr, markets, incumbents);
       memberRows = res.memberRows;
@@ -1566,6 +1854,13 @@ async function main() {
     members = weights.map((w) => {
       const row = memberRows.find((m) => m.symbol === w.symbol) || {};
       const out = { symbol: w.symbol, weight: Math.round(w.weight * 10000) / 10000, price: priceNow[w.symbol] ?? null, marketCap: row.marketCap ?? null };
+      if (INDEX === 'qai' && w.symbol !== CASH_SYM) {
+        out.volume24h = row.volume24h ?? null;
+        out.bucket = row.bucket ?? null;
+        out.bucketSource = row.bucketSource ?? null;
+        out.originChain = row.originChain ?? null;
+        out.holdableOnGiwa = row.holdableOnGiwa ?? null;
+      }
       if (INDEX === 'qrev') {
         out.holderRevenue12m = row.holderRevenue12m ?? null;
         out.issuance12m = row.issuance12m ?? null;
@@ -1583,12 +1878,38 @@ async function main() {
       else console.warn(`  ${sym}: no live price today, valued at last known contribution`);
     }
     level = value || level;
-    members = Object.entries(units).map(([sym, u]) => ({
-      symbol: sym,
-      weight: level ? Math.round(((u * (priceNow[sym] ?? 0)) / level) * 10000) / 10000 : null,
-      price: priceNow[sym] ?? null,
-      marketCap: marketsBySym.get(sym)?.marketCap ?? null,
-    }));
+    members = Object.entries(units).map(([sym, u]) => {
+      const out = {
+        symbol: sym,
+        weight: level ? Math.round(((u * (priceNow[sym] ?? 0)) / level) * 10000) / 10000 : null,
+        price: priceNow[sym] ?? null,
+        marketCap: marketsBySym.get(sym)?.marketCap ?? null,
+      };
+      if (INDEX === 'qai' && sym !== CASH_SYM) {
+        out.volume24h = marketsBySym.get(sym)?.volume24h ?? null;
+        const meta = qaiMeta[sym] ?? {};
+        out.bucket = meta.bucket ?? '미확인';
+        out.bucketSource = meta.bucketSource ?? '미확인';
+        out.originChain = meta.originChain ?? '미확인';
+        out.holdableOnGiwa = meta.holdableOnGiwa ?? '미확인';
+      }
+      return out;
+    });
+  }
+
+  // qAI: cash is a position in the BOOK but not a member of the INDEX. It is
+  // split out of the member list and reported as a top-level weight next to
+  // the seat accounting (qai.md §2/§6), so a reader can tell "three seats went
+  // unfilled" from "the cap left a residue" without re-deriving either.
+  let qaiExtras = null;
+  if (INDEX === 'qai') {
+    const cashRow = members.find((m) => m.symbol === CASH_SYM);
+    members = members.filter((m) => m.symbol !== CASH_SYM);
+    qaiExtras = {
+      eligibleCount: qaiCounts?.eligibleCount ?? null,
+      emptySeats: qaiCounts?.emptySeats ?? null,
+      cashWeight: cashRow ? cashRow.weight : 0,
+    };
   }
 
   const record = {
@@ -1599,6 +1920,7 @@ async function main() {
     level: Math.round(level * 1e6) / 1e6,
     members,
     reconstituted,
+    ...(qaiExtras ?? {}),
     sources: sourceInfo,
     prevHash: prevRecord ? prevRecord.hash : null,
   };
@@ -1609,7 +1931,14 @@ async function main() {
   fs.writeFileSync(
     STATE_PATH,
     JSON.stringify(
-      { updatedAt: record.observedAt, level, units, lastReconQuarter: shouldReconstitute ? quarterKey(dateStr) : state?.lastReconQuarter, onNotice: [...nextOnNotice] },
+      {
+        updatedAt: record.observedAt,
+        level,
+        units,
+        lastReconQuarter: shouldReconstitute ? quarterKey(dateStr) : state?.lastReconQuarter,
+        onNotice: [...nextOnNotice],
+        ...(INDEX === 'qai' ? { qaiCounts, qaiMeta } : {}),
+      },
       null,
       2
     ) + '\n'
@@ -1619,7 +1948,17 @@ async function main() {
   console.log('basket:');
   for (const m of [...members].sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))) {
     const extra = INDEX === 'qrev' ? ` P/HR=${m.phr ?? '—'} netRev12m=${m.netRevenue12m ?? '—'} issuance12m=${m.issuance12m ?? '—'} (${m.issuanceSource ?? '—'})` : '';
-    console.log(`  ${m.symbol.padEnd(8)} ${((m.weight ?? 0) * 100).toFixed(1).padStart(5)}%  mcap=${m.marketCap ?? '—'}${extra}`);
+    const qai =
+      INDEX === 'qai'
+        ? ` vol24h=${m.volume24h ?? '—'} bucket=${m.bucket ?? '—'}(${m.bucketSource ?? '—'}) chain=${m.originChain ?? '—'} giwa=${m.holdableOnGiwa ?? '—'}`
+        : '';
+    console.log(`  ${m.symbol.padEnd(8)} ${((m.weight ?? 0) * 100).toFixed(1).padStart(5)}%  mcap=${m.marketCap ?? '—'}${extra}${qai}`);
+  }
+  if (qaiExtras) {
+    console.log(
+      `  ${'CASH'.padEnd(8)} ${((qaiExtras.cashWeight ?? 0) * 100).toFixed(1).padStart(5)}%  ` +
+        `(eligible ${qaiExtras.eligibleCount ?? '—'}, empty seats ${qaiExtras.emptySeats ?? '—'}, priced 1.0, no interest — qai.md §6)`
+    );
   }
 
   // ------------------------------------------------- basket marks (on-chain)
