@@ -1,0 +1,104 @@
+{
+  "updatedAt": "2026-09-22T06:06:10.688Z",
+  "level": 100,
+  "units": {
+    "TAO": 0.107871540405597,
+    "VVV": 0.5415928977706485,
+    "AKE": 257.1953007992475,
+    "RENDER": 5.858956924141398,
+    "VIRTUAL": 7.4187563849878355,
+    "FET": 26.000898774573997,
+    "UB": 27.966047087787654,
+    "GRASS": 7.634788009727696,
+    "GRT": 123.14660449743003,
+    "AKT": 3.3598139442466017
+  },
+  "lastReconQuarter": "2026Q3",
+  "onNotice": [],
+  "qaiCounts": {
+    "eligibleCount": 11,
+    "emptySeats": 0
+  },
+  "qaiMeta": {
+    "TAO": {
+      "bucket": "B",
+      "bucketSource": "table",
+      "originChain": "TAO 자체 체인",
+      "holdableOnGiwa": "no",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    },
+    "VVV": {
+      "bucket": "B",
+      "bucketSource": "table",
+      "originChain": "base",
+      "holdableOnGiwa": "미확인",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    },
+    "AKE": {
+      "bucket": "D",
+      "bucketSource": "tag-fallback",
+      "originChain": "미확인",
+      "holdableOnGiwa": "미확인",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    },
+    "RENDER": {
+      "bucket": "A",
+      "bucketSource": "table",
+      "originChain": "ethereum",
+      "holdableOnGiwa": "yes",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    },
+    "VIRTUAL": {
+      "bucket": "B",
+      "bucketSource": "table",
+      "originChain": "ethereum",
+      "holdableOnGiwa": "yes",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    },
+    "FET": {
+      "bucket": "B",
+      "bucketSource": "table",
+      "originChain": "ethereum",
+      "holdableOnGiwa": "yes",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    },
+    "UB": {
+      "bucket": "B",
+      "bucketSource": "tag-fallback",
+      "originChain": "미확인",
+      "holdableOnGiwa": "미확인",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    },
+    "GRASS": {
+      "bucket": "A",
+      "bucketSource": "tag-fallback",
+      "originChain": "미확인",
+      "holdableOnGiwa": "미확인",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": true
+    },
+    "GRT": {
+      "bucket": "C",
+      "bucketSource": "table",
+      "originChain": "ethereum",
+      "holdableOnGiwa": "yes",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    },
+    "AKT": {
+      "bucket": "A",
+      "bucketSource": "table",
+      "originChain": "akash",
+      "holdableOnGiwa": "no",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    }
+  }
+}
