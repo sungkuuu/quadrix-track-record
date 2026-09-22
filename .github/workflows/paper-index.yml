@@ -78,17 +78,20 @@ jobs:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 
       - name: Commit records
+        # Runs even when a later step failed: a record that was computed and
+        # anchored must reach main. On 2026-09-21 the qX20 mark step reverted
+        # and this step was skipped, so the qREV/qDEFI lines for that day were
+        # anchored on chain but never committed — a permanent gap.
+        if: ${{ !cancelled() }}
         run: |
           git config user.name "qx-paper-index"
           git config user.email "keeper@quadrix.finance"
-          # Barbell/Triens files are deliberately absent from this list: their
-          # steps are disabled, so there is nothing of theirs to commit. Add
-          # trackrecord/record-{barbell,triens}.jsonl, the matching anchors
-          # files and keeper/state-{barbell,triens}.json here on the same day
-          # their steps are enabled.
           git add trackrecord/record-qrev.jsonl trackrecord/anchors-qrev.jsonl \
                   trackrecord/record-qdefi.jsonl trackrecord/anchors-qdefi.jsonl \
-                  keeper/state-qrev.json keeper/state-qdefi.json 2>/dev/null || true
+                  trackrecord/record-barbell.jsonl trackrecord/anchors-barbell.jsonl \
+                  trackrecord/record-triens.jsonl trackrecord/anchors-triens.jsonl \
+                  keeper/state-qrev.json keeper/state-qdefi.json \
+                  keeper/state-barbell.json keeper/state-triens.json 2>/dev/null || true
           git diff --cached --quiet || git commit -m "paper-index: $(date -u +%Y-%m-%d)"
           git pull --rebase origin main
           git push
