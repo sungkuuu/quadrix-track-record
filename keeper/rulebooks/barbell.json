@@ -103,9 +103,18 @@
   "basket": {
     "_doc": "No basket vault exists for this index and none can be deployed while GIWA carries no canonical BTC (barbell.md §12-1, quadrix/docs/research/btc-representations.md). vault null = the keeper computes every mark and posts nothing.",
     "chainId": 91342,
-    "vault": null,
-    "faucet": null,
+    "vault": "0xa9be0cf6f9d0bc95b757b97216b32f6d4de7df04",
+    "faucet": "0x88200d8723e4deacbd9067815165c6058316b957",
     "navBase": 100,
-    "assets": {}
+    "assets": {
+      "BTC": {
+        "address": "0xf3a6ecbc5e37585ea0755fa0e68d21a0e241a5e1",
+        "decimals": 13
+      },
+      "WC": {
+        "address": "0x42dd1bc5ebd03da2de0e0321cc45d378954b31b5",
+        "decimals": 9
+      }
+    }
   }
 }

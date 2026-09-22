@@ -198,9 +198,50 @@
   "basket": {
     "_doc": "No basket vault exists for this index and none can be deployed while GIWA carries no canonical BTC (triens.md §12-5). vault null = the keeper computes every mark and posts nothing.",
     "chainId": 91342,
-    "vault": null,
-    "faucet": null,
+    "vault": "0xafd422c43e8a0afd36a9bce01bb20db19e4324a5",
+    "faucet": "0x749569a2febd57d9b59a124f04a0e94fe0a35009",
     "navBase": 100,
-    "assets": {}
+    "assets": {
+      "WC": {
+        "address": "0x942962dab257d0f192144a231068442e183e5686",
+        "decimals": 9
+      },
+      "BTC": {
+        "address": "0xb2ad35fd230dd543df2ea9706b4d5cb0e24554d4",
+        "decimals": 13
+      },
+      "HYPE": {
+        "address": "0x03519f0e8b46b234cc364af2234dc3bca7592b89",
+        "decimals": 10
+      },
+      "TRX": {
+        "address": "0xc5fa80b3a633049f5175412ddfaca10e9b4d2301",
+        "decimals": 8
+      },
+      "SKY": {
+        "address": "0x92d3046e9a0ba5d8714ec7aa5770fe18eeb668ce",
+        "decimals": 7
+      },
+      "CAKE": {
+        "address": "0x5915a00cef914111b52e73c5a9a9fd0fbae9c7d4",
+        "decimals": 9
+      },
+      "UNI": {
+        "address": "0x43de3be40ddfe9e21b4f1cc51f829b7c5903c277",
+        "decimals": 9
+      },
+      "BNB": {
+        "address": "0x2a21b8cf3f260bb71c70625acafdfc96c39567f8",
+        "decimals": 11
+      },
+      "PENDLE": {
+        "address": "0x11c8823899af4bc575b2adef0a22b788574fc554",
+        "decimals": 9
+      },
+      "RAY": {
+        "address": "0x43901ce3e49252e57d490d54ef74692f134e572d",
+        "decimals": 9
+      }
+    }
   }
 }

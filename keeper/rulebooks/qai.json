@@ -390,9 +390,50 @@
   "basket": {
     "_doc": "No basket and no vault. qai.md §12-3: a vault is not built while fewer than 5 eligible names can be held on GIWA — today's top names are non-EVM. The paper record runs without one.",
     "chainId": 91342,
-    "vault": null,
-    "faucet": null,
+    "vault": "0x75b072e674afad13ff0c2b75a8937656643cbe97",
+    "faucet": "0x564f8172c89c76fa1da0942f40fa3771af9fb391",
     "navBase": 100,
-    "assets": {}
+    "assets": {
+      "TAO": {
+        "address": "0x44ff37ef6ff714e77630d715a0969db1977a7ceb",
+        "decimals": 11
+      },
+      "VVV": {
+        "address": "0xf4a8b84d459b7cf0cf586dc87ea564b571e5aa1f",
+        "decimals": 10
+      },
+      "AKE": {
+        "address": "0xe4e80bca8d96ba5bda3ac27f1d68ee7e49588ffc",
+        "decimals": 7
+      },
+      "RENDER": {
+        "address": "0x2eb321948717c2481a437ea11ccab052c433c51d",
+        "decimals": 9
+      },
+      "VIRTUAL": {
+        "address": "0x072b0bab1397de3b3193617ae3dd61a9c04ea928",
+        "decimals": 8
+      },
+      "FET": {
+        "address": "0xcb6aea59876e3059f2f9518f421db8b1bdbb4972",
+        "decimals": 8
+      },
+      "UB": {
+        "address": "0xacc4b3083f76888afe4c1a0fcc09a52d2f0af329",
+        "decimals": 8
+      },
+      "GRASS": {
+        "address": "0xf57e67f92679587ff8e09cc7634661aecdd708ef",
+        "decimals": 8
+      },
+      "GRT": {
+        "address": "0x8bb34857fff580158357102fa96bb0931e07e373",
+        "decimals": 7
+      },
+      "AKT": {
+        "address": "0x05c6b7e4b96f15dd30a5a75977f7645619eb8634",
+        "decimals": 8
+      }
+    }
   }
 }
