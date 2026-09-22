@@ -116,6 +116,25 @@ function log(index, msg) {
 /** The keeper key is shared by three crons and the site's desk, so two
  *  senders can race for the same nonce. viem fetches the nonce per call, so
  *  a short wait and a resend is the whole fix; anything else is rethrown. */
+/** Fixed gas for every post. On 2026-09-21 the node's estimate for the second
+ *  UNI band step (36,025) was exactly what the first step had used minus the
+ *  slot-refresh cost, the transaction ran out of gas, waitForTransactionReceipt
+ *  returned the reverted receipt without throwing, the keeper logged it as
+ *  posted, and the next step then failed simulation with NavMoveTooLarge. A
+ *  setNav/setRefPrice post costs under 40k; 120k leaves the estimate out of it. */
+const POST_GAS = 120_000n;
+
+/** waitForTransactionReceipt resolves on a reverted receipt too. A reverted
+ *  post must stop the run — the next band step would be computed from a state
+ *  the chain never reached. */
+async function requireMined(publicClient, hash, what) {
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') {
+    throw new Error(`${what} reverted on chain (tx ${hash}, block ${receipt.blockNumber}, gasUsed ${receipt.gasUsed})`);
+  }
+  return receipt;
+}
+
 async function sendNonceSafe(fn, tries = 5) {
   let last;
   for (let i = 0; i < tries; i++) {
@@ -162,8 +181,8 @@ export async function markBasket(args) {
       log(index, `  would setNav(${step}) [${fmt6(step)}]`);
       continue;
     }
-    const hash = await sendNonceSafe(() => wallet.writeContract({ address: vault, abi: VAULT_ABI, functionName: 'setNav', args: [step] }));
-    await publicClient.waitForTransactionReceipt({ hash });
+    const hash = await sendNonceSafe(() => wallet.writeContract({ address: vault, abi: VAULT_ABI, functionName: 'setNav', args: [step], gas: POST_GAS }));
+    await requireMined(publicClient, hash, `setNav(${step})`);
     posted.nav.push({ nav: step.toString(), txHash: hash });
     log(index, `  setNav(${step}) [${fmt6(step)}] tx=${hash}`);
   }
@@ -192,9 +211,9 @@ export async function markBasket(args) {
         continue;
       }
       const hash = await sendNonceSafe(() => wallet.writeContract({
-        address: vault, abi: VAULT_ABI, functionName: 'setRefPrice', args: [a.address, step],
+        address: vault, abi: VAULT_ABI, functionName: 'setRefPrice', args: [a.address, step], gas: POST_GAS,
       }));
-      await publicClient.waitForTransactionReceipt({ hash });
+      await requireMined(publicClient, hash, `setRefPrice(${a.symbol}, ${step})`);
       posted.ref[a.symbol].push({ price: step.toString(), txHash: hash });
       log(index, `  setRefPrice(${a.symbol}, ${step}) tx=${hash}`);
     }
