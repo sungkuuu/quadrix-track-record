@@ -1,0 +1,30 @@
+{
+  "updatedAt": "2026-09-22T00:23:17.704Z",
+  "level": 100,
+  "sleeves": {
+    "monetary": {
+      "units": {
+        "BTC": 0.0006946293573520728
+      }
+    },
+    "workingCapital": {
+      "units": 40,
+      "unitValue": 1,
+      "lastAccrual": "2026-09-22",
+      "proxy": "DTB3"
+    }
+  },
+  "targets": {
+    "monetary": 0.6,
+    "workingCapital": 0.4
+  },
+  "seats": null,
+  "lastReconQuarter": "2026Q3",
+  "onNotice": [],
+  "stalePrices": {
+    "BTC": {
+      "price": 86377,
+      "runs": 0
+    }
+  }
+}

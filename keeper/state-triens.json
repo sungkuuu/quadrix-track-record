@@ -1,0 +1,47 @@
+{
+  "updatedAt": "2026-09-22T00:28:17.898Z",
+  "level": 100,
+  "sleeves": {
+    "monetary": {
+      "units": {
+        "BTC": 0.0003473146786760364
+      }
+    },
+    "workingCapital": {
+      "units": 46,
+      "unitValue": 1,
+      "lastAccrual": "2026-09-22",
+      "proxy": "DTB3"
+    },
+    "quality": {
+      "units": {
+        "HYPE": 0.0893331915346166,
+        "TRX": 23.082485699749206,
+        "SKY": 28.922920721263594,
+        "CAKE": 0.7123657613155521,
+        "UNI": 0.16886986607598115,
+        "BNB": 0.0009373587977665024,
+        "RAY": 0.41608836277967387,
+        "PENDLE": 0.29603124624640836
+      }
+    }
+  },
+  "targets": {
+    "monetary": 0.3,
+    "workingCapital": 0.46,
+    "quality": 0.24
+  },
+  "seats": {
+    "filled": 8,
+    "target": 10,
+    "eligible": 8
+  },
+  "lastReconQuarter": "2026Q3",
+  "onNotice": [],
+  "stalePrices": {
+    "BTC": {
+      "price": 86377,
+      "runs": 0
+    }
+  }
+}
