@@ -1054,6 +1054,8 @@ async function computeQaiMembers(dateStr, incumbents) {
   const AI_TAGS = new Set(rb.universe.cmcAiTags);
   const chainTag = rb.universe.chainRule.tag;
   const chainException = new Set(rb.universe.chainRule.exceptionTags);
+  const chainRuleActive = !rb.universe.chainRule.effectiveUntil || dateStr <= rb.universe.chainRule.effectiveUntil;
+  if (!chainRuleActive) console.log(`  chain rule: not applied — amended out from 2026-10-01 (effectiveUntil ${rb.universe.chainRule.effectiveUntil})`);
 
   const evaluated = [];
   const seen = new Set();
@@ -1074,7 +1076,10 @@ async function computeQaiMembers(dateStr, incumbents) {
 
     // §1 general-purpose chain rule: layer-1 is out unless the chain itself is
     // the AI product (generative-ai / ai-agents). ai-big-data alone never counts.
-    if (tags.includes(chainTag) && !tags.some((t) => chainException.has(t))) {
+    // Amended 2026-09-22 (decision 2026-09-22-qai-chain-rule-amendment): the rule
+    // applies only while the run date is <= chainRule.effectiveUntil (2026-09-30);
+    // from the 2026-10-01 reconstitution a chain token is admitted like any other.
+    if (chainRuleActive && tags.includes(chainTag) && !tags.some((t) => chainException.has(t))) {
       chainDropped.push({ symbol: coin.symbol, marketCap: coin.marketCap, tags: matched });
       continue;
     }

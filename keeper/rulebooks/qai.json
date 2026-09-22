@@ -30,7 +30,8 @@
         "generative-ai",
         "ai-agents"
       ],
-      "note": "qai.md §1 (owner 2026-09-22 evening): a name carrying CMC `layer-1` is excluded unless it also carries `generative-ai` or `ai-agents` — the chain itself has to be the AI product. TAO stays (layer-1 + generative-ai); NEAR and ICP leave (layer-1 + ai-big-data only). `ai-big-data` alone is never grounds for a chain token. Same shape as qDEFI's 'chains out, HYPE exception'."
+      "note": "qai.md §1. In force 2026-09-22 → 2026-09-30 (inception decision): a name carrying CMC `layer-1` is excluded unless it also carries `generative-ai` or `ai-agents`. AMENDED by decision 2026-09-22-qai-chain-rule-amendment (owner 2026-09-22 night): from 2026-10-01 (the first reconstitution) the rule no longer applies — a general-purpose chain token is admitted on the same terms as any other name when both classification sources call it AI. The keeper applies the rule only while the run date is <= effectiveUntil; the block stays here so the record's first quarter is reproducible.",
+      "effectiveUntil": "2026-09-30"
     },
     "holdability": "informational only (qai.md §1, owner 2026-09-22): originChain / holdableOnGiwa are disclosure columns on every member row and never gate membership. The paper index holds non-EVM names.",
     "instrumentExclusions": "qX20 rulebook §3 categories in full (stablecoins, yield-bearing stables, wrapped/bridged listings, LSD/LRT wrappers, LP/vault shares, exchange tokens, tokenized RWA shares) plus qAI-specific named exclusions in keeper/rulebooks/qai-exclusions.json (§3: wrapped/bridged by issuer, staking and subnet derivatives, AI-tagged memecoins)"
@@ -216,8 +217,8 @@
       },
       "ICP": {
         "bucket": "B",
-        "originChain": "ethereum",
-        "holdableOnGiwa": "yes"
+        "originChain": "ICP 자체 체인",
+        "holdableOnGiwa": "no"
       },
       "INJ": {
         "bucket": "B",
