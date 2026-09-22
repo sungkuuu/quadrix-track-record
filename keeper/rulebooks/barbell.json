@@ -1,8 +1,8 @@
 {
-  "ticker": "Barbell",
+  "ticker": "qDUO",
   "name": "Barbell",
   "kind": "paper-index-sleeve-basket",
-  "status": "in force since 2026-09-22 — rules-only paper index, no vault and no capital; inception anchored (see decisions.jsonl, 2026-09-22-barbell-paper-inception). The working-capital sleeve is a T-bill proxy (DTB3) until a fully-reserved fiat-backed stable exists on GIWA.",
+  "status": "in force since 2026-09-22 — rules-only paper index, no vault and no capital; inception anchored (see decisions.jsonl, 2026-09-22-barbell-paper-inception). The working-capital sleeve is a T-bill proxy (DTB3) until a fully-reserved fiat-backed stable exists on GIWA. Ticker qDUO decided by the owner on 2026-09-22 after the first mark: the genesis line (2026-09-22) carries the index label \"Barbell\", lines from 2026-09-23 carry \"qDUO\"; the series is identified by its file, not the label.",
   "asOf": "2026-09-21",
   "source": {
     "rulebook": "quadrix/docs/methodology/barbell.md (site repo, private) — draft of 2026-09-21 with the owner's evening decisions D1/D2/D3/D5 applied",

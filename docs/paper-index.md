@@ -1,12 +1,16 @@
-# Paper-index keeper — qREV, qDEFI, Barbell, Triens
+# Paper-index keeper — qREV, qDEFI, qDUO (Barbell), qTRI (Triens)
 
-**Status: rules-only reference levels. No vault, no capital, NOT IN FORCE.**
-Nothing here moves money and nothing here is a product yet. A series becomes
+**Status: rules-only reference levels. No vault, no capital.**
+Nothing here moves money and nothing here is a product. A series becomes
 a real track record only once an owner decision anchors an inception date for
 it (`keeper/rulebooks/{index}.json`, field `inception`, is `null` until then).
-qREV and qDEFI have theirs, anchored 2026-09-16. **Barbell and Triens do not:
-their rulebooks are drafts, their `inception` is null, and their workflow
-steps are disabled.** Until an index has one, it is exactly what
+qREV and qDEFI have theirs, anchored 2026-09-16; Barbell (ticker qDUO) and
+Triens (ticker qTRI) have theirs, anchored 2026-09-22
+(`trackrecord/decisions/2026-09-22-{barbell,triens}-paper-inception.md`).
+The two tickers were decided after the first mark, so the genesis lines of
+2026-09-22 carry the names "Barbell"/"Triens" as their index label and later
+lines carry the tickers; a series is identified by its file. Before an index
+has an inception it is exactly what
 `docs/track-record-spec.md` §6 calls a dry run for the operating record: the
 recording pipeline built and running before the thing it would record.
 
