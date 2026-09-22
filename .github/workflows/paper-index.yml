@@ -71,17 +71,11 @@ jobs:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 
       # ------------------------------------------------------------------
-      # qAI — AI sector index, added 2026-09-22. DISABLED, same note and the
-      # same reason as Barbell/Triens carried before their inception
-      # decisions: the rulebook (quadrix/docs/methodology/qai.md) is a draft,
-      # keeper/rulebooks/qai.json has `inception: null`, and a paper series
-      # may not start before an owner decision anchors its inception date.
-      # Turn-on checklist: keeper/RUNBOOK.md, "Paper indexes that are not
-      # running". Keep the step in THIS job when it is enabled — same
+      # qAI — AI sector index, in force since 2026-09-22
+      # (trackrecord/decisions/2026-09-22-qai-paper-inception.md). Same
       # KEEPER_PK, same `keeper-key` concurrency group.
       # ------------------------------------------------------------------
       - name: qAI — compute and append today's record
-        if: false
         run: |
           set -o pipefail
           node keeper/paper-index.mjs --index qai --anchor 2>&1 | tee pi-qai.log
@@ -109,10 +103,9 @@ jobs:
                   trackrecord/record-barbell.jsonl trackrecord/anchors-barbell.jsonl \
                   trackrecord/record-triens.jsonl trackrecord/anchors-triens.jsonl \
                   keeper/state-qrev.json keeper/state-qdefi.json \
-                  keeper/state-barbell.json keeper/state-triens.json 2>/dev/null || true
-          # qAI: uncomment together with removing `if: false` from its step above.
-          # git add trackrecord/record-qai.jsonl trackrecord/anchors-qai.jsonl \
-          #         keeper/state-qai.json 2>/dev/null || true
+                  keeper/state-barbell.json keeper/state-triens.json \
+                  trackrecord/record-qai.jsonl trackrecord/anchors-qai.jsonl \
+                  keeper/state-qai.json 2>/dev/null || true
           git diff --cached --quiet || git commit -m "paper-index: $(date -u +%Y-%m-%d)"
           git pull --rebase origin main
           git push

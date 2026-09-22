@@ -2,7 +2,7 @@
   "ticker": "qAI",
   "name": "AI Index",
   "kind": "paper-index",
-  "status": "NOT IN FORCE — draft rulebook (quadrix/docs/methodology/qai.md), no inception decision anchored; the workflow step is disabled (if: false) and nothing is appended to trackrecord/",
+  "status": "in force since 2026-09-22 — rules-only paper index on the full universe (non-EVM names included, holdability is a column), no vault and no capital; inception anchored (see decisions.jsonl, 2026-09-22-qai-paper-inception).",
   "asOf": "2026-09-22",
   "source": {
     "rulebook": "quadrix/docs/methodology/qai.md (site repo, private) — DRAFT",
@@ -381,7 +381,11 @@
       }
     }
   },
-  "inception": null,
+  "inception": {
+    "date": "2026-09-22",
+    "decision": "2026-09-22-qai-paper-inception",
+    "genesisLevel": 100
+  },
   "genesisLevel": 100,
   "basket": {
     "_doc": "No basket and no vault. qai.md §12-3: a vault is not built while fewer than 5 eligible names can be held on GIWA — today's top names are non-EVM. The paper record runs without one.",
