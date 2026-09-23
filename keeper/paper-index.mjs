@@ -775,7 +775,7 @@ async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
   );
 
   const { evaluated, sourceStats } = await evaluateRevenueUniverse(dateStr, markets, rb.eligibility);
-  const { memberRows, finalMembers, nextOnNotice } = resolveMembership({
+  const { memberRows, finalMembers, nextOnNotice, eligibleCount } = resolveMembership({
     evaluated,
     incumbents,
     onNotice,
@@ -785,7 +785,7 @@ async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
   });
 
   printRevenueLedger('  --- qREV eligibility ledger (all candidates considered) ---', evaluated, finalMembers, (a, b) => (a.phr ?? Infinity) - (b.phr ?? Infinity));
-  return { memberRows, evaluated, nextOnNotice, sourceStats };
+  return { memberRows, evaluated, nextOnNotice, sourceStats, eligibleCount };
 }
 
 /** Full pass/fail ledger for every candidate considered — this is what makes
@@ -896,7 +896,7 @@ async function computeQdefiMembers(dateStr, markets, incumbents) {
   // No hysteresis for qDEFI (rulebook: exitHysteresis.enabled = false).
   const memberRows = kept.map((sym) => evaluated.find((e) => e.symbol === sym)).filter(Boolean);
   printQdefiLedger(evaluated, new Set(kept));
-  return { memberRows, evaluated, sourceStats: { categoryRows: categoryRows.length, protocols: protocols.length } };
+  return { memberRows, evaluated, sourceStats: { categoryRows: categoryRows.length, protocols: protocols.length }, eligibleCount: eligibleRanked.length };
 }
 
 function printQdefiLedger(evaluated, finalMembers) {
@@ -1676,6 +1676,7 @@ async function runSleeveIndex() {
               value: Math.round(qValue * 1e6) / 1e6,
               seatsFilled: seats?.filled ?? 0,
               seatsTarget: seats?.target ?? null,
+              eligible: seats?.eligible ?? null,
               emptySeats: Math.max(0, (seats?.target ?? 0) - (seats?.filled ?? 0)),
             },
           }
@@ -1862,6 +1863,8 @@ async function main() {
   let reconstituted = false;
   let members = [];
   let sourceInfo = { marketsSource };
+  // qDEFI/qREV: how many names passed the screen on this run (site: ELIGIBLE → HELD), 2026-09-23.
+  let rankedEligible = null;
   let nextOnNotice = onNotice;
   // qAI only: seat accounting for the record line, and the disclosure trio per
   // member carried in state so a mark-to-market day can restate it without
@@ -1877,6 +1880,7 @@ async function main() {
     let memberRows, weights;
     if (INDEX === 'qrev') {
       const res = await computeQrevMembers(dateStr, markets, incumbents, onNotice);
+      rankedEligible = res.eligibleCount ?? null;
       memberRows = res.memberRows;
       nextOnNotice = res.nextOnNotice;
       sourceInfo.defillama = res.sourceStats;
@@ -1912,6 +1916,7 @@ async function main() {
       if (cashFrac > 1e-9) weights = [...weights, { symbol: CASH_SYM, weight: cashFrac }];
     } else {
       const res = await computeQdefiMembers(dateStr, markets, incumbents);
+      rankedEligible = res.eligibleCount ?? null;
       memberRows = res.memberRows;
       sourceInfo.categoryUniverse = res.sourceStats;
       weights = weightQdefi(memberRows);
@@ -2019,6 +2024,7 @@ async function main() {
     members,
     reconstituted,
     ...(qaiExtras ?? {}),
+    ...(qaiExtras == null && rankedEligible != null ? { eligibleCount: rankedEligible } : {}),
     sources: sourceInfo,
     prevHash: prevRecord ? prevRecord.hash : null,
   };
