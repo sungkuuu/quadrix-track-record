@@ -89,6 +89,15 @@ jobs:
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 
+      # The qX20 daily-close series the site charts (keeper/qx20-daily.jsonl) is
+      # read back from chain by this script. It was never in a job, so the
+      # series stopped at 2026-09-15 while the site's freshness gate (added
+      # 2026-09-22) only learned to watch it on 2026-09-23. Rebuilt daily here;
+      # a rebuild is idempotent (the file is rewritten, sorted).
+      - name: qX20 — rebuild the daily-close series from chain
+        if: ${{ !cancelled() }}
+        run: node scripts/qx20-marks-from-chain.mjs
+
       - name: Commit records
         # Runs even when a later step failed: a record that was computed and
         # anchored must reach main. On 2026-09-21 the qX20 mark step reverted
@@ -105,7 +114,7 @@ jobs:
                   keeper/state-qrev.json keeper/state-qdefi.json \
                   keeper/state-barbell.json keeper/state-triens.json \
                   trackrecord/record-qai.jsonl trackrecord/anchors-qai.jsonl \
-                  keeper/state-qai.json 2>/dev/null || true
+                  keeper/state-qai.json keeper/qx20-daily.jsonl 2>/dev/null || true
           git diff --cached --quiet || git commit -m "paper-index: $(date -u +%Y-%m-%d)"
           git pull --rebase origin main
           git push
