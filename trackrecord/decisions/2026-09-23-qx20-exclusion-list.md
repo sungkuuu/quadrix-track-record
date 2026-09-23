@@ -1,4 +1,4 @@
-# qX20 — nine tickers leave the exclusion list, decided 2026-09-23 (DRAFT — not anchored)
+# qX20 — nine tickers leave the exclusion list, decided 2026-09-23
 
 **Decided:** 2026-09-23 (owner). **Effective:** at the first keeper run of 2026-10 — the scheduled monthly
 reconstitution — once this document is anchored. **Series:** the qX20 keeper book (`keeper/state.json`, NAV
@@ -42,11 +42,18 @@ mainnet vault whose non-EVM path runs through Upbit custody could not, and a mai
 anchored decision in any case. That constraint is a holdability fact, disclosed on the record, not a rule of
 the index — the same treatment qAI gives TAO and AKT.
 
-## Dry run
+## Dry run (2026-09-23, the keeper's own source — CoinGecko top-60)
 
-_To be filled from `node keeper/update-nav.mjs --dry-run` after the list change: which of the nine would
-enter at the 2026-10 reconstitution on today's snapshot, and the resulting weights._
+With the nine allowed, today's ranks among the eligible names: **ZEC 7 · XMR 10 · LTC 18**; DASH, PIVX, XVG, KMD, OMG,
+TON are outside the top 60. Under the rank buffer (enter at 17 or better, leave only below 23) ZEC and XMR would
+enter at the 2026-10 reconstitution; LTC at 18 would not clear the entry line. Raw market-cap weights at today's
+prices: ZEC 1.08%, XMR 0.42%. Which incumbents leave depends on the ranks on the run day; today the lowest incumbents
+would be pushed to 21–23 and stay unless they fall below 23. This is a projection on 2026-09-23 data, not the run.
 
 ## Pinned
 
-_Filled at anchoring: site commit, `docs/methodology/qx20.md` sha256, this repo's keeper commit._
+| File | Commit / sha256 |
+| --- | --- |
+| `keeper/update-nav.mjs` (`LEGACY_EXCLUDE`, `LEGACY_EXCLUDE_UNTIL = 2026-09-30`) | the commit that carries this file |
+| `keeper/paper-index.mjs` (`QX20_LEGACY_EXCLUDE`, same gate) | the commit that carries this file |
+| site `src/engine/indexEngine.ts`, `scripts/gen-qx20-series.mjs`, `docs/methodology/qx20.md` Q1 | the site commit that follows this anchor, referenced from the rulebook |
