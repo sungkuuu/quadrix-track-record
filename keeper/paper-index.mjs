@@ -385,14 +385,23 @@ function monthsPositive(series, endDateStr, maxMonths) {
 // --------------------------------------------------------- shared exclusions
 // Same universe carve-outs as keeper/update-nav.mjs's EXCLUDE (qX20 rulebook
 // §3), which both qREV and qDEFI's rulebooks reference wholesale.
-const QX20_EXCLUDE = new Set([
-  'USDT', 'USDC', 'BUSD', 'DAI', 'FEI', 'TUSD', 'USDP', 'WBTC', 'LEO', 'TON',
-  'OKB', 'OMG', 'LTC', 'XMR', 'DASH', 'ZEC', 'PIVX', 'XVG', 'KMD',
+const QX20_EXCLUDE_BASE = new Set([
+  'USDT', 'USDC', 'BUSD', 'DAI', 'FEI', 'TUSD', 'USDP', 'WBTC', 'LEO',
+  'OKB',
   'USDS', 'USDE', 'USD1', 'PYUSD', 'FDUSD', 'USDD', 'USDF', 'RLUSD', 'USDT0', 'USDG',
   'WETH', 'STETH', 'WSTETH', 'WEETH', 'WBETH', 'CBBTC', 'BSC-USD', 'JITOSOL',
   'SUSDE', 'SUSDS', 'BTCB', 'KHYPE', 'USDTB', 'BFUSD', 'SYRUPUSDC', 'PAXG',
   'WBT', 'BGB', 'GT', 'KCS', 'FIGR_HELOC', 'USYC', 'BUIDL',
 ]);
+// Nine tickers carried without a stated category (qX20 rulebook Q1). Decision
+// 2026-09-23-qx20-exclusion-list (owner): out of the list from the first run of
+// 2026-10. The paper indexes reuse this base set before their own screens; none
+// of the nine carries a DeFi, holder-revenue or AI classification today.
+const QX20_LEGACY_EXCLUDE = new Set(['LTC', 'XMR', 'DASH', 'ZEC', 'PIVX', 'XVG', 'KMD', 'OMG', 'TON']);
+const QX20_LEGACY_EXCLUDE_UNTIL = '2026-09-30';
+const QX20_EXCLUDE = {
+  has: (symbol) => QX20_EXCLUDE_BASE.has(symbol) || (todayUTC() <= QX20_LEGACY_EXCLUDE_UNTIL && QX20_LEGACY_EXCLUDE.has(symbol)),
+};
 // qDEFI-specific additions (§3): LP/vault shares and staking derivatives whose
 // underlying governance token is already a separate member.
 const QDEFI_EXTRA_EXCLUDE = new Set([

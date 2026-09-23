@@ -49,13 +49,21 @@ const ABI = parseAbi([
 // Same universe rules as the site's engine demo (indexEngine DEFAULT_EXCLUSIONS
 // + the 2026 additions from the Engine page).
 const EXCLUDE = new Set([
-  'USDT', 'USDC', 'BUSD', 'DAI', 'FEI', 'TUSD', 'USDP', 'WBTC', 'LEO', 'TON',
-  'OKB', 'OMG', 'LTC', 'XMR', 'DASH', 'ZEC', 'PIVX', 'XVG', 'KMD',
+  'USDT', 'USDC', 'BUSD', 'DAI', 'FEI', 'TUSD', 'USDP', 'WBTC', 'LEO',
+  'OKB',
   'USDS', 'USDE', 'USD1', 'PYUSD', 'FDUSD', 'USDD', 'USDF', 'RLUSD', 'USDT0', 'USDG',
   'WETH', 'STETH', 'WSTETH', 'WEETH', 'WBETH', 'CBBTC', 'BSC-USD', 'JITOSOL',
   'SUSDE', 'SUSDS', 'BTCB', 'KHYPE', 'USDTB', 'BFUSD', 'SYRUPUSDC', 'PAXG',
   'WBT', 'BGB', 'GT', 'KCS', 'FIGR_HELOC', 'USYC', 'BUIDL',
 ]);
+// Nine tickers the engine's default list carried without a stated category
+// (rulebook Q1). Decision 2026-09-23-qx20-exclusion-list (owner): they leave the
+// list at the first run of 2026-10, the scheduled monthly reconstitution. Until
+// then they stay excluded so the record before that run is the rule as anchored.
+const LEGACY_EXCLUDE = new Set(['LTC', 'XMR', 'DASH', 'ZEC', 'PIVX', 'XVG', 'KMD', 'OMG', 'TON']);
+const LEGACY_EXCLUDE_UNTIL = '2026-09-30';
+const isExcluded = (symbol, dateStr = new Date().toISOString().slice(0, 10)) =>
+  EXCLUDE.has(symbol) || (dateStr <= LEGACY_EXCLUDE_UNTIL && LEGACY_EXCLUDE.has(symbol));
 const TOP_N = 20;
 const MAX_WEIGHT = 0.6;
 /** Abort rather than post a NAV that moves more than this in one run. The
@@ -142,7 +150,7 @@ function targetMembership(ranked, incumbents) {
 
 function targetWeights(markets, incumbents) {
   const ranked = markets
-    .filter((m) => !EXCLUDE.has(m.symbol) && m.marketCap > 0 && m.price > 0)
+    .filter((m) => !isExcluded(m.symbol) && m.marketCap > 0 && m.price > 0)
     .sort((a, b) => b.marketCap - a.marketCap);
   const members = targetMembership(ranked, incumbents);
   const eligible = ranked.filter((m) => members.has(m.symbol));
