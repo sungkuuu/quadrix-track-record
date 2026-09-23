@@ -2024,7 +2024,11 @@ async function main() {
     members,
     reconstituted,
     ...(qaiExtras ?? {}),
-    ...(qaiExtras == null && rankedEligible != null ? { eligibleCount: rankedEligible } : {}),
+    // qDEFI/qREV: the screen runs only at a reconstitution, so the count is the
+    // last reconstitution's (carried in state with its date) until the next one.
+    ...(qaiExtras == null && (rankedEligible ?? state?.eligibleCount) != null
+      ? { eligibleCount: rankedEligible ?? state.eligibleCount, eligibleAsOf: rankedEligible != null ? dateStr : state?.eligibleAsOf ?? null }
+      : {}),
     sources: sourceInfo,
     prevHash: prevRecord ? prevRecord.hash : null,
   };
@@ -2042,6 +2046,9 @@ async function main() {
         lastReconQuarter: shouldReconstitute ? quarterKey(dateStr) : state?.lastReconQuarter,
         onNotice: [...nextOnNotice],
         ...(INDEX === 'qai' ? { qaiCounts, qaiMeta } : {}),
+        ...(INDEX !== 'qai' && (rankedEligible ?? state?.eligibleCount) != null
+          ? { eligibleCount: rankedEligible ?? state.eligibleCount, eligibleAsOf: rankedEligible != null ? dateStr : state?.eligibleAsOf ?? null }
+          : {}),
       },
       null,
       2
