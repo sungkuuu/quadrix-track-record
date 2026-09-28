@@ -62,8 +62,19 @@ const EXCLUDE = new Set([
 // then they stay excluded so the record before that run is the rule as anchored.
 const LEGACY_EXCLUDE = new Set(['LTC', 'XMR', 'DASH', 'ZEC', 'PIVX', 'XVG', 'KMD', 'OMG', 'TON']);
 const LEGACY_EXCLUDE_UNTIL = '2026-09-30';
+// The mirror of LEGACY_EXCLUDE: names that join a stated category at a scheduled
+// reconstitution, not on the first run after the commit. Each entry is excluded
+// on and after `from` (UTC date, inclusive).
+// XAUT (Tether Gold) is a gold-pegged token, the category PAXG already sits in.
+// Decision 2026-09-28-qx20-xaut-exclusion (owner): excluded from the first run of
+// 2026-10, the same run that lifts the nine legacy tickers.
+const EXCLUDE_FROM = [
+  { symbol: 'XAUT', from: '2026-10-01' },
+];
 const isExcluded = (symbol, dateStr = new Date().toISOString().slice(0, 10)) =>
-  EXCLUDE.has(symbol) || (dateStr <= LEGACY_EXCLUDE_UNTIL && LEGACY_EXCLUDE.has(symbol));
+  EXCLUDE.has(symbol) ||
+  (dateStr <= LEGACY_EXCLUDE_UNTIL && LEGACY_EXCLUDE.has(symbol)) ||
+  EXCLUDE_FROM.some((e) => e.symbol === symbol && dateStr >= e.from);
 const TOP_N = 20;
 const MAX_WEIGHT = 0.6;
 /** Abort rather than post a NAV that moves more than this in one run. The

@@ -287,6 +287,10 @@ with three additions specific to this leg:
 | `quality seats: 4/10` on Triens | fewer names passed the screen than the rulebook's viability floor of 5 | nothing operational — the level is still recorded. It is a signal for the owner: the rule says a product would not be launched on that quarter. |
 | `sleeve reset: … outside the 5-point tolerance` | the quarterly reset traded | expected on a reconstitution day after a large move. The line prints every sleeve's target, drifted weight and gap before it decides. |
 
+## Exclusion list
+
+`EXCLUDE` in `keeper/update-nav.mjs` (mirrored as `QX20_EXCLUDE` in `keeper/paper-index.mjs`, the base set qDEFI · qREV · qAI and Triens' Quality sleeve reuse (Barbell has no universe screen)) is matched by uppercase ticker; dated changes are gated by run date — `LEGACY_EXCLUDE` (nine tickers, excluded through 2026-09-30, decision 2026-09-23-qx20-exclusion-list) and `EXCLUDE_FROM` (XAUT, gold-pegged like PAXG, excluded from 2026-10-01, decision 2026-09-28-qx20-xaut-exclusion) — so both take effect at the first run of 2026-10, the monthly reconstitution; the site keeps its own copies: `src/pages/Engine.tsx` `DEMO_OPTIONS` (where PAXG is) and `scripts/gen-qx20-series.mjs`; `src/engine/indexEngine.ts` holds only the ten base names + the legacy nine.
+
 ## Manual run (local)
 
 ```bash

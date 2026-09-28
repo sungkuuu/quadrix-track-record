@@ -12,7 +12,7 @@
   "universe": {
     "definition": "the whole crypto market by circulating market cap; no sector, chain or issuer filter",
     "source": "CoinGecko coins/markets top 60 (CoinPaprika top 80 fallback) in update-nav.mjs; top 500 in the basket leg (same feed, deeper page)",
-    "exclusions": "stablecoins and yield-bearing stables, wrapped and bridged representations, staking/restaking derivatives, LP tokens and vault shares, exchange tokens, tokenised RWA/money-market shares, PAXG — the EXCLUDE list in update-nav.mjs, matched by ticker"
+    "exclusions": "stablecoins and yield-bearing stables, wrapped and bridged representations, staking/restaking derivatives, LP tokens and vault shares, exchange tokens, tokenised RWA/money-market shares, PAXG · XAUt from 2026-10-01 (decision 2026-09-28-qx20-xaut-exclusion) — the EXCLUDE list in update-nav.mjs, matched by ticker"
   },
   "eligibility": {
     "note": "none beyond rank and the exclusions — the rulebook draft proposes volume and listing-age floors; not implemented"

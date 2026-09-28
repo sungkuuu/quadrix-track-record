@@ -399,8 +399,23 @@ const QX20_EXCLUDE_BASE = new Set([
 // of the nine carries a DeFi, holder-revenue or AI classification today.
 const QX20_LEGACY_EXCLUDE = new Set(['LTC', 'XMR', 'DASH', 'ZEC', 'PIVX', 'XVG', 'KMD', 'OMG', 'TON']);
 const QX20_LEGACY_EXCLUDE_UNTIL = '2026-09-30';
+// Mirror of the legacy gate: names added to a stated category, excluded on and
+// after `from`. XAUT (Tether Gold) is gold-pegged, PAXG's category. Decision
+// 2026-09-28-qx20-xaut-exclusion (owner): from the first run of 2026-10. It
+// applies to every paper index through this shared set: qREV, qDEFI, qAI and
+// Triens each take qX20 §3's categories in full, and PAXG is already here. None
+// of them can draw XAUT from its sources today (qREV/Triens: not in the protocol
+// map; qDEFI: not in CoinGecko's DeFi category; qAI: not in its AI categories).
+const QX20_EXCLUDE_FROM = [
+  { symbol: 'XAUT', from: '2026-10-01' },
+];
 const QX20_EXCLUDE = {
-  has: (symbol) => QX20_EXCLUDE_BASE.has(symbol) || (todayUTC() <= QX20_LEGACY_EXCLUDE_UNTIL && QX20_LEGACY_EXCLUDE.has(symbol)),
+  has: (symbol) => {
+    const d = todayUTC();
+    return QX20_EXCLUDE_BASE.has(symbol) ||
+      (d <= QX20_LEGACY_EXCLUDE_UNTIL && QX20_LEGACY_EXCLUDE.has(symbol)) ||
+      QX20_EXCLUDE_FROM.some((e) => e.symbol === symbol && d >= e.from);
+  },
 };
 // qDEFI-specific additions (§3): LP/vault shares and staking derivatives whose
 // underlying governance token is already a separate member.
