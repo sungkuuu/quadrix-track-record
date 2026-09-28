@@ -115,6 +115,15 @@ jobs:
                   keeper/state-barbell.json keeper/state-triens.json \
                   trackrecord/record-qai.jsonl trackrecord/anchors-qai.jsonl \
                   keeper/state-qai.json keeper/qx20-daily.jsonl 2>/dev/null || true
+          # The basket work orders (keeper/basket-mark.mjs part (c) writes
+          # keeper/pending-registry-{index}.json on a reconstitution day) and
+          # reconstitution plans (keeper/plans/). Absent on most days, so each
+          # is staged on its own: one pathspec that matches nothing makes the
+          # `git add` above stage nothing at all. Never fatal — the records
+          # above must still be committed.
+          for f in keeper/pending-registry-*.json keeper/plans; do
+            if [ -e "$f" ]; then git add -- "$f" || echo "::warning::could not stage $f"; fi
+          done
           git diff --cached --quiet || git commit -m "paper-index: $(date -u +%Y-%m-%d)"
           git pull --rebase origin main
           git push

@@ -1,0 +1,182 @@
+name: basket-reconstitution
+
+# Runs one stage of a basket vault's registry reconstitution
+# (keeper/basket-recon.mjs) or regenerates its plan (keeper/basket-plan.mjs),
+# by hand from the Actions tab. Never scheduled.
+#
+# DRY RUN BY DEFAULT: every call is simulated and printed, nothing is sent.
+# A transaction is sent only when BOTH `live` is ticked AND `confirm` is the
+# word EXECUTE — the owner's confirmation is that dispatch. The keeper key
+# (KEEPER_PK, the same repository secret every keeper workflow signs with)
+# is owner, keeper and default bidder on the six testnet vaults; a separate
+# BIDDER_PK secret, when set, signs the fills instead.
+#
+# Same `keeper-key` concurrency group as paper-index / index-nav-keeper /
+# anchor-decision / track-record: the key is shared, and two runs racing for
+# one nonce is how the 2026-09-18 and 2026-09-22 failures happened. The
+# script also retries on a nonce error and requires every receipt to be
+# mined without revert before the next call.
+#
+# ORDER ON DAY 7: dispatch stage=plan first, the same UTC day, then stage=day7
+# (or execute → first-prices → auctions → finalize → verify one by one).
+# first-prices and auctions refuse a plan not generated today, and day7
+# checks that BEFORE it sends execute, so a stale plan stops the run instead
+# of executing and then refusing. Schedule the plan right after the daily
+# mark (paper-index, 00:25 UTC): the auctions stage refuses when a chain
+# reference is more than 5% from the plan's price.
+#
+# The plan file (keeper/plans/{index}/{date}.json) is the work order and the
+# log: announce/execute tx hashes, first posts and fills are appended to it,
+# and this job commits it after every stage so nothing lives only in the
+# runner (the pending-registry file of the daily run had that problem).
+#
+# Dispatch inputs reach the shell through `env:` and are quoted — never
+# interpolated into a `run:` line — so an input cannot become a command.
+on:
+  workflow_dispatch:
+    inputs:
+      index:
+        description: 'Basket'
+        required: true
+        type: choice
+        options: [qrev, qdefi, qai, qx20, barbell, triens]
+      stage:
+        description: 'plan = regenerate the plan file (reads only; run it the same UTC day before day7). The rest are basket-recon.mjs stages.'
+        required: true
+        type: choice
+        default: verify
+        options: [plan, announce, execute, first-prices, auctions, finalize, verify, day7]
+      live:
+        description: 'Send transactions (otherwise dry run). Also needs confirm = EXECUTE.'
+        type: boolean
+        default: false
+      confirm:
+        description: 'Type EXECUTE to allow a live stage'
+        required: false
+        default: ''
+      fill:
+        description: 'Fill policy for the auctions stage'
+        type: choice
+        default: fair
+        options: [fair, open, natural]
+      decision:
+        description: 'plan stage only: decision id from trackrecord/decisions.jsonl whose sha256 the announcement carries (must be this basket''s decision)'
+        required: false
+        default: ''
+      mocks:
+        description: 'plan stage only: repo path of a {SYMBOL: {address, decimals}} file for the deployed mocks'
+        required: false
+        default: ''
+      duration:
+        description: 'plan stage only: auction duration in seconds. The fair-fill window is duration/30 s wide (900 → 30 s; 1800 → 60 s, safer on the public chain where three transactions must be mined inside it); the runner gives up after 3 missed windows.'
+        required: false
+        default: '900'
+      rpc:
+        description: 'JSON-RPC endpoint'
+        required: false
+        default: 'https://sepolia-rpc.giwa.io'
+
+permissions:
+  contents: write # commits keeper/plans/** to main
+
+concurrency:
+  group: keeper-key
+  cancel-in-progress: false
+
+env:
+  INDEX: ${{ inputs.index }}
+  STAGE: ${{ inputs.stage }}
+  FILL: ${{ inputs.fill }}
+  DECISION: ${{ inputs.decision }}
+  MOCKS: ${{ inputs.mocks }}
+  DURATION: ${{ inputs.duration }}
+  RPC: ${{ inputs.rpc }}
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Decide dry run or live
+        id: mode
+        env:
+          LIVE: ${{ inputs.live }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$LIVE" = "true" ] && [ "$CONFIRM" = "EXECUTE" ]; then
+            echo "flag=--live" >> "$GITHUB_OUTPUT"
+            echo "::notice::LIVE — transactions will be sent from the keeper key"
+          elif [ "$LIVE" = "true" ]; then
+            echo "::error::live was ticked but confirm is not EXECUTE — refusing rather than running live by accident"
+            exit 1
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "::notice::DRY RUN — nothing is sent"
+          fi
+
+      - name: Plan
+        if: ${{ inputs.stage == 'plan' }}
+        run: |
+          set -o pipefail
+          args=(--index "$INDEX" --rpc "$RPC" --duration "${DURATION:-900}")
+          [ -n "$DECISION" ] && args+=(--decision "$DECISION")
+          [ -n "$MOCKS" ] && args+=(--mocks "$MOCKS")
+          node keeper/basket-plan.mjs "${args[@]}" 2>&1 | tee recon.log
+
+      - name: Check the plan is today's (day7)
+        # day7 must follow a plan of the same UTC day; the script checks this
+        # too, before execute, but failing here keeps a wrong dispatch from
+        # even touching the keeper key.
+        if: ${{ inputs.stage == 'day7' }}
+        run: |
+          today="$(date -u +%Y-%m-%d)"
+          if [ ! -f "keeper/plans/$INDEX/$today.json" ]; then
+            echo "::error::keeper/plans/$INDEX/$today.json does not exist — dispatch stage=plan for $INDEX today first, then day7"
+            exit 1
+          fi
+
+      - name: ${{ inputs.stage }}
+        if: ${{ inputs.stage != 'plan' }}
+        run: |
+          set -o pipefail
+          node keeper/basket-recon.mjs --index "$INDEX" --stage "$STAGE" \
+            --rpc "$RPC" --fill "$FILL" $MODE_FLAG 2>&1 | tee recon.log
+        env:
+          MODE_FLAG: ${{ steps.mode.outputs.flag }}
+          # Present in every run so a dry run simulates from the same address
+          # a live run would sign with; the script never prints it.
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+          BIDDER_PK: ${{ secrets.BIDDER_PK }}
+
+      - name: Commit the plan file
+        # Runs even after a failed stage: a fill that was mined must reach
+        # main, and the plan file records every call up to the failure.
+        if: ${{ !cancelled() }}
+        env:
+          MODE_LABEL: ${{ steps.mode.outputs.flag == '--live' && ' (live)' || ' (dry run)' }}
+        run: |
+          git config user.name "qx-basket-recon"
+          git config user.email "keeper@quadrix.finance"
+          git add keeper/plans/ 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "basket-recon: $INDEX $STAGE $(date -u +%Y-%m-%d)$MODE_LABEL"
+          git pull --rebase origin main
+          git push
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        env:
+          MODE_LABEL: ${{ steps.mode.outputs.flag == '--live' && 'LIVE' || 'dry run' }}
+        run: |
+          {
+            echo "## basket-reconstitution — $INDEX · $STAGE · $MODE_LABEL"
+            echo
+            echo '```'
+            tail -n 80 recon.log 2>/dev/null || echo '(no log)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
