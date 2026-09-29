@@ -44,6 +44,13 @@ on:
         description: 'Optional second git ref (branch, tag or sha) to rehearse and diff against this one'
         required: false
         default: ''
+  # GitHub dispatches only a workflow it has registered, and it registers one
+  # from the default branch or from a run. This push trigger (this branch
+  # only) exists so the workflow can be dispatched from here before it is on
+  # main; the job below is skipped for every event but a dispatch.
+  push:
+    branches: [keeper/dryrun-workflow]
+    paths: [.github/workflows/paper-index-dryrun.yml]
 
 permissions:
   contents: read
@@ -56,6 +63,7 @@ concurrency:
 
 jobs:
   rehearse:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
