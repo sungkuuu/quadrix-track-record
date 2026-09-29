@@ -90,6 +90,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { markBasket } from './basket-mark.mjs';
 import { rankingFor } from './rulebook-schedule.mjs';
 import { loadDTB3, rateOn, accrue, WC_PROXY_ID } from './working-capital.mjs';
+import { evaluateSpecialSituation } from './special-situation.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -343,6 +344,8 @@ async function fetchCoinPaprikaRows() {
         circulatingSupply: q.market_cap > 0 && q.price > 0 ? q.market_cap / q.price : null,
         athDate: null,
         atlDate: null,
+        // §9 trigger A's price leg (keeper/special-situation.mjs) — log only.
+        priceChange24h: q.percent_change_24h ?? null,
       };
     });
   return cpTickerRows;
@@ -384,6 +387,8 @@ async function fetchCoinGeckoMarketsTop500(dateKey) {
       circulatingSupply: c.circulating_supply,
       athDate: c.ath_date,
       atlDate: c.atl_date,
+      // §9 trigger A's price leg (keeper/special-situation.mjs) — log only.
+      priceChange24h: c.price_change_percentage_24h ?? null,
     }));
     marketsSource = 'coingecko';
     cacheSet(key, rows);
@@ -614,6 +619,101 @@ function monthsPositive(series, endDateStr, maxMonths) {
     else break;
   }
   return n;
+}
+
+// ------------------------------------------- §9 special-situation trigger log
+/** CoinPaprika 24h % change by symbol — trigger A's SECOND price source, read
+ *  only when the primary pull flags a held name (keeper/special-situation.mjs).
+ *  When the primary pull itself was the CoinPaprika fallback there is no
+ *  independent second source today, and the flagged name stays unconfirmed. */
+async function fetchSecondSource24h(dateKey) {
+  if (!String(marketsSource).startsWith('coingecko')) {
+    throw new Error(`the primary price pull was ${marketsSource}; no independent second source this run`);
+  }
+  const key = `cp-tickers-24h-${dateKey}.json`;
+  let data = cacheGet(key, DAY);
+  if (!data) {
+    const raw = await fetchJSON('https://api.coinpaprika.com/v1/tickers?quotes=USD&limit=500');
+    data = {};
+    for (const c of raw) {
+      const sym = String(c.symbol || '').toUpperCase();
+      const pct = c.quotes?.USD?.percent_change_24h;
+      if (sym && !(sym in data) && Number.isFinite(pct)) data[sym] = pct; // rank order: the big name wins a shared ticker
+    }
+    cacheSet(key, data);
+  }
+  return new Map(Object.entries(data));
+}
+
+/** DefiLlama TVL series for a symbol, for trigger A's second leg: the
+ *  symbol's highest-revenue adapter in qrev-protocol-map.json, then its parent
+ *  protocol — the research study's own choice (docs/research/qrev/
+ *  fetch-daily.py tvl_slug) — or the chain's TVL for a Chain row. Returns
+ *  [[unixSeconds, usd], ...] or null. Called only for a flagged name. */
+async function fetchSymbolTvlSeries(sym, dateKey) {
+  const map = JSON.parse(fs.readFileSync(path.join(HERE, 'rulebooks', 'qrev-protocol-map.json'), 'utf8'));
+  const rows = map.filter((r) => r.sym === sym).sort((a, b) => (Number(b.total1y) || 0) - (Number(a.total1y) || 0));
+  if (!rows.length) return null;
+  const top = rows[0];
+  const tries =
+    top.cat === 'Chain'
+      ? [{ url: `https://api.llama.fi/v2/historicalChainTvl/${encodeURIComponent(top.name)}`, chain: true }]
+      : [top.slug, (top.parent || '').replace('parent#', '')]
+          .filter(Boolean)
+          .map((s) => ({ url: `https://api.llama.fi/protocol/${encodeURIComponent(s)}`, chain: false }));
+  for (const t of tries) {
+    const key = `defillama-tvl-${sha256(t.url).slice(0, 16)}-${dateKey}.json`;
+    let series = cacheGet(key, DAY);
+    if (!series) {
+      try {
+        const j = await fetchJSON(t.url);
+        series = t.chain
+          ? (Array.isArray(j) ? j : []).map((x) => [Number(x.date), Number(x.tvl)])
+          : (Array.isArray(j?.tvl) ? j.tvl : []).map((x) => [Number(x.date), Number(x.totalLiquidityUSD)]);
+        cacheSet(key, series);
+      } catch (e) {
+        console.warn(`  §9 TVL fetch failed for ${sym} (${t.url}): ${e.message}`);
+        continue;
+      }
+    }
+    if (series.length >= 2) return series;
+  }
+  return null;
+}
+
+/** The record's `specialSituation` field, or null when this rulebook defines
+ *  no trigger log (qDEFI, qAI, Barbell — unchanged). Never throws: a failure
+ *  here is written into the field and the run continues, because this is a
+ *  log and must not be able to cost the day's record. */
+async function logSpecialSituation(held, marketsBySym, dateStr) {
+  const def = RULEBOOK.specialEvents?.triggerLog;
+  if (!def) return null;
+  try {
+    const supplyRegistry = JSON.parse(fs.readFileSync(path.join(HERE, 'supply', 'registry.json'), 'utf8'));
+    const supplyWeekly = JSON.parse(fs.readFileSync(path.join(HERE, 'supply', 'supply-weekly.json'), 'utf8'));
+    const res = await evaluateSpecialSituation({
+      def,
+      held,
+      markets: marketsBySym,
+      dateStr,
+      supplyWeekly,
+      supplyRegistry,
+      fetchSecond24h: () => fetchSecondSource24h(dateStr),
+      fetchTvlSeries: (sym) => fetchSymbolTvlSeries(sym, dateStr),
+    });
+    const [A, B, C] = res.triggers;
+    console.log(
+      `§9 trigger log (${def.rule}, log only): fired=${res.fired}` +
+        ` · A ${A.evaluated ? `checked ${A.checked}, worst ${A.worst ? `${A.worst.symbol} ${A.worst.vsBtc24hPct}% vs BTC` : '—'}, hits ${A.hits?.length ?? 0}` : `not evaluated (${A.reason})`}` +
+        ` · B ${B.evaluated ? `measured ${B.measured}, hits ${B.hits?.length ?? 0}` : `not evaluated (${B.reason}${B.latestSnapshot ? `; latest weekly snapshot ${B.latestSnapshot}` : ''})`}` +
+        ` · C ${C.fired ? `no price: ${C.noPrice.join(',')}` : 'every held name priced'}` +
+        (res.needsReview ? ' · NEEDS REVIEW' : '')
+    );
+    return res;
+  } catch (e) {
+    console.warn(`§9 trigger log failed (${e.message}) — recorded as not evaluated; the day's record is unaffected`);
+    return { evaluated: false, mode: 'log-only', rule: def.rule, error: String(e?.message ?? e) };
+  }
 }
 
 // --------------------------------------------------------- shared exclusions
@@ -1918,6 +2018,10 @@ async function runSleeveIndex() {
     members.push(m);
   }
 
+  // §9 trigger log over the Quality sleeve's held names (Triens; Barbell's
+  // rulebook defines no triggerLog, so null and no field). Log only.
+  const specialSituation = await logSpecialSituation(Object.keys(qUnits ?? {}), marketsBySym, dateStr);
+
   const record = {
     seq: prevRecord ? prevRecord.seq + 1 : 0,
     date: dateStr,
@@ -1953,6 +2057,7 @@ async function runSleeveIndex() {
     },
     members,
     reconstituted,
+    ...(specialSituation ? { specialSituation } : {}),
     sources: sourceInfo,
     prevHash: prevRecord ? prevRecord.hash : null,
   };
@@ -2376,6 +2481,10 @@ async function main() {
     };
   }
 
+  // §9 trigger log over the held names (qREV only among the ranked legs —
+  // null, and no field, where the rulebook defines no triggerLog). Log only.
+  const specialSituation = await logSpecialSituation(members.map((m) => m.symbol), marketsBySym, dateStr);
+
   const record = {
     seq: prevRecord ? prevRecord.seq + 1 : 0,
     date: dateStr,
@@ -2385,6 +2494,7 @@ async function main() {
     members,
     reconstituted,
     ...(qaiExtras ?? {}),
+    ...(specialSituation ? { specialSituation } : {}),
     // qDEFI/qREV: the screen runs only at a reconstitution, so the count is the
     // last reconstitution's (carried in state with its date) until the next one.
     ...(qaiExtras == null && (rankedEligible ?? state?.eligibleCount) != null

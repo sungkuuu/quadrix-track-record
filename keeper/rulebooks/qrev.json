@@ -102,7 +102,32 @@
   },
   "specialEvents": {
     "inScope": false,
-    "note": "token migrations, hacks, delistings, and other special events are explicitly OUT OF SCOPE for this paper-index implementation pass. If one occurs while the keeper is running, it will surface as a missing price or a data gap and the run should be reviewed by hand, not auto-resolved."
+    "note": "ACTION on a special event (sell, redistribute, interim reconstitution) is out of scope at the paper stage: token migrations, hacks and delistings surface as a missing price or a data gap and the run is reviewed by hand, not auto-resolved. Whether a §9 trigger FIRED is logged on every record line from the triggerLog block below (value-capture.md §9, D17: at the paper-index stage the record carries only whether a trigger fired).",
+    "triggerLog": {
+      "_doc": "Log only — never changes membership, weights or the level. keeper/special-situation.mjs evaluates these on every run over the held names and writes `specialSituation: {evaluated, mode, rule, held, triggers: [A, B, C], fired}` into the record line.",
+      "rule": "value-capture.md §9",
+      "btcSymbol": "BTC",
+      "A": {
+        "name": "protocol death (hack, unlimited mint, peg collapse)",
+        "priceVsBtc24hMaxPct": -40,
+        "priceSources": "CoinGecko coins/markets price_change_percentage_24h (primary pull) and CoinPaprika tickers percent_change_24h, both restated against BTC's own 24h move; both must be at or below the threshold. The second source is read only for a name the first source flags.",
+        "tvl48hMaxPct": -50,
+        "tvlSource": "DefiLlama /protocol/{slug} tvl series for the symbol's highest-revenue adapter in qrev-protocol-map.json, then its parent protocol (the research study's choice, docs/research/qrev/fetch-daily.py); /v2/historicalChainTvl/{name} for a Chain row. Read only for a name that meets the price leg.",
+        "incidentNotice": "an official protocol incident notice disclosing a loss of 10% or more of TVL satisfies the second leg instead of the TVL fall — not machine-checked; a flagged name (met: null, needsReview) is read by a person",
+        "cadenceNote": "the rulebook's check cadence is hourly; until that exists the daily run is the ceiling, and the 24h window of a daily run covers the day since the last one"
+      },
+      "B": {
+        "name": "control-address outflow",
+        "weeklyOutflowMinFractionOfCirculating": 0.05,
+        "source": "keeper/supply/supply-weekly.json: `excluded` (balances of the registry's protocol-controlled addresses) at the latest week against the week before, over `circulating` at the latest week",
+        "maxSnapshotAgeDays": 10,
+        "notMeasuredNote": "a name with no weekly series, a stale series (latest point older than maxSnapshotAgeDays) or an incomplete control-address census is listed as not measured, never as cleared"
+      },
+      "C": {
+        "name": "price loss / delisting",
+        "rule": "a held name with no live price in the primary pull (qX20 §9: fallback source, then at most three runs at the last price, then zero with an anchored decision)"
+      }
+    }
   },
   "dataSources": {
     "holderRevenue": {
