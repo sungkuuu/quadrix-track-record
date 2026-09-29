@@ -1,13 +1,8 @@
-# qREV, Triens, qAI — two market-data sources reconciled for listing age and the issuance fallback, decided 2026-09-29
-
-> **DRAFT — NOT ANCHORED.** Written 2026-09-29 on branch `keeper/source-reconciliation` for the owner to confirm. Two
-> things are open before this can be anchored: the effective date below, and the impact section, whose dry run has not
-> been run (see "Impact on the 2026-10-01 reconstitution"). This block is removed when the document is finalised; the
-> anchored text is whatever the owner confirms.
+# qREV, Triens, qAI — two market-data sources reconciled for listing age and the issuance fallback, decided 2026-09-29, effective at the 2026-10-01 reconstitution
 
 **Decided:** 2026-09-29 (owner). **Effective:** at the first keeper run on or after 2026-10-01 — the scheduled quarterly
 reconstitution, which is the only run at which either rule is read (both are eligibility and weighting inputs, computed
-only at a reconstitution). *Effective date to be confirmed by the owner.* **Series:** `trackrecord/record-qrev.jsonl`,
+only at a reconstitution). Effective date confirmed by the owner on 2026-09-29 after the impact measurement below. **Series:** `trackrecord/record-qrev.jsonl`,
 `trackrecord/record-triens.jsonl`, `trackrecord/record-qai.jsonl`, unchanged until that run.
 
 ## What changes
@@ -43,7 +38,7 @@ issuance, whatever the gap.
 **Issuance — the larger value.** The number is a pass/fail gate in Triens (issuance ≤ holder revenue) and a deduction
 from the weight in qREV; the larger of the two sources is the conservative side of both.
 
-**Listing age — the earlier date.** *The owner's reason is to be written here before anchoring.* Facts that bear on it:
+**Listing age — the earlier date.** The gate exists to keep out names too young to have a record; the failure that matters is reading an old name as young, not the reverse. Of two dates the earlier one is the one closer to the true first listing, so the rule takes it (owner 2026-09-29, adopting the keeper's proposal). Facts that bear on it:
 the proxy is not a listing date — it reads a recent price extreme as youth (on 2026-09-22 it put VVV at 295 days
 against a CoinMarketCap listing of 2025-01-28, and AKE at 73 against 2025-08-19); under the earlier-of rule both still
 read from CoinMarketCap's record.
@@ -55,24 +50,27 @@ takes the fallback until the supply pipeline is refreshed.
 
 ## Impact on the 2026-10-01 reconstitution
 
-**Not yet measured.** The comparison — the keeper at `keeper/source-reconciliation` against the same code without this
-decision, both run with `--dry-run --as-of 2026-10-01` on the same cached market data from a copy of the live state —
-could not be run on 2026-09-29: CoinGecko's `coins/markets` answered HTTP 403 ("Request blocked") to the workstation that
-prepared this draft, and without it the keeper falls back to CoinPaprika, which carries neither circulating supply nor
-the ath/atl dates. The result goes here before anchoring: names in and out per index, and the gate that moved them.
+**Measured 2026-09-29 in CI** (GitHub Actions run 36536183753, workflow `paper-index-dryrun.yml`: `--dry-run --as-of 2026-10-01`, the
+keeper at `keeper/source-reconciliation` against `keeper/dryrun-workflow` = main without this decision, both on the same CoinGecko,
+DefiLlama and CoinPaprika pulls from a copy of the live state; market data of 2026-09-29 ~07:22 UTC, so names near a threshold can
+still move on the day):
 
-What the rules can do, by construction: the listing age can only get older (the earlier of two dates, and the old qAI
-rule already read CoinMarketCap first), so for Triens and qAI this decision can only **admit** a name the old rule aged
-out, never remove one. Where CoinGecko could measure a name's issuance, the new value can only be larger, so for Triens
-it can only **fail** a name the old rule passed and for qREV it can only lower a name's net revenue (its weight, or a
-chain token's net-burn test); where CoinGecko could not and CoinMarketCap can, a name that was unmeasured — a failed
-gate in Triens and for a qREV chain token, gross-revenue weight for a qREV protocol token — is now measured, which can
-move it either way. qDEFI is not touched.
+- **No name changes membership in any index.** Eligible counts are equal on both sides: qREV 15, qDEFI 27, qAI 11, Triens Quality 8.
+- **qREV** (issuance, the larger value): CoinMarketCap is the larger figure for AERO, CRV, TRX, LINK and NEAR; NEAR goes from
+  unmeasured to 273M issuance (net revenue +5.1M → −268M) and stays at the floor weight. Weights move by at most 0.2 points
+  (TRX 25.67 → 25.49%, SKY 6.11 → 6.17%, CAKE 5.65 → 5.72%); the reconstitution normalisation factor moves 0.899744 → 0.899952.
+  10 rows carry `issuanceDisagreement`.
+- **Triens**: MON (309 → 819 days) and VVV (304 → 611 days) now pass the age gate but stay out on other gates (VVV: issuance 108 > θ 1;
+  MON: four gates); DBR, HNT and ORCA now pass the issuance gate but fail market-cap or volume. 38 listing dates from CoinMarketCap,
+  6 from the proxy, 17 disagreements over 90 days. Weights move by at most 0.01 points; factor 0.970486 → 0.970313.
+- **qAI**: eight names take the proxy date because it is earlier (BNKR, CLANKER, IQ, MAGIC, MY, NEURAL, VIRTUAL, ZIG); no gate flips;
+  32 rows carry `listingDisagreement`.
+- **qDEFI and Barbell**: identical, as expected.
 
 ## Pinned
 
 | File | Commit / sha256 |
 | --- | --- |
-| `docs/methodology/value-capture.md`, `triens.md`, `qai.md` (site repo) | branch `staging/rulebook-mismatches` — commit and sha256 to be pinned at anchoring |
-| `keeper/rulebooks/qrev.json`, `triens.json`, `qai.json` | sha256 to be pinned at anchoring |
+| `docs/methodology/value-capture.md`, `triens.md`, `qai.md` (site repo) | commit fa43dc1 — sha256 77d4a09f5eda0705… / b764a8bdbd864327… / 7c19d259ee28f2c2… |
+| `keeper/rulebooks/qrev.json`, `triens.json`, `qai.json` | sha256 be362a9b66c45a5f… / d710fcbf40e36623… / 76426d20517598d0… (this commit) |
 | `keeper/paper-index.mjs`, `keeper/source-reconciliation.mjs` | the commit that carries this file |
