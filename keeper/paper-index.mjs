@@ -24,6 +24,7 @@
  *   node keeper/paper-index.mjs --index qai     --dry-run
  *   node keeper/paper-index.mjs --index barbell --dry-run
  *   node keeper/paper-index.mjs --index triens  --dry-run
+ *   node keeper/paper-index.mjs --index qrev --dry-run --as-of 2026-10-01  # rehearse a date (dry run only)
  *   node keeper/paper-index.mjs --index qrev             # writes trackrecord/
  *   KEEPER_PK=0x... node keeper/paper-index.mjs --index qrev --anchor
  *
@@ -115,6 +116,24 @@ if (!['qrev', 'qdefi', 'qai', 'qx20', 'barbell', 'triens'].includes(INDEX)) {
 const SLEEVE_INDEXES = new Set(['barbell', 'triens']);
 const DRY_RUN = flag('--dry-run');
 const DO_ANCHOR = flag('--anchor');
+/** --as-of YYYY-MM-DD (dry run only): run the rules as if today were that
+ *  date — the quarter boundary, the dated rulebook schedules (qREV N15, the
+ *  qAI chain-rule sunset, the qX20 exclusion dates) and every trailing window
+ *  resolve against it — on today's market data. It exists to rehearse a
+ *  reconstitution before its day (e.g. `--as-of 2026-10-01` on 2026-09-29
+ *  against a copy of the live state in keeper/dryrun/). Refused without
+ *  --dry-run: a real record line is always stamped with the real date. */
+const AS_OF = opt('--as-of', null);
+if (AS_OF != null) {
+  if (!DRY_RUN) {
+    console.error('--as-of is a dry-run rehearsal option; refusing to write a real record under a simulated date');
+    process.exit(2);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(AS_OF) || Number.isNaN(Date.parse(AS_OF + 'T00:00:00Z'))) {
+    console.error(`--as-of must be YYYY-MM-DD (got ${AS_OF})`);
+    process.exit(2);
+  }
+}
 
 const RULEBOOK = JSON.parse(fs.readFileSync(path.join(HERE, 'rulebooks', `${INDEX}.json`), 'utf8'));
 
@@ -145,7 +164,24 @@ function pace(seconds) {
 }
 
 function todayUTC() {
-  return new Date().toISOString().slice(0, 10);
+  return AS_OF ?? new Date().toISOString().slice(0, 10);
+}
+
+/** Dry run only: every candidate a reconstitution evaluated, with its gates,
+ *  written next to the dry-run record so two code versions can be compared
+ *  name by name (keeper/dryrun/eval-{index}.json, git-ignored). The real run
+ *  keeps printing the same ledger to its log and writes no such file. */
+function dumpEvaluation(dateStr, evaluated, members, extra = {}) {
+  if (!DRY_RUN) return;
+  const out = {
+    index: INDEX,
+    date: dateStr,
+    asOf: AS_OF,
+    members: [...members],
+    evaluated: (evaluated ?? []).map(({ gate, ...rest }) => ({ ...rest, gate })),
+    ...extra,
+  };
+  fs.writeFileSync(path.join(DRYRUN_DIR, `eval-${INDEX}.json`), JSON.stringify(out, null, 2) + '\n');
 }
 
 function daysBefore(dateStr, days) {
@@ -1762,6 +1798,7 @@ async function runSleeveIndex() {
       nextOnNotice = res.nextOnNotice;
       sourceInfo.defillama = res.sourceStats;
       qualityRows = res.memberRows;
+      dumpEvaluation(dateStr, res.evaluated, qualityRows.map((m) => m.symbol), { eligibleCount: res.eligibleCount, onNotice: [...res.nextOnNotice], sourceStats: res.sourceStats });
       seats = { filled: qualityRows.length, target: ranking.targetCount, eligible: res.eligibleCount };
       qualityWeights = weightQrev(
         qualityRows,
@@ -2194,12 +2231,14 @@ async function main() {
       nextOnNotice = res.nextOnNotice;
       sourceInfo.defillama = res.sourceStats;
       weights = weightQrev(memberRows, RULEBOOK.weighting.floor.fractionOfPositiveNetRevenueSum);
+      dumpEvaluation(dateStr, res.evaluated, memberRows.map((m) => m.symbol), { eligibleCount: res.eligibleCount, onNotice: [...res.nextOnNotice], sourceStats: res.sourceStats });
     } else if (INDEX === 'qai') {
       const res = await computeQaiMembers(dateStr, incumbents);
       memberRows = res.memberRows;
       sourceInfo.categoryUniverse = res.sourceStats;
       qaiCounts = { eligibleCount: res.eligibleCount, emptySeats: res.emptySeats };
       weights = weightQai(memberRows);
+      dumpEvaluation(dateStr, res.evaluated, memberRows.map((m) => m.symbol), { eligibleCount: res.eligibleCount, emptySeats: res.emptySeats, sourceStats: res.sourceStats });
       // Empty seats and whatever the hard cap could not redistribute are cash
       // (qai.md §6). Carried as one more position at price 1 so the tolerance
       // test and the daily mark need no special case.
@@ -2229,6 +2268,7 @@ async function main() {
       memberRows = res.memberRows;
       sourceInfo.categoryUniverse = res.sourceStats;
       weights = weightQdefi(memberRows);
+      dumpEvaluation(dateStr, res.evaluated, memberRows.map((m) => m.symbol), { eligibleCount: res.eligibleCount, sourceStats: res.sourceStats });
     }
 
     if (!units) {
