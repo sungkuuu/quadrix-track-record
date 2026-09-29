@@ -177,7 +177,30 @@
   },
   "specialEvents": {
     "inScope": false,
-    "note": "migrations, hacks and delistings are out of scope for this implementation pass, as for qREV/qDEFI. The rulebook's §9 triggers (-40% vs BTC with TVL -50%, control-address drain, price loss) are written down there and not implemented here."
+    "note": "ACTION on a special event is out of scope at the paper stage, as for qREV: migrations, hacks and delistings surface as a missing price or a data gap and are reviewed by hand. Whether a §9 trigger FIRED is logged on every record line from the triggerLog block below, for the Quality sleeve's names only — triens.md §9 applies qREV §9 as is to that sleeve; BTC has no death trigger and the working-capital depeg rule is a draft (D17) and the sleeve is a DTB3 proxy, so neither is evaluated.",
+    "triggerLog": {
+      "_doc": "Log only — never changes membership, weights or the level. Same definitions and the same code as qrev.json's triggerLog (keeper/special-situation.mjs), evaluated over the Quality sleeve's held names.",
+      "rule": "triens.md §9 (Quality sleeve: qREV §9 as is)",
+      "btcSymbol": "BTC",
+      "A": {
+        "name": "protocol death (hack, unlimited mint, peg collapse)",
+        "priceVsBtc24hMaxPct": -40,
+        "priceSources": "CoinGecko coins/markets price_change_percentage_24h (primary pull) and CoinPaprika tickers percent_change_24h, both restated against BTC's own 24h move; both must be at or below the threshold. The second source is read only for a name the first source flags.",
+        "tvl48hMaxPct": -50,
+        "tvlSource": "DefiLlama /protocol/{slug} tvl series for the symbol's highest-revenue adapter in qrev-protocol-map.json, then its parent protocol; /v2/historicalChainTvl/{name} for a Chain row. Read only for a name that meets the price leg.",
+        "incidentNotice": "an official protocol incident notice disclosing a loss of 10% or more of TVL satisfies the second leg instead of the TVL fall — not machine-checked; a flagged name (met: null, needsReview) is read by a person"
+      },
+      "B": {
+        "name": "control-address outflow",
+        "weeklyOutflowMinFractionOfCirculating": 0.05,
+        "source": "keeper/supply/supply-weekly.json: `excluded` (balances of the registry's protocol-controlled addresses) at the latest week against the week before, over `circulating` at the latest week",
+        "maxSnapshotAgeDays": 10
+      },
+      "C": {
+        "name": "price loss / delisting",
+        "rule": "a held Quality name with no live price in the primary pull (qX20 §9)"
+      }
+    }
   },
   "fees": {
     "streamingAnnual": 0.01,

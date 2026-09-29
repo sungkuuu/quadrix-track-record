@@ -433,11 +433,25 @@ computed and printed as `would setNav(...)` / `would setRefPrice(...)`.
 
 ## What is NOT implemented
 
-- **Special corporate events** (token migrations like MKR→SKY, hacks,
-  delistings) — explicitly out of scope for this pass. If one happens while
+- **Acting on special corporate events** (token migrations like MKR→SKY,
+  hacks, delistings) — out of scope at the paper stage. If one happens while
   the keeper is running it will most likely surface as a missing price or a
   sudden eligibility change; that day's run should be reviewed by a person,
-  not auto-resolved.
+  not auto-resolved. What IS implemented (2026-09-29, branch
+  `keeper/special-situation-log`) is the paper-stage rule of
+  value-capture.md §9 (D17) — the record says whether a trigger fired: for
+  qREV and Triens's Quality sleeve, every run writes `specialSituation`
+  (`keeper/special-situation.mjs`, definitions in the rulebook JSON's
+  `specialEvents.triggerLog`, tests in `keeper/special-situation.test.mjs`)
+  with trigger A (24h −40% vs BTC on two price sources AND TVL −50% in 48h;
+  the incident-notice alternative is not machine-checked), B (weekly
+  control-address outflow ≥ 5% of circulating, from
+  `keeper/supply/supply-weekly.json`, measured only where that series is no
+  older than 10 days — it ended 2026-09-13, so B reads "not measured" until
+  the supply pipeline is refreshed) and C (a held name without a price). It
+  never changes membership, weights or the level. qDEFI, qAI and Barbell have
+  no such triggers in their rulebooks (§9 there is qX20 §9: the rule follows
+  the price) and carry no field.
 - **Hourly / intraday checks** — the keeper is a once-a-day job, same
   cadence as `scripts/track-record.mjs`. There is no sanity-move circuit
   breaker like `keeper/update-nav.mjs`'s ±15% halt (nothing here posts an
