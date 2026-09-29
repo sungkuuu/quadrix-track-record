@@ -1278,6 +1278,22 @@ function applyToleranceAndTrade(targetWeights, priceNow, prevUnits, portfolioVal
   return newUnits;
 }
 
+/** A reconstitution moves no money in or out of the index, but the book
+ *  applyToleranceAndTrade returns is worth value x (retained drifted weights +
+ *  traded target weights), not value. Scales every unit (in place) by
+ *  k = value / sum(units x price) so the book is whole again — the step the
+ *  Triens Quality sleeve takes below, and the research engine's renormalised
+ *  weight vector after the tolerance substitution (qrev-backtest.py run()).
+ *  Returns k; the units are left untouched when k is 1 to within 1e-12. */
+function renormaliseBook(units, priceNow, value) {
+  let book = 0;
+  for (const [sym, u] of Object.entries(units)) book += u * (priceNow[sym] ?? 0);
+  if (!(book > 0) || !(value > 0)) return 1;
+  const k = value / book;
+  if (Math.abs(k - 1) > 1e-12) for (const sym of Object.keys(units)) units[sym] *= k;
+  return k;
+}
+
 // =========================================================================
 //  Main
 // =========================================================================
@@ -1957,6 +1973,12 @@ async function main() {
         RULEBOOK.reconstitution.tolerance.thresholdPoints / 100,
         RULEBOOK.weighting.cap.maxWeight
       );
+      // M9 (2026-09-29): the tolerance-retained names leave a residual; spread
+      // it over the whole book so sum(units x price) is exactly the pre-trade
+      // level. Without this the next mark recomputes the level from the units
+      // and the residual becomes a level jump with no cash flow.
+      const k = renormaliseBook(units, priceNow, level);
+      if (Math.abs(k - 1) > 0.005) console.log(`  book normalised by ×${k.toFixed(6)} after the per-name tolerance (residual spread pro rata, no value in or out)`);
     }
 
     members = weights.map((w) => {
