@@ -91,6 +91,7 @@ import { markBasket } from './basket-mark.mjs';
 import { rankingFor } from './rulebook-schedule.mjs';
 import { loadDTB3, rateOn, accrue, WC_PROXY_ID } from './working-capital.mjs';
 import { evaluateSpecialSituation } from './special-situation.mjs';
+import { reconciledListingAge, reconcileIssuance } from './source-reconciliation.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -879,7 +880,7 @@ async function buildQrevUniverse(dateStr, markets) {
   return candidates;
 }
 
-async function issuanceValue12m(sym, coingeckoId, priceNow, circulatingNow, dateStr, supplyRegistry, supplyWeekly) {
+async function issuanceValue12m(sym, coingeckoId, priceNow, circulatingNow, dateStr, supplyRegistry, supplyWeekly, cmc = null) {
   const targetPast = daysBefore(dateStr, 365);
   // Census gate (owner 2026-09-22; value-capture.md §8, triens.md §8). A symbol
   // whose registry entry says the control-address census was never finished
@@ -920,27 +921,66 @@ async function issuanceValue12m(sym, coingeckoId, priceNow, circulatingNow, date
       }
     }
   }
-  // CoinGecko fallback: mcap/price at (today - 365d) approximates circulating
-  // supply then (see coinGeckoHistoricalSupply doc comment).
+  // Fallback — the registry cannot measure this name today (census incomplete,
+  // no year of weekly history, or no recent weekly point). Rule of 2026-09-29
+  // (owner; value-capture.md §8, triens.md §8, decision draft
+  // 2026-09-29-source-reconciliation): measure the circulating-supply increase
+  // over the trailing 365 days on BOTH market-data sources and take the LARGER
+  // issuance — the conservative side for a pass/fail gate (Triens θ, qREV's
+  // chain net-burn test) and for a weight netted by issuance (qREV). Not an
+  // average. A source that cannot measure the name is skipped; if the two
+  // differ by more than `issuanceDisagreementFraction` of the larger, both are
+  // returned so the member row can disclose them.
+  //   CoinGecko: circulating_supply now vs market_cap/price on (date - 365d)
+  //              from coins/{id}/history (see coinGeckoHistoricalSupply).
+  //   CoinMarketCap: circulatingSupply now (data-api listing) vs
+  //              circulatingSupply in the historical listing of (date - 365d).
+  let gecko = null;
   if (coingeckoId) {
     const s0 = await coinGeckoHistoricalSupply(coingeckoId, targetPast);
     const s1 = circulatingNow;
-    if (s0 != null && s1 != null) {
-      return {
-        value: Math.max(0, s1 - s0) * priceNow,
-        source: censusIncomplete ? 'coingecko-census-incomplete' : 'coingecko',
-        s0,
-        s1,
-      };
-    }
+    if (s0 != null && s1 != null) gecko = { s0, s1 };
   }
-  return {
-    value: null,
-    source: censusIncomplete ? 'unavailable-census-incomplete' : 'unavailable',
-    s0: null,
-    s1: circulatingNow,
-  };
+  let cmcSupply = null;
+  if (cmc) {
+    const s1 = Number(cmc.now?.get(sym)?.circulatingSupply);
+    const s0 = Number(cmc.past?.get(sym)?.circulatingSupply);
+    if (s0 > 0 && s1 > 0) cmcSupply = { s0, s1 };
+  }
+  const out = reconcileIssuance({
+    gecko,
+    cmc: cmcSupply,
+    price: priceNow,
+    censusIncomplete,
+    disagreementFraction: cmc?.disagreementFraction ?? 0.05,
+  });
+  if (out.value == null) return { ...out, s0: null, s1: circulatingNow };
+  return out;
 }
+
+/** CoinMarketCap supply context for the issuance fallback and the listing-age
+ *  rule: today's listing (circulatingSupply, dateAdded) and the historical
+ *  listing of (date - 365d). Null when CMC does not answer — then the
+ *  fallback reads CoinGecko alone and the listing age reads the proxy alone,
+ *  and the run says so; a CMC outage must not stop the qREV/Triens record,
+ *  which never depended on CMC before. */
+async function loadCmcSupplyContext(dateStr) {
+  try {
+    const now = await fetchCmcListing(dateStr);
+    const past = await fetchCmcHistoricalListing(daysBefore(dateStr, 365));
+    return { now, past, disagreementFraction: RULEBOOK.issuance?.issuanceDisagreementFraction ?? 0.05 };
+  } catch (e) {
+    console.warn(`  CoinMarketCap supply context unavailable (${e.message}) — issuance fallback reads CoinGecko only, listing age reads the proxy only`);
+    return null;
+  }
+}
+
+// reconciledListingAge (the listing-age rule for Triens and qAI, owner
+// 2026-09-29) lives in keeper/source-reconciliation.mjs with its tests. The
+// proxy is not a listing date: it reads a recent price extreme as youth (on
+// 2026-09-22 it put VVV at 295 days against a CMC listing of 2025-01-28, and
+// AKE at 73 against 2025-08-19) — which is why qAI moved to CMC's record on
+// 9/22. Under the earlier-of rule those two still read from CMC's record.
 
 function listingAgeDays(mkt, dateStr) {
   if (!mkt.athDate && !mkt.atlDate) return null;
@@ -962,6 +1002,13 @@ function listingAgeDays(mkt, dateStr) {
  * Triens passes 1, where issuance IS a gate (triens.md §2, owner 2026-09-21).
  * With theta null this function produces exactly the gate set and the
  * `eligible` verdict qREV had before it was factored out.
+ *
+ * Source reconciliation (owner 2026-09-29, decision draft
+ * 2026-09-29-source-reconciliation): the issuance fallback reads both
+ * market-data sources and takes the larger (both legs — issuanceValue12m);
+ * the listing age follows `elig.listingAgeRule` — 'earlier-of-cmc-and-proxy'
+ * for Triens, absent (the ath/atl proxy, value-capture.md §2 / qdefi.md §2)
+ * for qREV.
  */
 async function evaluateRevenueUniverse(dateStr, markets, elig, { issuanceGateTheta = null } = {}) {
   const supplyRegistry = JSON.parse(fs.readFileSync(path.join(HERE, 'supply', 'registry.json'), 'utf8'));
@@ -972,7 +1019,20 @@ async function evaluateRevenueUniverse(dateStr, markets, elig, { issuanceGateThe
   }
 
   const candidates = await buildQrevUniverse(dateStr, markets);
-  const sourceStats = { defillamaOk: 0, defillamaFail: 0, issuanceOnchain: 0, issuanceCoingecko: 0, issuanceUnavailable: 0, issuanceCensusIncomplete: 0 };
+  const cmc = await loadCmcSupplyContext(dateStr);
+  const reconcileAge = elig.listingAgeRule === 'earlier-of-cmc-and-proxy';
+  const sourceStats = {
+    defillamaOk: 0,
+    defillamaFail: 0,
+    issuanceOnchain: 0,
+    issuanceCoingecko: 0,
+    issuanceCmc: 0,
+    issuanceUnavailable: 0,
+    issuanceCensusIncomplete: 0,
+    issuanceDisagreement: 0,
+    cmc: cmc ? 'ok' : 'unavailable',
+    ...(reconcileAge ? { listingFromCmc: 0, listingFromProxy: 0, listingDisagreement: 0 } : {}),
+  };
 
   const evaluated = [];
   for (const c of candidates) {
@@ -980,7 +1040,17 @@ async function evaluateRevenueUniverse(dateStr, markets, elig, { issuanceGateThe
     const gate = {};
     gate.mcapOk = c.mkt.marketCap >= elig.minCirculatingMarketCapUSD;
     gate.volOk = (c.mkt.volume24h ?? 0) >= elig.minVolume24hUSD;
-    const age = listingAgeDays(c.mkt, dateStr);
+    let ageInfo = null;
+    let age;
+    if (reconcileAge) {
+      ageInfo = reconciledListingAge(c.mkt, cmc?.now?.get(c.sym) ?? null, dateStr, elig.listingDisagreementDays ?? 90);
+      age = ageInfo.days;
+      if (ageInfo.source === 'cmc-date-added') sourceStats.listingFromCmc++;
+      else if (ageInfo.source === 'ath-atl-proxy') sourceStats.listingFromProxy++;
+      if (ageInfo.listingDisagreement) sourceStats.listingDisagreement++;
+    } else {
+      age = listingAgeDays(c.mkt, dateStr);
+    }
     gate.ageOk = age == null ? false : age >= elig.minListingAgeDays;
 
     const reg = supplyRegistry[c.sym];
@@ -991,12 +1061,15 @@ async function evaluateRevenueUniverse(dateStr, markets, elig, { issuanceGateThe
       c.mkt.circulatingSupply,
       dateStr,
       supplyRegistry,
-      supplyWeekly
+      supplyWeekly,
+      cmc
     );
     if (issuance.source === 'onchain-registry') sourceStats.issuanceOnchain++;
     else if (issuance.source.startsWith('coingecko')) sourceStats.issuanceCoingecko++;
+    else if (issuance.source.startsWith('cmc')) sourceStats.issuanceCmc++;
     else sourceStats.issuanceUnavailable++;
     if (issuance.source.endsWith('census-incomplete')) sourceStats.issuanceCensusIncomplete++;
+    if (issuance.issuanceDisagreement) sourceStats.issuanceDisagreement++;
     // Protocol tokens: the universe/eligibility TEST is on gross hr1y
     // (rulebook §1 — issuance nets the WEIGHT, not the gate); if issuance is
     // unavailable, net revenue for weighting purposes falls back to gross
@@ -1054,11 +1127,18 @@ async function evaluateRevenueUniverse(dateStr, markets, elig, { issuanceGateThe
       holderRevenue12mGross: Math.round(c.hr12mGross),
       issuance12m: issuance.value == null ? null : Math.round(issuance.value),
       issuanceSource: issuance.source,
+      ...(issuance.issuanceDisagreement
+        ? { issuanceGecko: Math.round(issuance.issuanceGecko), issuanceCmc: Math.round(issuance.issuanceCmc), issuanceDisagreement: true }
+        : {}),
       issuanceRatio: Number.isFinite(issuanceRatio) ? Math.round(issuanceRatio * 100) / 100 : null,
       netRevenue12m: Math.round(netRevenue12m),
       phr: Number.isFinite(phr) ? Math.round(phr * 10) / 10 : null,
       posMonths: c.posMonths,
       listingAgeDays: age == null ? null : Math.round(age),
+      ...(ageInfo ? { listingSource: ageInfo.source } : {}),
+      ...(ageInfo?.listingDisagreement
+        ? { listingDateCmc: ageInfo.listingDateCmc, listingDateGecko: ageInfo.listingDateGecko, listingDisagreement: true }
+        : {}),
       gate,
       eligible,
     });
@@ -1151,7 +1231,10 @@ function printRevenueLedger(header, evaluated, finalMembers, sortFn, extra = () 
     console.log(
       `  [${tag}] ${e.symbol.padEnd(7)} ${e.isChain ? 'chain' : 'proto'} mcap=${Math.round(e.marketCap ?? 0)} ` +
         `hr12m=${e.holderRevenue12m ?? '—'} hrGross=${e.holderRevenue12mGross} phr=${e.phr ?? '—'} ` +
-        `months=${e.posMonths} age=${e.listingAgeDays ?? '—'}d issuance=${e.issuance12m ?? '—'}(${e.issuanceSource})` +
+        `months=${e.posMonths} age=${e.listingAgeDays ?? '—'}d${e.listingSource ? `(${e.listingSource})` : ''}` +
+        (e.listingDisagreement ? `[cmc ${e.listingDateCmc} vs gecko ${e.listingDateGecko}]` : '') +
+        ` issuance=${e.issuance12m ?? '—'}(${e.issuanceSource})` +
+        (e.issuanceDisagreement ? `[gecko ${e.issuanceGecko} vs cmc ${e.issuanceCmc}]` : '') +
         extra(e) +
         (failed.length ? `  FAILED: ${failed.join(',')}` : '')
     );
@@ -1297,7 +1380,9 @@ const CASH_SYM = '__CASH__';
  *  which is what "membership is frozen" means for a source that decides
  *  membership. Two quarters of that is a §12 condition for the owner. */
 async function fetchCmcListing(dateKey) {
-  const key = `cmc-listing-${dateKey}.json`;
+  // v2: rows also carry circulatingSupply (issuance fallback, 2026-09-29); a
+  // same-day cache written by the older code would lack it.
+  const key = `cmc-listing-v2-${dateKey}.json`;
   const cached = cacheGet(key, DAY);
   if (cached) return new Map(Object.entries(cached));
   const url =
@@ -1318,7 +1403,37 @@ async function fetchCmcListing(dateKey) {
       // not an inference from where its high or low happens to sit.
       dateAdded: typeof c.dateAdded === 'string' ? c.dateAdded.slice(0, 10) : null,
       marketCap: c.quotes?.[0]?.marketCap ?? null,
+      circulatingSupply: Number.isFinite(c.circulatingSupply) ? c.circulatingSupply : null,
     };
+  }
+  cacheSet(key, out);
+  return new Map(Object.entries(out));
+}
+
+/** CoinMarketCap's historical listing for one date (top 1000 on that day) —
+ *  the same public endpoint the research used for its weekly snapshots
+ *  (site repo docs/research/qrev/fetch-cmc.py). Only circulatingSupply and
+ *  dateAdded are kept. A past date never changes, so it is cached for good. */
+async function fetchCmcHistoricalListing(dateStr) {
+  const key = `cmc-listing-historical-${dateStr}.json`;
+  const cached = cacheGet(key, FOREVER);
+  if (cached) return new Map(Object.entries(cached));
+  const out = {};
+  for (const start of [1, 501]) {
+    const url =
+      'https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listings/historical' +
+      `?date=${dateStr}&limit=500&start=${start}&convertId=2781`;
+    const raw = await fetchJSON(url, { headers: { 'user-agent': 'Mozilla/5.0' } });
+    const list = raw?.data;
+    if (!Array.isArray(list) || list.length === 0) throw new Error(`CoinMarketCap historical listing ${dateStr} returned no rows`);
+    for (const c of list) {
+      const sym = String(c.symbol || '').toUpperCase();
+      if (!sym || out[sym]) continue; // highest-cap listing per symbol wins
+      out[sym] = {
+        circulatingSupply: Number.isFinite(c.circulatingSupply) ? c.circulatingSupply : null,
+        dateAdded: typeof c.dateAdded === 'string' ? c.dateAdded.slice(0, 10) : null,
+      };
+    }
   }
   cacheSet(key, out);
   return new Map(Object.entries(out));
@@ -1448,7 +1563,13 @@ async function computeQaiMembers(dateStr, incumbents) {
     // not acted on: it is an open item in the rulebook, not a second gate.
     gate.mcapOk = (coin.marketCap ?? 0) >= rb.eligibility.minCirculatingMarketCapUSD;
     gate.volOk = (coin.volume24h ?? 0) >= rb.eligibility.minVolume24hUSD;
-    const age = qaiListingAge(coin, cmcRow, dateStr);
+    // Listing age: from 2026-09-29 (rulebook eligibility.listingAgeRule) the
+    // earlier of CMC's dateAdded and the ath/atl proxy; before, CMC's date with
+    // the proxy only as a fallback (qaiListingAge).
+    const age =
+      rb.eligibility.listingAgeRule === 'earlier-of-cmc-and-proxy'
+        ? reconciledListingAge(coin, cmcRow, dateStr, rb.eligibility.listingDisagreementDays ?? 90)
+        : qaiListingAge(coin, cmcRow, dateStr);
     gate.ageOk = age.days == null ? false : age.days >= rb.eligibility.minListingAgeDays;
     const eligible = gate.mcapOk && gate.volOk && gate.ageOk;
 
@@ -1465,6 +1586,9 @@ async function computeQaiMembers(dateStr, incumbents) {
       volume24h: coin.volume24h,
       listingAgeDays: age.days == null ? null : Math.round(age.days),
       listingSource: age.source,
+      ...(age.listingDisagreement
+        ? { listingDateCmc: age.listingDateCmc, listingDateGecko: age.listingDateGecko, listingDisagreement: true }
+        : {}),
       tagsMatched: matched,
       ...qaiDisclosure(coin.symbol, tags),
       gate,
@@ -2014,6 +2138,16 @@ async function runSleeveIndex() {
       m.netRevenue12m = row.netRevenue12m ?? null;
       m.issuanceRatio = row.issuanceRatio ?? null;
       m.issuanceSource = row.issuanceSource ?? null;
+      if (row.issuanceDisagreement) {
+        m.issuanceGecko = row.issuanceGecko;
+        m.issuanceCmc = row.issuanceCmc;
+        m.issuanceDisagreement = true;
+      }
+      if (row.listingDisagreement) {
+        m.listingDateCmc = row.listingDateCmc;
+        m.listingDateGecko = row.listingDateGecko;
+        m.listingDisagreement = true;
+      }
     }
     members.push(m);
   }
@@ -2413,6 +2547,11 @@ async function main() {
         out.capDisagreement = row.capDisagreement === true;
         out.listingAgeDays = row.listingAgeDays ?? null;
         out.listingSource = row.listingSource ?? null;
+        if (row.listingDisagreement) {
+          out.listingDateCmc = row.listingDateCmc;
+          out.listingDateGecko = row.listingDateGecko;
+          out.listingDisagreement = true;
+        }
         out.bucket = row.bucket ?? null;
         out.bucketSource = row.bucketSource ?? null;
         out.originChain = row.originChain ?? null;
@@ -2423,6 +2562,11 @@ async function main() {
         out.issuance12m = row.issuance12m ?? null;
         out.netRevenue12m = row.netRevenue12m ?? null;
         out.issuanceSource = row.issuanceSource ?? null;
+        if (row.issuanceDisagreement) {
+          out.issuanceGecko = row.issuanceGecko;
+          out.issuanceCmc = row.issuanceCmc;
+          out.issuanceDisagreement = true;
+        }
         out.phr = row.phr ?? null;
       }
       return out;

@@ -84,6 +84,19 @@ this stage.
   from the registry at all (fixed 2026-09-22): its census was never finished,
   so the series would measure zero issuance. It takes the CoinGecko fallback
   and the record row says so.
+  **From branch `keeper/source-reconciliation` (owner 2026-09-29, decision
+  draft `2026-09-29-source-reconciliation`, not yet in force):** the fallback
+  reads BOTH market-data sources — CoinGecko as above, and CoinMarketCap's
+  `circulatingSupply` today (data-api listing) against its historical listing
+  of (date − 365d) — and takes the LARGER issuance, not an average
+  (`keeper/source-reconciliation.mjs` `reconcileIssuance`). `issuanceSource`
+  is `coingecko` or `cmc` (whichever was larger; `-census-incomplete`
+  appended as before) and the row carries `issuanceGecko`, `issuanceCmc`,
+  `issuanceDisagreement: true` when the two differ by more than 5% of the
+  larger. A CMC outage leaves CoinGecko alone and says so in
+  `sources.defillama.cmc`. Note that `supply-weekly.json` ends 2026-09-13:
+  from 2026-09-24 no name has a weekly point within 10 days of the run, so
+  every name takes the fallback until the supply pipeline is refreshed.
   If neither is available, issuance is `null`: for a **protocol** token this
   falls back to gross-revenue weighting for that name only (a documented
   bias toward overweighting unmeasured names); for a **chain** token this
@@ -355,10 +368,10 @@ publishing a level built on a price nobody has seen in four days.
 | qDEFI category universe | CoinGecko `coins/markets?category=decentralized-finance-defi` | none | membership freezes if this is unreachable |
 | qAI classification (both sides must agree) | CoinMarketCap public `data-api/v3/cryptocurrency/listing` (unauthenticated, top 1000, `tags`) ∩ CoinGecko `coins/markets?category=artificial-intelligence` and `?category=ai-agents` | none | either source down → membership frozen at the last reconstitution (qai.md §8); two quarters → §12. No API key exists or is needed |
 | qAI price / market cap / volume | the two CoinGecko AI category pulls, overlaid on the top-500 markets pull | CoinPaprika (price only) | the overlay runs every day, not only at a reconstitution — several members sit below the top-500 cut. CMC's own market cap is recorded beside CoinGecko's and gates nothing |
-| qAI listing date | CoinMarketCap `dateAdded`, from the same listing call as the tags | earlier of ath/atl date (the other legs' proxy) | `listingSource` on each member says which was used |
+| qAI listing date | CoinMarketCap `dateAdded`, from the same listing call as the tags | earlier of ath/atl date (the other legs' proxy) | `listingSource` on each member says which was used. On branch `keeper/source-reconciliation` (qai.json / triens.json `eligibility.listingAgeRule = "earlier-of-cmc-and-proxy"`): the EARLIER of the two dates for qAI and Triens's Quality sleeve, both dates on the row when more than 90 days apart; qREV and qDEFI keep the proxy |
 | qDEFI DeFi-family / chain check | DefiLlama `/protocols`, `/chains` | none | |
 | qREV holder revenue | DefiLlama `summary/fees/{slug}?dataType=dailyHoldersRevenue`, per protocol slug from the manual map | none (rulebook §8: no substitute source for this definition exists) | a protocol whose fetch fails for every one of its adapters is dropped from that day's candidate list, not zero-filled |
-| qREV issuance | `keeper/supply/` on-chain registry | CoinGecko historical market_cap/price (≈ circulating supply) | see "Issuance" above for exactly when each applies |
+| qREV issuance | `keeper/supply/` on-chain registry | CoinGecko historical market_cap/price (≈ circulating supply); on branch `keeper/source-reconciliation`, the larger of that and CoinMarketCap's historical-listing circulating supply | see "Issuance" above for exactly when each applies |
 
 CoinGecko unreachable (2026-09-29 onward, keyless `coins/markets` → HTTP 403):
 a mark-to-market day is priced from CoinPaprika — the top 500 for the markets

@@ -78,6 +78,9 @@
     "minHolderRevenueTrailing12mUSD": 1000000,
     "minConsecutivePositiveRevenueMonths": 6,
     "minListingAgeDays": 365,
+    "listingAgeRule": "earlier-of-cmc-and-proxy",
+    "listingDisagreementDays": 90,
+    "listingDateSource": "triens.md §2 (owner 2026-09-29, decision draft 2026-09-29-source-reconciliation): the age is counted from the EARLIER of CoinMarketCap `dateAdded` (data-api listing) and the CoinGecko proxy (the earlier of ath_date and atl_date) — one of the two, not an average. Either alone when the other is missing. When the two dates are more than listingDisagreementDays apart the member row carries listingDateCmc, listingDateGecko and listingDisagreement: true. Before this rule the keeper read the proxy alone while triens.md said 'CMC 상장일' (rule audit M3). qREV keeps the proxy (value-capture.md §2).",
     "valueTrapFilter": {
       "description": "trailing-30-day holder revenue must be at least this fraction of the trailing-12m monthly average",
       "thresholdFraction": 0.25,
@@ -127,8 +130,9 @@
     "definition": "on-chain total supply minus balances of protocol-controlled addresses listed in keeper/supply/registry.json; voluntary lockups (vote-escrow) count as issued",
     "windowMonths": 12,
     "primarySource": "keeper/supply/registry.json + keeper/supply/supply-weekly.json (the same on-chain measurement qREV reads, read by the same code)",
-    "fallbackSource": "CoinGecko circulating supply now vs ~365 days ago (coins/{id}/history, market_cap / price as the supply proxy)",
-    "fallbackFlag": "issuanceSource: \"coingecko\" is stamped on that member's record row whenever the fallback is used",
+    "fallbackSource": "both market-data sources, the LARGER issuance (triens.md §8, owner 2026-09-29, decision draft 2026-09-29-source-reconciliation — the conservative side for this pass/fail gate; not an average): CoinGecko circulating supply now vs market_cap / price on (date - 365d) from coins/{id}/history, and CoinMarketCap circulatingSupply now (data-api listing) vs circulatingSupply in the historical listing of (date - 365d). A source that cannot measure the name is skipped; neither = unmeasured, which fails the gate (D7). Before this rule the keeper read CoinGecko alone while triens.md named CMC (rule audit M4).",
+    "fallbackFlag": "issuanceSource is \"coingecko\" or \"cmc\" (whichever supplied the larger value; \"-census-incomplete\" appended when the registry census is incomplete). When the two differ by more than issuanceDisagreementFraction of the larger, the member row also carries issuanceGecko, issuanceCmc and issuanceDisagreement: true.",
+    "issuanceDisagreementFraction": 0.05,
     "openQuestion": "SKY's issuance source is not yet unified between the registry's composite series and CMC (triens.md D9, open) — the keeper reads whatever the shared registry gives it, exactly as qREV does",
     "censusStatusRule": "A symbol whose registry entry carries census_status \"incomplete\" is not measured from the registry; it falls back to the market-data supply series and the row says so (see the same note in qrev.json — one shared code path). Owner 2026-09-22. This matters more here than in qREV: the same number is a GATE in this product, not a weight adjustment. LINK on 2026-09-21 is the case that surfaced it — issuance 0 and the gate passed before the fix, ratio 14.99 and the gate fails after it, which is the rulebook appendix's own 15.0."
   },
@@ -168,7 +172,7 @@
     },
     "supplyIssuance": {
       "primary": "on-chain supply registry (keeper/supply/)",
-      "fallback": "CoinGecko circulating supply, current vs ~365 days ago"
+      "fallback": "the larger of CoinGecko and CoinMarketCap circulating-supply increase over the trailing 365 days (issuance.fallbackSource, 2026-09-29)"
     },
     "workingCapitalRate": {
       "primary": "FRED DTB3 daily CSV",
