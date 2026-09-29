@@ -1146,52 +1146,130 @@ async function evaluateRevenueUniverse(dateStr, markets, elig, { issuanceGateThe
   return { evaluated, sourceStats };
 }
 
+/** qREV's rank: cheapest P/HR first. `phr` is null when trailing holder
+ *  revenue is not positive (only a name on exit-hysteresis grace can be ranked
+ *  with one — every eligible name clears the revenue floor); it ranks last,
+ *  as P/HR = infinity, the research engine's convention
+ *  (qquality-backtest.py eligible(): phr = mcap / hr1y if hr1y > 0 else inf). */
+function byPhrAscending(a, b) {
+  const x = a.phr ?? Infinity;
+  const y = b.phr ?? Infinity;
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+/** The Quality sleeve's rank: largest net revenue first. */
+function byNetRevenueDescending(a, b) {
+  return (b.netRevenue12m ?? 0) - (a.netRevenue12m ?? 0);
+}
+
 /**
- * Rank buffer + exit hysteresis, shared by qREV and the Quality sleeve. The
- * two differ only in `rank` (qREV: P/HR ascending; Quality: net revenue
- * descending) — the seat mechanics are the same rule, written once.
+ * Rank buffer + exit hysteresis at a hard seat count, shared by qREV and the
+ * Quality sleeve. The two differ only in `rank` (qREV: P/HR ascending;
+ * Quality: net revenue descending) — the seat mechanics are the same rule,
+ * written once, and they are the research engine's, step for step
+ * (docs/research/qrev/qrev-backtest.py run(), the `grace` block;
+ * docs/research/qquality/qquality-backtest.py run(), the same block):
+ *
+ *  1. Standing. An incumbent ranked within exitMinRank among this run's
+ *     eligible names is in good standing (any notice clears). Otherwise it
+ *     exits if it was already on notice (second consecutive failure), and is
+ *     given one grace quarter if it was not.
+ *  2. Grace names re-enter the ranked set at their OWN rank, not on top of it
+ *     (the engines' eligible(..., force=grace): every gate is waived for them,
+ *     the ranking metric is not). A grace name that cannot be ranked at all —
+ *     no row or no market cap this run, or a chain token whose issuance is
+ *     unmeasured (the engines drop a chain without an issuance figure even
+ *     when forced) — exits.
+ *  3. Seats. Keep every incumbent ranked within exitMinRank on that combined
+ *     ranking, plus every grace name; add every outsider ranked within
+ *     entryMaxRank; if those claimants are more than targetCount, the
+ *     worst-ranked lose their seats (grace names included — they occupy
+ *     seats, they do not sit on top of N); fill any remaining seats by best
+ *     rank. A grace name is a claimant like an incumbent in good standing:
+ *     with fewer claimants than seats it keeps its seat even when an
+ *     outsider beyond entryMaxRank ranks above it.
+ *
+ * Until 2026-09-29 grace names were added after the seats were filled, so a
+ * full universe plus one grace name made targetCount + 1 members (M14: qREV
+ * 16 against N = 15 in the 2026-10-01 rehearsal). Below targetCount the two
+ * are the same: every rankable name is seated either way, in the same order.
+ * Output order: seated non-grace names as the buffer seats them (incumbents,
+ * then newcomers by rank), then the grace names — the order this function
+ * has always returned.
  */
 function resolveMembership({ evaluated, incumbents, onNotice, ranking, rank, shortRule }) {
+  const N = ranking.targetCount;
+  const { entryMaxRank, exitMinRank } = ranking.rankBuffer;
+  const rowOf = new Map();
+  for (const e of evaluated) if (!rowOf.has(e.symbol)) rowOf.set(e.symbol, e); // first row per symbol, as evaluated.find() did
   const eligibleRanked = evaluated.filter((e) => e.eligible).sort(rank);
+  const eligibleRank = new Map(eligibleRanked.map((e, i) => [e.symbol, i + 1]));
 
-  const kept = bufferedMembership(
-    eligibleRanked.map((e) => ({ symbol: e.symbol })),
-    incumbents,
-    ranking.rankBuffer.entryMaxRank,
-    ranking.rankBuffer.exitMinRank,
-    ranking.targetCount
-  );
-
-  // Exit hysteresis: an incumbent NOT retained by the buffer above (failed a
-  // gate outright, or ranked worse than exitMinRank) gets one more quarter if
-  // it isn't already onNotice; it exits now if it was already onNotice.
-  const nextOnNotice = new Set();
-  const finalMembers = new Set(kept);
+  // 1. Standing, on the eligible ranking alone.
+  const grace = new Set();
   for (const sym of incumbents) {
-    if (kept.includes(sym)) continue; // back in good standing, notice clears
-    const evalRow = evaluated.find((e) => e.symbol === sym);
+    if ((eligibleRank.get(sym) ?? Infinity) <= exitMinRank) continue; // good standing, notice clears
     if (onNotice.has(sym)) {
       console.log(`  ${sym}: exits (failed a second consecutive quarter — hysteresis exhausted)`);
       continue;
     }
-    if (!evalRow || evalRow.marketCap == null) {
+    const row = rowOf.get(sym);
+    if (!row || !(row.marketCap > 0)) {
       console.log(`  ${sym}: exits (no data at all this quarter — cannot extend hysteresis without a price)`);
       continue;
     }
-    console.log(`  ${sym}: kept on hysteresis notice (failed a gate or rank buffer this quarter; one more quarter)`);
-    finalMembers.add(sym);
+    if (row.isChain && row.issuance12m == null) {
+      console.log(`  ${sym}: exits (chain token with unmeasured issuance cannot be ranked — no hysteresis without a rank)`);
+      continue;
+    }
+    grace.add(sym);
+  }
+
+  // 2. Grace names back into the ranking at their own rank.
+  const ranked = grace.size ? evaluated.filter((e) => e.eligible || grace.has(e.symbol)).sort(rank) : eligibleRanked;
+  const rk = new Map(ranked.map((e, i) => [e.symbol, i + 1]));
+  const rankOf = (sym) => rk.get(sym) ?? Infinity;
+
+  // 3. Seats: buffer, hard N by rank, fill.
+  let seated = incumbents.filter((sym) => rankOf(sym) <= exitMinRank || grace.has(sym));
+  for (const e of ranked) {
+    if (rankOf(e.symbol) <= entryMaxRank && !seated.includes(e.symbol)) seated.push(e.symbol);
+  }
+  if (seated.length > N) {
+    const byRank = [...seated].sort((a, b) => rankOf(a) - rankOf(b));
+    for (const sym of byRank.slice(N)) {
+      const who = grace.has(sym) ? 'exits — on grace this quarter' : incumbents.includes(sym) ? 'exits — incumbent' : 'not admitted — newcomer';
+      console.log(`  ${sym}: ${who}, ranked ${rankOf(sym)} of ${ranked.length} with ${N} seats (cut at the seat limit)`);
+    }
+    seated = byRank.slice(0, N);
+  }
+  for (const e of ranked) {
+    if (seated.length >= N) break;
+    if (!seated.includes(e.symbol)) seated.push(e.symbol);
+  }
+
+  const nextOnNotice = new Set();
+  for (const sym of incumbents) {
+    if (!grace.has(sym) || !seated.includes(sym)) continue;
+    console.log(`  ${sym}: kept on hysteresis notice (failed a gate or rank buffer this quarter; one more quarter — seated at rank ${rankOf(sym)})`);
     nextOnNotice.add(sym);
   }
-  if (finalMembers.size < ranking.targetCount) {
+  const finalMembers = new Set([...seated.filter((sym) => !grace.has(sym)), ...nextOnNotice]);
+  const unseated = ranked.filter((e) => e.eligible && !finalMembers.has(e.symbol));
+  if (grace.size && unseated.length) {
     console.log(
-      `  universe short: ${finalMembers.size} member(s) vs target ${ranking.targetCount} ` +
+      `  seats: ${finalMembers.size}/${N}, ${nextOnNotice.size} held on grace; eligible without a seat: ` +
+        unseated.map((e) => `${e.symbol} (rank ${rankOf(e.symbol)} of ${ranked.length})`).join(', ')
+    );
+  }
+  if (finalMembers.size < N) {
+    console.log(
+      `  universe short: ${finalMembers.size} member(s) vs target ${N} ` +
         `(${eligibleRanked.length} eligible this run) — ${shortRule}`
     );
   }
 
-  const memberRows = [...finalMembers].map(
-    (sym) => evaluated.find((e) => e.symbol === sym) || { symbol: sym, marketCap: null, netRevenue12m: 0 }
-  );
+  const memberRows = [...finalMembers].map((sym) => rowOf.get(sym));
   return { memberRows, finalMembers, nextOnNotice, eligibleCount: eligibleRanked.length };
 }
 
@@ -1209,7 +1287,7 @@ async function computeQrevMembers(dateStr, markets, incumbents, onNotice) {
     incumbents,
     onNotice,
     ranking,
-    rank: (a, b) => a.phr - b.phr, // cheapest P/HR first
+    rank: byPhrAscending, // cheapest P/HR first
     shortRule: 'rulebook §12 applies, held as-is',
   });
 
@@ -1883,7 +1961,7 @@ function sleeveTargets(rb, seatsFilled, targetCount) {
 async function computeQualityMembers(dateStr, markets, incumbents, onNotice, ranking) {
   const rb = RULEBOOK;
   const theta = rb.eligibility.issuanceGate.theta;
-  const byNetRevenue = (a, b) => (b.netRevenue12m ?? 0) - (a.netRevenue12m ?? 0);
+  const byNetRevenue = byNetRevenueDescending;
 
   const { evaluated, sourceStats } = await evaluateRevenueUniverse(dateStr, markets, rb.eligibility, {
     issuanceGateTheta: theta,
