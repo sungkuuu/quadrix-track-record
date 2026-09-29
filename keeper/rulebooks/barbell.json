@@ -56,7 +56,7 @@
       "thresholdPoints": 5,
       "scope": "sleeve",
       "rule": "if EVERY sleeve's drifted (mark-to-market) weight is within 5 percentage points of its target, no sleeve is traded at all; otherwise every sleeve is reset to target",
-      "source": "barbell.md §6 (\"5%p 안이면 거래하지 않는다\"), inherited from qREV §6 practice and not separately tested in this product (D8)",
+      "source": "barbell.md §6 (\"5%p 안이면 거래하지 않는다\"), inherited from qREV §6 practice (D8). Measured for this product on 2026-09-22 (site repo docs/research/barbell/tol-check.py, README §4c: 60/40, T-bill cash, gross, exact reset vs 5 points over eight windows): multiples 5.28 vs 5.43 (2017-12→), 11.66 vs 11.54 (2019→), 1.63 vs 1.62 (2021-11→), 1.92 vs 1.90 (2022→), 3.24 vs 3.26 (2023→), 1.68 vs 1.69 (2024→), 1.40 vs 1.41 (2024-07→), 0.96 vs 0.96 (2025→); drawdown the same within 0.3 points; trades 36 → 20; turnover 3-4 points a year lower. The tolerance sets the number of trades, not the return. Only 0 and 5 points were compared.",
       "divergenceFromBacktest": "the P1 grid reset the ratio exactly at every quarter (barbell_common.py simulate_btc_cash, mode 'always'): it has no tolerance. The published multiples therefore come from a slightly higher-turnover rule than this one."
     },
     "betweenReconstitutions": "no trading. Interest accrued in the working-capital sleeve stays in that sleeve and is redistributed only at the quarterly reset — which is what the backtest did (weekly accrual, quarterly reset)."

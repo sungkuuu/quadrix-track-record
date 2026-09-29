@@ -82,8 +82,9 @@
     "definition": "on-chain total supply minus balances of protocol-controlled addresses listed in keeper/supply/registry.json (treasury, vesting, dead/burn-sink addresses); voluntary lockups (vote-escrow contracts such as veAERO/vlCVX/vePENDLE) are NOT excluded -- locked-but-minted tokens count as issued",
     "windowMonths": 12,
     "primarySource": "keeper/supply/registry.json + keeper/supply/supply-weekly.json (on-chain measurement, copied from quadrix/docs/research/qrev/supply/ 2026-09-15 snapshot; re-run that pipeline and re-copy to refresh)",
-    "fallbackSource": "CoinGecko circulating_supply now vs. CoinGecko circulating_supply ~365 days ago (coins/{id}/history) when the on-chain registry has no >=365-day weekly history for a symbol",
-    "fallbackFlag": "issuance_source: \"coingecko\" is stamped on that member's record row whenever the fallback is used",
+    "fallbackSource": "when the on-chain registry cannot measure a symbol (census incomplete, no >=365-day weekly history, or no weekly point within 10 days of the run): both market-data sources, the LARGER issuance (value-capture.md §8, owner 2026-09-29, decision draft 2026-09-29-source-reconciliation — the conservative side; not an average): CoinGecko circulating_supply now vs market_cap / price on (date - 365d) from coins/{id}/history, and CoinMarketCap circulatingSupply now (data-api listing) vs circulatingSupply in the historical listing of (date - 365d). A source that cannot measure the name is skipped. Before this rule the keeper read CoinGecko alone while value-capture.md §8 named CMC (rule audit M4).",
+    "fallbackFlag": "issuanceSource is \"coingecko\" or \"cmc\" (whichever supplied the larger value; \"-census-incomplete\" appended when the registry census is incomplete). When the two differ by more than issuanceDisagreementFraction of the larger, the member row also carries issuanceGecko, issuanceCmc and issuanceDisagreement: true.",
+    "issuanceDisagreementFraction": 0.05,
     "censusStatusRule": "A symbol whose registry entry carries census_status \"incomplete\" is NOT measured from the registry: the control-address census was never finished, so `excluded` is 0 and the weekly series is total supply, which measures issuance as zero. It falls back to the market-data supply series and the row is stamped issuanceSource \"coingecko-census-incomplete\" (or \"unavailable-census-incomplete\" when no fallback exists). Owner 2026-09-22, applying rulebook §8's existing fallback-and-disclose rule; the same thing the research engine does (ONCHAIN_SKIP). Runs BEFORE 2026-09-22 read the registry for these names regardless, contrary to the rulebook. The record is not rewritten and nothing is backfilled — the change takes effect from the next reconstitution. On the 2026-09-21 forced-reconstitution check the only qREV member affected was ZRO (issuance $3.9M -> $281.0M), whose weight did not move because it was at the 2% floor either way."
   },
   "reconstitution": {
@@ -102,7 +103,32 @@
   },
   "specialEvents": {
     "inScope": false,
-    "note": "token migrations, hacks, delistings, and other special events are explicitly OUT OF SCOPE for this paper-index implementation pass. If one occurs while the keeper is running, it will surface as a missing price or a data gap and the run should be reviewed by hand, not auto-resolved."
+    "note": "ACTION on a special event (sell, redistribute, interim reconstitution) is out of scope at the paper stage: token migrations, hacks and delistings surface as a missing price or a data gap and the run is reviewed by hand, not auto-resolved. Whether a §9 trigger FIRED is logged on every record line from the triggerLog block below (value-capture.md §9, D17: at the paper-index stage the record carries only whether a trigger fired).",
+    "triggerLog": {
+      "_doc": "Log only — never changes membership, weights or the level. keeper/special-situation.mjs evaluates these on every run over the held names and writes `specialSituation: {evaluated, mode, rule, held, triggers: [A, B, C], fired}` into the record line.",
+      "rule": "value-capture.md §9",
+      "btcSymbol": "BTC",
+      "A": {
+        "name": "protocol death (hack, unlimited mint, peg collapse)",
+        "priceVsBtc24hMaxPct": -40,
+        "priceSources": "CoinGecko coins/markets price_change_percentage_24h (primary pull) and CoinPaprika tickers percent_change_24h, both restated against BTC's own 24h move; both must be at or below the threshold. The second source is read only for a name the first source flags.",
+        "tvl48hMaxPct": -50,
+        "tvlSource": "DefiLlama /protocol/{slug} tvl series for the symbol's highest-revenue adapter in qrev-protocol-map.json, then its parent protocol (the research study's choice, docs/research/qrev/fetch-daily.py); /v2/historicalChainTvl/{name} for a Chain row. Read only for a name that meets the price leg.",
+        "incidentNotice": "an official protocol incident notice disclosing a loss of 10% or more of TVL satisfies the second leg instead of the TVL fall — not machine-checked; a flagged name (met: null, needsReview) is read by a person",
+        "cadenceNote": "the rulebook's check cadence is hourly; until that exists the daily run is the ceiling, and the 24h window of a daily run covers the day since the last one"
+      },
+      "B": {
+        "name": "control-address outflow",
+        "weeklyOutflowMinFractionOfCirculating": 0.05,
+        "source": "keeper/supply/supply-weekly.json: `excluded` (balances of the registry's protocol-controlled addresses) at the latest week against the week before, over `circulating` at the latest week",
+        "maxSnapshotAgeDays": 10,
+        "notMeasuredNote": "a name with no weekly series, a stale series (latest point older than maxSnapshotAgeDays) or an incomplete control-address census is listed as not measured, never as cleared"
+      },
+      "C": {
+        "name": "price loss / delisting",
+        "rule": "a held name with no live price in the primary pull (qX20 §9: fallback source, then at most three runs at the last price, then zero with an anchored decision)"
+      }
+    }
   },
   "dataSources": {
     "holderRevenue": {
@@ -115,7 +141,7 @@
     },
     "supplyIssuance": {
       "primary": "on-chain supply registry (keeper/supply/)",
-      "fallback": "CoinGecko circulating supply, current vs ~365 days ago"
+      "fallback": "the larger of CoinGecko and CoinMarketCap circulating-supply increase over the trailing 365 days (issuance.fallbackSource, 2026-09-29)"
     }
   },
   "inception": {
