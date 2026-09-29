@@ -38,6 +38,10 @@ jobs:
           # a repo secret, paper-index.mjs logs a clear line and skips the
           # anchor step entirely — the record is still written and committed.
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
+          # Optional (2026-09-29). Unset = the keyless public API, as before;
+          # see keeper/RUNBOOK.md "CoinGecko access". Never echoed: it is
+          # sent as a request header, not in a URL.
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       - name: qDEFI — compute and append today's record
         run: |
@@ -45,6 +49,7 @@ jobs:
           node keeper/paper-index.mjs --index qdefi --anchor 2>&1 | tee pi-qdefi.log
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       # ------------------------------------------------------------------
       # Barbell and Triens — the two sleeve indexes, in force since 2026-09-22.
@@ -62,6 +67,7 @@ jobs:
           node keeper/paper-index.mjs --index barbell --anchor 2>&1 | tee pi-barbell.log
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       - name: Triens — compute and append today's record
         run: |
@@ -69,6 +75,7 @@ jobs:
           node keeper/paper-index.mjs --index triens --anchor 2>&1 | tee pi-triens.log
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       # ------------------------------------------------------------------
       # qAI — AI sector index, in force since 2026-09-22
@@ -81,6 +88,7 @@ jobs:
           node keeper/paper-index.mjs --index qai --anchor 2>&1 | tee pi-qai.log
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       - name: qX20 — mark the basket vault from keeper/state.json (no record append)
         run: |
@@ -88,6 +96,7 @@ jobs:
           node keeper/paper-index.mjs --index qx20 2>&1 | tee pi-qx20.log
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       # The qX20 daily-close series the site charts (keeper/qx20-daily.jsonl) is
       # read back from chain by this script. It was never in a job, so the
@@ -117,11 +126,13 @@ jobs:
                   keeper/state-qai.json keeper/qx20-daily.jsonl 2>/dev/null || true
           # The basket work orders (keeper/basket-mark.mjs part (c) writes
           # keeper/pending-registry-{index}.json on a reconstitution day) and
-          # reconstitution plans (keeper/plans/). Absent on most days, so each
+          # reconstitution plans (keeper/plans/), and the last-known-good
+          # CoinGecko snapshot (keeper/cg-snapshot/, refreshed on a live pull,
+          # read when CoinGecko is unreachable). Absent on most days, so each
           # is staged on its own: one pathspec that matches nothing makes the
           # `git add` above stage nothing at all. Never fatal — the records
           # above must still be committed.
-          for f in keeper/pending-registry-*.json keeper/plans; do
+          for f in keeper/pending-registry-*.json keeper/plans keeper/cg-snapshot; do
             if [ -e "$f" ]; then git add -- "$f" || echo "::warning::could not stage $f"; fi
           done
           git diff --cached --quiet || git commit -m "paper-index: $(date -u +%Y-%m-%d)"

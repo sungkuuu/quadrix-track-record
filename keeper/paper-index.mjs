@@ -189,8 +189,135 @@ async function fetchJSON(url, opts, retries = 3) {
   }
 }
 
+// ------------------------------------------- CoinGecko access (2026-09-29)
+// From 2026-09-29 the keyless public `coins/markets` endpoint answers
+// HTTP 403 at CloudFront ("Request blocked") for the whole run — top-500 and
+// category pulls alike — while `/ping`, `/simple/price` and
+// `/coins/categories/list` still answer 200 and per-coin `/coins/{id}` answers
+// a 429 rate limit after a handful of calls. A browser User-Agent or an empty
+// `x-cg-demo-api-key` header did not lift the block (probes 2026-09-29).
+//
+// Optional key: when COINGECKO_API_KEY is set (a repo secret, see
+// keeper/RUNBOOK.md "CoinGecko access"), every CoinGecko call sends it in the
+// header CoinGecko documents for the plan — `x-cg-demo-api-key` against
+// api.coingecko.com (Demo, the default) or `x-cg-pro-api-key` against
+// pro-api.coingecko.com (COINGECKO_API_PLAN=pro). The key rides in a header,
+// never in the URL, so it cannot leak into a log line or an error message.
+// Unset or empty: exactly the keyless calls this file always made.
+const CG_KEY = (process.env.COINGECKO_API_KEY || '').trim();
+const CG_PLAN = (process.env.COINGECKO_API_PLAN || '').trim().toLowerCase() === 'pro' ? 'pro' : 'demo';
+const CG_BASE = CG_KEY && CG_PLAN === 'pro' ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
+const CG_OPTS = CG_KEY ? { headers: { [CG_PLAN === 'pro' ? 'x-cg-pro-api-key' : 'x-cg-demo-api-key']: CG_KEY } } : undefined;
+const cgUrl = (pathAndQuery) => CG_BASE + pathAndQuery;
+
+/** What a reconstitution does when a source that DECIDES membership is not
+ *  live on the day: the CoinGecko top-500 pull for qREV and Triens' Quality
+ *  sleeve (cap / volume / listing age / circulating supply all come from it),
+ *  the CoinGecko category pull for qDEFI and qAI.
+ *
+ *  `freeze` (default) is the rulebooks as anchored: qdefi.json / qai.json
+ *  dataSources.sectorClassification.fallback "none — membership is frozen at
+ *  the last reconstitution", and every rulebook's marketCapPriceVolume fallback
+ *  "CoinPaprika tickers (price only, no reconstitution)". The day is written
+ *  as a mark-to-market line with `sources.reconstitutionDeferred`, the state
+ *  keeps its old `lastReconQuarter`, and the next run tries the
+ *  reconstitution again — the same retry the code already had when a source
+ *  threw, except that the day now has a record line instead of none.
+ *
+ *  `cache` (PAPER_INDEX_DEGRADED_RECON=cache) reconstitutes anyway: CoinPaprika
+ *  for price / market cap / volume / circulating supply (market cap ÷ price —
+ *  the free tickers carry no circulating_supply field), the newest CoinGecko
+ *  snapshot for listing dates and category membership, the snapshot's date
+ *  stamped into `sources`. That is NOT what the anchored rulebooks say; it is
+ *  here so the owner can choose it, and choosing it is a rule decision.
+ *  With no snapshot at all, `cache` fails the run loudly, as before. */
+const DEGRADED_RECON = (process.env.PAPER_INDEX_DEGRADED_RECON || '').trim().toLowerCase() === 'cache' ? 'cache' : 'freeze';
+
+/** Last-known-good CoinGecko snapshots, committed so a GitHub runner (whose
+ *  keeper/cache/ is empty on every run — it is gitignored and no cache step
+ *  restores it) still has one. Only what a degraded day cannot get anywhere
+ *  else is kept: id, symbol and the ath/atl dates behind the listing-age
+ *  proxy. No prices, market caps or volumes — a stale price must never mark a
+ *  book. Same file names as keeper/cache/ (`cg-markets-top500-<date>.json`,
+ *  `cg-category-<id>-<date>.json`); the newest date on or before the run day
+ *  across the two directories wins, keeper/cache/ first on a tie. */
+const CG_SNAPSHOT_DIR = path.join(HERE, 'cg-snapshot');
+
+function latestCgSnapshot(prefix, dateStr) {
+  const re = new RegExp(`^${prefix.replace(/[-]/g, '\\-')}(\\d{4}-\\d{2}-\\d{2})\\.json$`);
+  let best = null;
+  for (const [dir, where] of [[CACHE_DIR, 'keeper/cache'], [CG_SNAPSHOT_DIR, 'keeper/cg-snapshot']]) {
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      const m = re.exec(f);
+      if (!m || m[1] > dateStr) continue;
+      if (best && best.date >= m[1]) continue;
+      try {
+        const rows = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+        // A usable snapshot is a non-empty array of rows with a symbol (test
+        // harnesses have left 140-byte stubs in keeper/cache/ before).
+        if (Array.isArray(rows) && rows.length > 0 && rows.every((r) => r && typeof r.symbol === 'string')) {
+          best = { date: m[1], rows, where: `${where}/${f}` };
+        }
+      } catch {
+        // unreadable file: not a snapshot
+      }
+    }
+  }
+  return best;
+}
+
+/** On a live CoinGecko success (never in a dry run — the directory is
+ *  tracked), keep one snapshot per prefix: write today's, drop older ones. */
+function writeCgSnapshot(prefix, dateStr, rows) {
+  if (DRY_RUN) return;
+  try {
+    fs.mkdirSync(CG_SNAPSHOT_DIR, { recursive: true });
+    const slim = rows.map((r) => ({ id: r.id, symbol: r.symbol, athDate: r.athDate ?? null, atlDate: r.atlDate ?? null }));
+    fs.writeFileSync(path.join(CG_SNAPSHOT_DIR, `${prefix}${dateStr}.json`), JSON.stringify(slim) + '\n');
+    for (const f of fs.readdirSync(CG_SNAPSHOT_DIR)) {
+      if (f.startsWith(prefix) && f !== `${prefix}${dateStr}.json` && /^\d{4}-\d{2}-\d{2}\.json$/.test(f.slice(prefix.length))) {
+        fs.unlinkSync(path.join(CG_SNAPSHOT_DIR, f));
+      }
+    }
+  } catch (e) {
+    console.warn(`  could not write CoinGecko snapshot ${prefix}${dateStr}: ${e.message} (the record is unaffected)`);
+  }
+}
+
+/** CoinPaprika tickers (all of them, not the top 500: qAI holds names that
+ *  can sit below any fixed cut), fetched once per run. Rows are shaped like
+ *  the CoinGecko rows; circulating supply is market cap ÷ price. */
+let cpTickerRows = null;
+async function fetchCoinPaprikaRows() {
+  if (cpTickerRows) return cpTickerRows;
+  const raw = await fetchJSON('https://api.coinpaprika.com/v1/tickers?quotes=USD');
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error('CoinPaprika tickers returned no rows');
+  cpTickerRows = raw
+    .slice()
+    .sort((a, b) => (a.rank || Infinity) - (b.rank || Infinity))
+    .map((c) => {
+      const q = c.quotes?.USD ?? {};
+      return {
+        id: c.id,
+        symbol: String(c.symbol).toUpperCase(),
+        price: q.price,
+        marketCap: q.market_cap,
+        volume24h: q.volume_24h,
+        circulatingSupply: q.market_cap > 0 && q.price > 0 ? q.market_cap / q.price : null,
+        athDate: null,
+        atlDate: null,
+      };
+    });
+  return cpTickerRows;
+}
+
 // ------------------------------------------------------- market data (CG/CP)
 let marketsSource = 'none';
+/** True when the day's top-500 rows did not come from CoinGecko. */
+let marketsDegraded = false;
+/** Per CoinGecko category: where the day's rows came from (record: sources.categorySource). */
+const categorySources = {};
 
 /** CoinGecko coins/markets, paginated to top 500 (2 pages of 250 — the free
  *  tier's per_page ceiling). CoinPaprika fallback is PRICE ONLY (per spec):
@@ -206,10 +333,8 @@ async function fetchCoinGeckoMarketsTop500(dateKey) {
   try {
     const pages = [];
     for (const page of [1, 2]) {
-      const url =
-        'https://api.coingecko.com/api/v3/coins/markets' +
-        `?vs_currency=usd&order=market_cap_desc&per_page=250&page=${page}&sparkline=false`;
-      const raw = await fetchJSON(url);
+      const url = cgUrl(`/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=${page}&sparkline=false`);
+      const raw = await fetchJSON(url, CG_OPTS);
       if (!Array.isArray(raw)) throw new Error('unexpected CoinGecko markets shape');
       pages.push(...raw);
       pace(2);
@@ -226,21 +351,32 @@ async function fetchCoinGeckoMarketsTop500(dateKey) {
     }));
     marketsSource = 'coingecko';
     cacheSet(key, rows);
+    writeCgSnapshot('cg-markets-top500-', dateKey, rows);
     return rows;
   } catch (e) {
-    console.warn(`CoinGecko markets fetch failed (${e.message}) — falling back to CoinPaprika for prices only`);
-    const raw = await fetchJSON('https://api.coinpaprika.com/v1/tickers?quotes=USD&limit=500');
-    marketsSource = 'coinpaprika (price-only fallback)';
-    const rows = raw.map((c) => ({
-      id: c.id,
-      symbol: String(c.symbol).toUpperCase(),
-      price: c.quotes?.USD?.price,
-      marketCap: c.quotes?.USD?.market_cap,
-      volume24h: c.quotes?.USD?.volume_24h,
-      circulatingSupply: null, // not usable for issuance math
-      athDate: null,
-      atlDate: null,
-    }));
+    // CoinPaprika's top 500 by its own rank, the same cut as CoinGecko's. On a
+    // mark-to-market day only the price is used. The other fields are filled
+    // so that PAPER_INDEX_DEGRADED_RECON=cache has something to reconstitute
+    // from; under the default (`freeze`) a reconstitution never reads them.
+    // Listing dates come from the newest CoinGecko snapshot, matched by
+    // symbol, and the source label names that snapshot's date.
+    console.warn(`CoinGecko markets fetch failed (${e.message}) — falling back to CoinPaprika`);
+    const cp = (await fetchCoinPaprikaRows()).slice(0, 500);
+    marketsDegraded = true;
+    const snap = latestCgSnapshot('cg-markets-top500-', dateKey);
+    const snapBySym = snap ? bySymbol(snap.rows) : new Map();
+    let dated = 0;
+    const rows = cp.map((r) => {
+      const s = snapBySym.get(r.symbol);
+      if (!s) return { ...r };
+      dated++;
+      return { ...r, id: s.id ?? r.id, athDate: s.athDate ?? null, atlDate: s.atlDate ?? null };
+    });
+    marketsSource = snap ? `coinpaprika + coingecko cache ${snap.date}` : 'coinpaprika (price-only fallback)';
+    console.warn(
+      `  markets: ${rows.length} CoinPaprika rows` +
+        (snap ? `, listing dates for ${dated} of them from ${snap.where}` : ', no CoinGecko snapshot for listing dates')
+    );
     return rows;
   }
 }
@@ -254,17 +390,30 @@ function bySymbol(rows) {
   return m;
 }
 
-async function fetchCoinGeckoCategory(categoryId, dateKey) {
+/** The category pull, live or from today's keeper/cache/ file only. Throws
+ *  when CoinGecko is unreachable; `categorySources[categoryId]` says which. */
+async function fetchCoinGeckoCategoryLive(categoryId, dateKey) {
   const key = `cg-category-${categoryId}-${dateKey}.json`;
   const cached = cacheGet(key, DAY);
-  if (cached) return cached;
+  if (cached) {
+    categorySources[categoryId] = 'coingecko (cached)';
+    return cached;
+  }
+  if (categorySources[categoryId]?.startsWith('unavailable')) {
+    // Already failed once this run — do not hit a blocked endpoint twice.
+    throw new Error(`CoinGecko category ${categoryId} ${categorySources[categoryId]}`);
+  }
   pace(5); // breathing room after whatever CoinGecko call preceded this one
   const rows = [];
   for (const page of [1, 2]) {
-    const url =
-      'https://api.coingecko.com/api/v3/coins/markets' +
-      `?vs_currency=usd&category=${categoryId}&order=market_cap_desc&per_page=250&page=${page}&sparkline=false`;
-    const raw = await fetchJSON(url);
+    const url = cgUrl(`/coins/markets?vs_currency=usd&category=${categoryId}&order=market_cap_desc&per_page=250&page=${page}&sparkline=false`);
+    let raw;
+    try {
+      raw = await fetchJSON(url, CG_OPTS);
+    } catch (e) {
+      categorySources[categoryId] = `unavailable (${e.message.replace(/ for https?:\/\/\S+/, '')})`;
+      throw e;
+    }
     if (!Array.isArray(raw) || raw.length === 0) break;
     rows.push(
       ...raw.map((c) => ({
@@ -281,7 +430,56 @@ async function fetchCoinGeckoCategory(categoryId, dateKey) {
     pace(2);
   }
   cacheSet(key, rows);
+  categorySources[categoryId] = 'coingecko';
+  writeCgSnapshot(`cg-category-${categoryId}-`, dateKey, rows);
   return rows;
+}
+
+/** The category pull as a reconstitution reads it. Live first. When that
+ *  fails and PAPER_INDEX_DEGRADED_RECON=cache, membership comes from the
+ *  newest CoinGecko snapshot of the category (its date goes into
+ *  `categorySources`, hence the record) and every number that gates or
+ *  ranks — price, market cap, volume, circulating supply — from today's
+ *  CoinPaprika row for the same symbol; only the listing dates are the
+ *  snapshot's. A snapshot row CoinPaprika has no row for keeps null numbers
+ *  and so fails the market-cap gate. No snapshot at all: the run fails, as it
+ *  always did. Under the default (`freeze`) main() never lets a
+ *  reconstitution get here with the category down. */
+async function fetchCoinGeckoCategory(categoryId, dateKey) {
+  try {
+    return await fetchCoinGeckoCategoryLive(categoryId, dateKey);
+  } catch (e) {
+    if (DEGRADED_RECON !== 'cache') throw e;
+    const snap = latestCgSnapshot(`cg-category-${categoryId}-`, dateKey);
+    if (!snap) {
+      throw new Error(
+        `CoinGecko category ${categoryId} unreachable (${e.message}) and no snapshot in keeper/cache/ or keeper/cg-snapshot/ — ` +
+          'membership cannot be decided; run stopped, no record written'
+      );
+    }
+    const cpBySym = bySymbol(await fetchCoinPaprikaRows());
+    let joined = 0;
+    const rows = snap.rows.map((s) => {
+      const cp = cpBySym.get(s.symbol);
+      if (cp) joined++;
+      return {
+        id: s.id,
+        symbol: s.symbol,
+        price: cp?.price ?? null,
+        marketCap: cp?.marketCap ?? null,
+        volume24h: cp?.volume24h ?? null,
+        circulatingSupply: cp?.circulatingSupply ?? null,
+        athDate: s.athDate ?? null,
+        atlDate: s.atlDate ?? null,
+      };
+    });
+    categorySources[categoryId] = `coingecko cache ${snap.date}`;
+    console.warn(
+      `  category ${categoryId}: CoinGecko unreachable — membership from ${snap.where} (${snap.rows.length} rows, ` +
+        `snapshot ${snap.date}), numbers from CoinPaprika for ${joined} of them (PAPER_INDEX_DEGRADED_RECON=cache)`
+    );
+    return rows;
+  }
 }
 
 /** market_cap / price at a past date, from CoinGecko's /history endpoint —
@@ -302,7 +500,7 @@ async function coinGeckoHistoricalSupply(coingeckoId, dateStr) {
     for (let attempt = 0; attempt < 3 && !data; attempt++) {
       pace(attempt === 0 ? 3 : 12);
       try {
-        data = await fetchJSON(`https://api.coingecko.com/api/v3/coins/${coingeckoId}/history?date=${cgDate}`);
+        data = await fetchJSON(cgUrl(`/coins/${coingeckoId}/history?date=${cgDate}`), CG_OPTS);
         cacheSet(key, data);
       } catch (e) {
         if (attempt === 2) {
@@ -1533,7 +1731,9 @@ async function runSleeveIndex() {
   let qValue = qBookValue(qUnits);
   let level = state ? btcValue + wcValue + qValue : rb.genesisLevel;
 
-  const shouldReconstitute = !state || state.lastReconQuarter !== quarterKey(dateStr);
+  const reconDue = !state || state.lastReconQuarter !== quarterKey(dateStr);
+  const reconDeferred = reconDue && state ? await reconDeferralReason(dateStr) : null;
+  const shouldReconstitute = reconDue && !reconDeferred;
   const tol = rb.reconstitution.tolerance.thresholdPoints / 100;
   let reconstituted = false;
   let nextOnNotice = onNotice;
@@ -1543,6 +1743,7 @@ async function runSleeveIndex() {
   const sourceInfo = {
     marketsSource,
     workingCapital: { proxy: WC_PROXY_ID, source: wcSource, ratePercent: wcRate.rate, rateAsOf: wcRate.asOf },
+    ...(reconDeferred ? { reconstitutionDeferred: reconDeferred } : {}),
   };
 
   if (shouldReconstitute) {
@@ -1829,6 +2030,54 @@ async function maybeAnchor(record, dateStr) {
   }
 }
 
+/** Why a due reconstitution cannot run today, or null when it can. Called
+ *  only on a day a reconstitution is due and a book exists (genesis has
+ *  nothing to freeze). Membership sources per leg: the CoinGecko top-500
+ *  pull (qREV, Triens' Quality sleeve, and every ranked leg's trade prices
+ *  per the rulebooks' "price only, no reconstitution"), plus the category
+ *  pulls for qDEFI and qAI. Barbell holds no screened names and never defers.
+ *  Under PAPER_INDEX_DEGRADED_RECON=cache the reasons are logged and the
+ *  reconstitution goes ahead on the snapshot path — except a screen that
+ *  would have no listing dates at all, which fails the run. */
+async function reconDeferralReason(dateStr) {
+  if (INDEX === 'barbell') return null;
+  const reasons = [];
+  if (marketsDegraded) {
+    reasons.push(`CoinGecko coins/markets unreachable, markets from "${marketsSource}" — rulebook marketCapPriceVolume fallback is price only, no reconstitution`);
+  }
+  const cats = INDEX === 'qdefi' ? ['decentralized-finance-defi'] : INDEX === 'qai' ? RULEBOOK.universe.coingeckoCategories : [];
+  for (const cat of cats) {
+    try {
+      await fetchCoinGeckoCategoryLive(cat, dateStr);
+    } catch {
+      reasons.push(`CoinGecko category ${cat} ${(categorySources[cat] ?? 'unavailable').split(';')[0]} — rulebook sectorClassification fallback: membership frozen at the last reconstitution`);
+    }
+  }
+  if (reasons.length === 0) return null;
+  if (DEGRADED_RECON === 'cache') {
+    if (marketsDegraded && (INDEX === 'qrev' || INDEX === 'triens') && !marketsSource.includes('coingecko cache')) {
+      throw new Error(
+        `${INDEX}: reconstitution due, CoinGecko markets unreachable and no CoinGecko snapshot for listing dates — ` +
+          'every age gate would fail; run stopped, no record written'
+      );
+    }
+    console.warn(`  reconstitution on degraded sources (PAPER_INDEX_DEGRADED_RECON=cache): ${reasons.join('; ')}`);
+    return null;
+  }
+  const deferred = { quarter: quarterKey(dateStr), policy: 'freeze', reason: reasons.join('; '), retry: 'next run' };
+  console.warn(`reconstitution for ${deferred.quarter} DEFERRED — membership frozen at the last reconstitution: ${deferred.reason}`);
+  return deferred;
+}
+
+/** `sources.categorySource` for the record: one string, or null when no
+ *  category was touched this run. */
+function describeCategorySources() {
+  const entries = Object.entries(categorySources);
+  if (entries.length === 0) return null;
+  const uniq = [...new Set(entries.map(([, v]) => v))];
+  return uniq.length === 1 ? uniq[0] : entries.map(([k, v]) => `${k}: ${v}`).join('; ');
+}
+
 async function main() {
   if (INDEX === 'qx20') return markQx20Basket();
   if (SLEEVE_INDEXES.has(INDEX)) return runSleeveIndex();
@@ -1874,10 +2123,35 @@ async function main() {
   // held name at nothing. Cash is priced at a constant 1.0 (qai.md §6: no
   // interest) so it rides through the tolerance and mark paths as a position.
   if (INDEX === 'qai') {
+    // 2026-09-29: when a category pull is unreachable the overlay is PRICES
+    // ONLY from CoinPaprika's full ticker list (rulebook marketCapPriceVolume
+    // fallback). Membership is not read here, so nothing is decided on it.
+    let overlayFromPaprika = false;
     for (const cat of RULEBOOK.universe.coingeckoCategories) {
-      for (const row of await fetchCoinGeckoCategory(cat, dateStr)) {
+      let rows;
+      try {
+        rows = await fetchCoinGeckoCategoryLive(cat, dateStr);
+      } catch (e) {
+        console.warn(`  category ${cat}: ${e.message} — prices for names outside the top-500 pull come from CoinPaprika`);
+        categorySources[cat] = `${categorySources[cat] ?? 'unavailable'}; held names priced from coinpaprika, membership not read`;
+        overlayFromPaprika = true;
+        continue;
+      }
+      for (const row of rows) {
         if (!(priceNow[row.symbol] > 0) && row.price > 0) priceNow[row.symbol] = row.price;
         if (!marketsBySym.has(row.symbol)) marketsBySym.set(row.symbol, row);
+      }
+    }
+    if (overlayFromPaprika) {
+      for (const row of await fetchCoinPaprikaRows()) {
+        if (!(priceNow[row.symbol] > 0) && row.price > 0) priceNow[row.symbol] = row.price;
+        if (!marketsBySym.has(row.symbol)) marketsBySym.set(row.symbol, row);
+      }
+      // A held name with no price would be valued at nothing by the mark
+      // below. On a day already running on a fallback, stop instead.
+      const unpriced = incumbents.filter((s) => s !== CASH_SYM && !(priceNow[s] > 0));
+      if (unpriced.length) {
+        throw new Error(`qAI: no price for held ${unpriced.join(', ')} from CoinGecko or CoinPaprika — run stopped, no record written`);
       }
     }
     priceNow[CASH_SYM] = 1;
@@ -1886,7 +2160,11 @@ async function main() {
   // Reconstitute if there's no prior state (genesis), or the calendar quarter
   // has changed since the last reconstitution — "first run after 00:00 UTC on
   // Jan/Apr/Jul/Oct 1" reduces to exactly this for a keeper that runs daily.
-  const shouldReconstitute = !state || state.lastReconQuarter !== quarterKey(dateStr);
+  // A due reconstitution whose membership sources are down is deferred to the
+  // next run under the default policy (see DEGRADED_RECON).
+  const reconDue = !state || state.lastReconQuarter !== quarterKey(dateStr);
+  const reconDeferred = reconDue && state ? await reconDeferralReason(dateStr) : null;
+  const shouldReconstitute = reconDue && !reconDeferred;
   void quarterStartDate; // kept for documentation/tests; the daily-run keeper doesn't need the exact day boundary
 
   let units = state?.units ?? null;
@@ -2036,6 +2314,12 @@ async function main() {
       return out;
     });
   }
+
+  // Where the CoinGecko category rows came from today (qAI every day, qDEFI
+  // on a reconstitution day), and a deferred reconstitution's reason.
+  const categorySource = describeCategorySources();
+  if (categorySource) sourceInfo.categorySource = categorySource;
+  if (reconDeferred) sourceInfo.reconstitutionDeferred = reconDeferred;
 
   // qAI: cash is a position in the BOOK but not a member of the INDEX. It is
   // split out of the member list and reported as a top-level weight next to

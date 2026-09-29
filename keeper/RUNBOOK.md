@@ -287,6 +287,51 @@ with three additions specific to this leg:
 | `quality seats: 4/10` on Triens | fewer names passed the screen than the rulebook's viability floor of 5 | nothing operational — the level is still recorded. It is a signal for the owner: the rule says a product would not be launched on that quarter. |
 | `sleeve reset: … outside the 5-point tolerance` | the quarterly reset traded | expected on a reconstitution day after a large move. The line prints every sleeve's target, drifted weight and gap before it decides. |
 
+## CoinGecko access — blocked endpoint, optional key, fallback (2026-09-29)
+
+From the 2026-09-29 run, the keyless CoinGecko `coins/markets` endpoint answers
+**HTTP 403 at CloudFront ("Request blocked")** — the top-500 pull and every
+category pull. A browser User-Agent and an empty `x-cg-demo-api-key` header did
+not lift it; per-coin `/coins/{id}` answered 429 after a handful of calls, so
+rebuilding a category from per-coin lookups (hundreds of calls) is not an
+option on the keyless tier.
+
+**What `keeper/paper-index.mjs` does when CoinGecko is unreachable**
+
+| Day | Behaviour | Record says |
+| --- | --- | --- |
+| mark-to-market (every leg) | prices from CoinPaprika tickers (top 500 for the markets map; the full list for qAI's names outside it). A qAI held name with no price stops the run | `sources.marketsSource: "coinpaprika + coingecko cache <date>"` (the snapshot supplies listing dates only — never a price); qAI also `sources.categorySource: "unavailable (HTTP 403); held names priced from coinpaprika, membership not read"` |
+| reconstitution due, default | **deferred** — the rulebooks' own fallback ("membership frozen at the last reconstitution"; CoinPaprika is "price only, no reconstitution"). The day is written as a mark-to-market line; `lastReconQuarter` is left as it was, so the next run tries again | `sources.reconstitutionDeferred: {quarter, policy: "freeze", reason, retry: "next run"}` |
+| reconstitution due, `PAPER_INDEX_DEGRADED_RECON=cache` | reconstitutes from CoinPaprika numbers + the newest CoinGecko snapshot's listing dates and category membership. **Not what the anchored rulebooks say — enabling it is a rule decision for the owner**, made by adding that env line to the workflow step(s). No snapshot → the run fails as before | `sources.categorySource: "coingecko cache <date>"` |
+
+Barbell holds no screened names and never defers.
+
+**Snapshots.** `keeper/cg-snapshot/` holds the last-known-good CoinGecko pulls
+reduced to id, symbol and ath/atl dates (no prices). It exists because
+`keeper/cache/` is gitignored and empty on every GitHub runner. A run with a
+live CoinGecko pull rewrites the file for that pull and the workflow commits it;
+the directory was seeded on 2026-09-29 from the operator's local
+`keeper/cache/` (markets 2026-09-28, AI categories 2026-09-22, DeFi category
+2026-09-16).
+
+**Adding a key** (the account and plan are the owner's; nothing here creates one):
+
+1. On coingecko.com, create a Demo (free) or paid API key under the owner's account.
+2. Store it as a repository secret — the command prompts for the value, so it
+   never lands in shell history, chat or an issue:
+   `gh secret set COINGECKO_API_KEY --repo sungkuuu/quadrix-track-record`
+3. A paid (Pro) key also needs `COINGECKO_API_PLAN: pro` in the paper-index
+   workflow steps' `env:` (Pro keys use `pro-api.coingecko.com` and the
+   `x-cg-pro-api-key` header; Demo keys use `api.coingecko.com` and
+   `x-cg-demo-api-key`). The steps already pass `COINGECKO_API_KEY`.
+4. Dispatch `paper-index` and check the next line's `sources.marketsSource` is
+   `"coingecko"`. With the secret absent the keeper makes exactly the keyless
+   calls it always made.
+
+Other CoinGecko callers not covered by this: `keeper/basket-plan.mjs` (source
+A of the reconstitution plan — it degrades to "partial" and source B is
+CoinPaprika) and `keeper/update-nav.mjs` (qX20 NAV, CoinPaprika top-80 fallback).
+
 ## Exclusion list
 
 `EXCLUDE` in `keeper/update-nav.mjs` (mirrored as `QX20_EXCLUDE` in `keeper/paper-index.mjs`, the base set qDEFI · qREV · qAI and Triens' Quality sleeve reuse (Barbell has no universe screen)) is matched by uppercase ticker; dated changes are gated by run date — `LEGACY_EXCLUDE` (nine tickers, excluded through 2026-09-30, decision 2026-09-23-qx20-exclusion-list) and `EXCLUDE_FROM` (XAUT, gold-pegged like PAXG, excluded from 2026-10-01, decision 2026-09-28-qx20-xaut-exclusion) — so both take effect at the first run of 2026-10, the monthly reconstitution; the site keeps its own copies: `src/pages/Engine.tsx` `DEMO_OPTIONS` (where PAXG is) and `scripts/gen-qx20-series.mjs`; `src/engine/indexEngine.ts` holds only the ten base names + the legacy nine.

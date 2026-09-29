@@ -360,6 +360,16 @@ publishing a level built on a price nobody has seen in four days.
 | qREV holder revenue | DefiLlama `summary/fees/{slug}?dataType=dailyHoldersRevenue`, per protocol slug from the manual map | none (rulebook §8: no substitute source for this definition exists) | a protocol whose fetch fails for every one of its adapters is dropped from that day's candidate list, not zero-filled |
 | qREV issuance | `keeper/supply/` on-chain registry | CoinGecko historical market_cap/price (≈ circulating supply) | see "Issuance" above for exactly when each applies |
 
+CoinGecko unreachable (2026-09-29 onward, keyless `coins/markets` → HTTP 403):
+a mark-to-market day is priced from CoinPaprika — the top 500 for the markets
+map, the full ticker list for qAI names outside it — and every leg still
+writes its line. A due reconstitution is deferred to the next run under the
+default policy (the fallbacks above: membership frozen, CoinPaprika price only),
+and the line carries `sources.reconstitutionDeferred`. The opt-in
+`PAPER_INDEX_DEGRADED_RECON=cache` path, the committed snapshots in
+`keeper/cg-snapshot/` and the optional `COINGECKO_API_KEY` are described in
+`keeper/RUNBOOK.md` → "CoinGecko access".
+
 Rate-limit pacing uses `ruby -e 'sleep N'` throughout (never the shell
 `sleep`), with a retry-with-backoff around the CoinGecko history endpoint
 specifically, since it is the one most likely to 429 right after the
