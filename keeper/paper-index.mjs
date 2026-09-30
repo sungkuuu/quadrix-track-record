@@ -78,7 +78,9 @@
  * keeper/pending-registry-{index}.json with the registry change it would
  * announce. `--index qx20` runs ONLY that leg for qX20: its book is
  * keeper/state.json (written by update-nav.mjs, which keeps marking the
- * NAV-tracker vault and is not changed); no record line, no anchor.
+ * NAV-tracker vault and is not changed); no record line, no anchor. A book
+ * name with no usable price defers that run's marks (deferBasketMarks,
+ * 2026-09-30) rather than marking the vault without it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -134,6 +136,31 @@ if (AS_OF != null) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(AS_OF) || Number.isNaN(Date.parse(AS_OF + 'T00:00:00Z'))) {
     console.error(`--as-of must be YYYY-MM-DD (got ${AS_OF})`);
     process.exit(2);
+  }
+}
+
+/** Test hook, dry run only: PAPER_INDEX_TEST_DROP_SYMBOL=SYM[,SYM...] deletes
+ *  those symbols from the day's price map right after it is built, so the
+ *  missing-price path (RUNBOOK failure mode 6) can be rehearsed on real data
+ *  without editing a cache file. Without --dry-run it is ignored, with a line
+ *  saying so: it can never change what a live run records or posts. */
+function testDropSymbols(raw, dryRun) {
+  const syms = String(raw ?? '')
+    .split(',')
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  if (syms.length && !dryRun) {
+    console.warn('PAPER_INDEX_TEST_DROP_SYMBOL is set but this is not a --dry-run — ignored');
+    return [];
+  }
+  return syms;
+}
+const TEST_DROP_SYMBOLS = testDropSymbols(process.env.PAPER_INDEX_TEST_DROP_SYMBOL, DRY_RUN);
+function applyTestDrop(priceMap) {
+  for (const sym of TEST_DROP_SYMBOLS) {
+    const had = sym in priceMap;
+    delete priceMap[sym];
+    console.warn(`  [test] PAPER_INDEX_TEST_DROP_SYMBOL: ${sym} ${had ? 'removed from' : 'was not in'} today's price map (dry run only)`);
   }
 }
 
@@ -1849,11 +1876,65 @@ function lastLine(file) {
   return lines.length ? JSON.parse(lines[lines.length - 1]) : null;
 }
 
+/** The names in `members` (in that order) that have no usable price in
+ *  `prices`: a usable price is a finite number above zero. */
+function unpricedMembers(members, prices) {
+  return members.filter((sym) => {
+    const p = prices[sym];
+    return !(typeof p === 'number' && Number.isFinite(p) && p > 0);
+  });
+}
+
+/** Fail-closed basket marks (owner 2026-09-30; desk-check K02). A basket's
+ *  navPerShare is sum(units x price) over the WHOLE book, so a held name with
+ *  no usable price today can neither be left out of it — that posts a NAV low
+ *  by the name's weight, and a missing BTC takes the qX20 basket down 59% in
+ *  six band steps — nor be filled from an older price. The run then posts
+ *  nothing to the basket vault (no setNav, no setRefPrice, no registry diff),
+ *  the vault keeps its last marks, and the next run tries again: the same
+ *  `freeze` stance as a reconstitution deferred on a degraded source, in the
+ *  same shape as `sources.reconstitutionDeferred`. A deferral is not a
+ *  failure — the caller returns normally, the process exits 0, and the
+ *  workflow neither stops its later steps nor opens a failure issue. The
+ *  reason goes to the log, as a workflow warning, and to the step summary. */
+function deferBasketMarks(dateStr, missing) {
+  const deferred = {
+    markDeferred: 'missing-price',
+    policy: 'freeze',
+    index: INDEX,
+    date: dateStr,
+    missing,
+    marketsSource,
+    retry: 'next run',
+  };
+  const line =
+    `${RULEBOOK.ticker} basket marks DEFERRED — no usable price today for ${missing.join(', ')}: ` +
+    'nothing posted to the basket vault this run, which keeps its last marks (RUNBOOK failure mode 6)';
+  console.warn(line);
+  console.warn(`markDeferred ${JSON.stringify(deferred)}`);
+  if (process.env.GITHUB_ACTIONS === 'true') console.log(`::warning title=${RULEBOOK.ticker} basket marks deferred::${line}`);
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    try {
+      fs.appendFileSync(
+        process.env.GITHUB_STEP_SUMMARY,
+        `- **${RULEBOOK.ticker}** basket marks deferred — \`markDeferred: missing-price\`, policy \`freeze\`: ` +
+          `no usable price for ${missing.map((s) => `\`${s}\``).join(', ')} (markets: ${marketsSource}). ` +
+          'Nothing posted to the basket vault; the next run tries again.\n'
+      );
+    } catch (e) {
+      console.warn(`  could not write the step summary: ${e.message}`);
+    }
+  }
+  return deferred;
+}
+
 /**
  * qX20 is not a paper index: its book lives in keeper/state.json, written by
  * update-nav.mjs (which keeps posting the NAV-tracker vault and is not
  * touched). This leg marks the qX20 BASKET vault from that same book — the
  * same code path as the paper indexes — and writes no record and no anchor.
+ * A book name without a usable price today defers the whole mark
+ * (deferBasketMarks) instead of leaving the name out of the level.
  */
 async function markQx20Basket() {
   const dateStr = todayUTC();
@@ -1864,13 +1945,15 @@ async function markQx20Basket() {
 
   const markets = await fetchCoinGeckoMarketsTop500(dateStr);
   const priceNow = Object.fromEntries([...bySymbol(markets).entries()].map(([s, m]) => [s, m.price]));
-  let level = 0;
-  const members = [];
-  for (const [sym, u] of Object.entries(state.units)) {
-    members.push(sym);
-    if (priceNow[sym] > 0) level += u * priceNow[sym];
-    else console.warn(`  ${sym}: no live price today — left out of the level (RUNBOOK failure mode 6)`);
+  applyTestDrop(priceNow);
+  const members = Object.keys(state.units);
+  const missing = unpricedMembers(members, priceNow);
+  if (missing.length) {
+    deferBasketMarks(dateStr, missing);
+    return;
   }
+  let level = 0;
+  for (const [sym, u] of Object.entries(state.units)) level += u * priceNow[sym];
   console.log(`level ${level.toFixed(6)} from ${members.length} constituents (update-nav.mjs's last posted level ${state.level})`);
 
   // Membership only moves at update-nav.mjs's monthly reconstitution, so any
@@ -2011,10 +2094,18 @@ async function runSleeveIndex() {
       const wcSt = st.sleeves.workingCapital ?? {};
       px.WC = wcSt.unitValue ?? 1;
       const qUnitsSt = st.sleeves.quality?.units ?? {};
-      let lv = (st.sleeves.monetary?.units?.[btcSym] ?? 0) * (px[btcSym] ?? 0) + (wcSt.units ?? 0) * px.WC;
-      for (const [sym, u] of Object.entries(qUnitsSt)) if (px[sym] > 0) lv += u * px[sym];
+      // Fail-closed, as every basket mark (deferBasketMarks): a re-post has no
+      // record-side rule to follow, so a name without a usable price defers
+      // the marks instead of dropping out of the level.
+      const missing = unpricedMembers([btcSym, ...Object.keys(qUnitsSt)], px);
+      if (missing.length) {
+        deferBasketMarks(dateStr, missing);
+        return;
+      }
+      let lv = (st.sleeves.monetary?.units?.[btcSym] ?? 0) * px[btcSym] + (wcSt.units ?? 0) * px.WC;
+      for (const [sym, u] of Object.entries(qUnitsSt)) lv += u * px[sym];
       await markBasket({
-        index: INDEX, basket: RULEBOOK.basket, level: lv || st.level,
+        index: INDEX, basket: RULEBOOK.basket, level: lv,
         navBase: RULEBOOK.basket.navBase ?? RULEBOOK.genesisLevel, prices: px,
         members: [btcSym, 'WC', ...Object.keys(qUnitsSt)], reconstituted: prevRecord.reconstituted === true,
         dryRun: DRY_RUN, keeperDir: HERE, date: dateStr,
@@ -2039,6 +2130,7 @@ async function runSleeveIndex() {
   const markets = await fetchCoinGeckoMarketsTop500(dateStr);
   const marketsBySym = bySymbol(markets);
   const priceNow = Object.fromEntries([...marketsBySym.entries()].map(([s, m]) => [s, m.price]));
+  applyTestDrop(priceNow);
 
   // ---------------------------------------------- working-capital accrual
   const { series: dtb3, source: wcSource } = await loadDTB3({ cacheDir: CACHE_DIR, dateKey: dateStr });
@@ -2448,10 +2540,20 @@ async function main() {
     if (st?.units && RULEBOOK.basket?.vault) {
       const mk = await fetchCoinGeckoMarketsTop500(dateStr);
       const px = Object.fromEntries([...bySymbol(mk).entries()].map(([s, m]) => [s, m.price]));
+      // qAI cash is a position priced at a constant 1.0 (qai.md §6), exactly
+      // as in the daily mark below; without it a cash-holding qAI book would
+      // count as unpriced here.
+      if (INDEX === 'qai') px[CASH_SYM] = 1;
+      // Fail-closed, as every basket mark (deferBasketMarks).
+      const missing = unpricedMembers(Object.keys(st.units), px);
+      if (missing.length) {
+        deferBasketMarks(dateStr, missing);
+        return;
+      }
       let lv = 0;
-      for (const [sym, u] of Object.entries(st.units)) if (px[sym] > 0) lv += u * px[sym];
+      for (const [sym, u] of Object.entries(st.units)) lv += u * px[sym];
       await markBasket({
-        index: INDEX, basket: RULEBOOK.basket, level: lv || st.level,
+        index: INDEX, basket: RULEBOOK.basket, level: lv,
         navBase: RULEBOOK.basket.navBase ?? RULEBOOK.genesisLevel, prices: px,
         members: Object.keys(st.units), reconstituted: prevRecord.reconstituted === true,
         dryRun: DRY_RUN, keeperDir: HERE, date: dateStr,
@@ -2510,6 +2612,7 @@ async function main() {
     }
     priceNow[CASH_SYM] = 1;
   }
+  applyTestDrop(priceNow);
 
   // Reconstitute if there's no prior state (genesis), or the calendar quarter
   // has changed since the last reconstitution — "first run after 00:00 UTC on
@@ -2654,7 +2757,7 @@ async function main() {
     let value = 0;
     for (const [sym, u] of Object.entries(units)) {
       if (priceNow[sym]) value += u * priceNow[sym];
-      else console.warn(`  ${sym}: no live price today, valued at last known contribution`);
+      else console.warn(`  ${sym}: no live price today — valued at 0 in today's level (RUNBOOK failure mode 6)`);
     }
     level = value || level;
     members = Object.entries(units).map(([sym, u]) => {
@@ -2776,18 +2879,32 @@ async function main() {
   // After the record, never before: the record is the product; the vault
   // follows it. Skips with a log line when the rulebook has no vault, the
   // key is absent, or this is a dry run (keeper/basket-mark.mjs).
-  await markBasket({
-    index: INDEX,
-    basket: RULEBOOK.basket,
-    level,
-    navBase: RULEBOOK.basket?.navBase ?? RULEBOOK.genesisLevel,
-    prices: priceNow,
-    members: members.map((m) => m.symbol),
-    reconstituted,
-    dryRun: DRY_RUN,
-    keeperDir: HERE,
-    date: dateStr,
-  });
+  //
+  // Fail-closed (deferBasketMarks): if any name of the book marked today —
+  // the book as it stood this morning and the one the day left, which differ
+  // only on a reconstitution day — has no usable price, the vault is not
+  // marked. The record line above is written either way and is not changed
+  // by this: how a record values a name with no price is the rulebook's
+  // (qX20 §9, cited by qrev/qdefi/qai.json), not the marking leg's. The
+  // anchor below still runs.
+  const bookNames = [...new Set([...Object.keys(state?.units ?? {}), ...Object.keys(units ?? {})])];
+  const unpriced = unpricedMembers(bookNames, priceNow);
+  if (unpriced.length) {
+    deferBasketMarks(dateStr, unpriced);
+  } else {
+    await markBasket({
+      index: INDEX,
+      basket: RULEBOOK.basket,
+      level,
+      navBase: RULEBOOK.basket?.navBase ?? RULEBOOK.genesisLevel,
+      prices: priceNow,
+      members: members.map((m) => m.symbol),
+      reconstituted,
+      dryRun: DRY_RUN,
+      keeperDir: HERE,
+      date: dateStr,
+    });
+  }
 
   await maybeAnchor(record, dateStr);
 }

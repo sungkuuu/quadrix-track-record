@@ -13,7 +13,9 @@ quoting the last posted mark. Deposits and redemptions still work — they just
 transact at an old price. A failed keeper run does not lock funds or corrupt
 state; the model book only advances when a run succeeds. A *successful* run can
 still post a wrong NAV in one case — a constituent without a price, failure
-mode 6 below — because the sanity gate only sees the size of the move.
+mode 6 below — because the sanity gate only sees the size of the move. (That
+is this NAV-tracker keeper. The basket vaults marked by `paper-index.mjs`
+defer their marks on a missing price instead — also failure mode 6.)
 
 **How you find out:** a failed run opens (or comments on) a GitHub issue labelled
 `keeper-failure`, which emails every repo watcher. A successful run closes it. An
@@ -130,17 +132,60 @@ from racing into it. It has not happened yet: on every ledger line so far
 
 ### 6. Constituent without a price
 
-The keeper prices the book from the top-60 market feed. A held constituent
-that drops out of that feed (rank, delisting, a ticker collision — prices are
-keyed by ticker, so two coins with the same symbol overwrite each other) is
-logged as `constituents without a live price (dropped)` and **left out of the
+**NAV tracker (`keeper/update-nav.mjs`) — posts without it.** The keeper
+prices the book from the top-60 market feed. A held constituent that drops out
+of that feed (rank, delisting, a ticker collision — prices are keyed by
+ticker, so two coins with the same symbol overwrite each other) is logged as
+`constituents without a live price (dropped)` and **left out of the
 valuation**. The run does not fail. If the resulting NAV moves less than 15%
-it is posted, low by that constituent's weight, and the drift check for it is
-`NaN`, so nothing rebalances it away either. The next run that sees a price
-again restores the value. Treat the warning as an alert: check the ledger for
-a dip that coincides with it, and if the coin is genuinely gone from the
+it is posted, low by that constituent's weight. Its own drift check is `NaN`,
+so it does not trigger a rebalance; but any rebalance that does happen while
+it is missing — another name crossing the band, or the monthly
+reconstitution — rebuilds the book from priced names only, and the name and
+its value leave the book. Otherwise the next run that sees a price again
+restores the value. This is qX20's rule as it stands (rulebook §9: a missing
+price is valued at 0; the carry-then-zero draft is an open question), so the
+keeper is not changed. Treat the warning as an alert: check the ledger for a
+dip that coincides with it, and if the coin is genuinely gone from the
 universe, wait for the monthly reconstitution or re-run after the feed
 recovers.
+
+**Basket vaults (`keeper/paper-index.mjs`, every leg) — defer the marks
+(2026-09-30).** A basket's `navPerShare` is the whole book at today's prices,
+so a name with no usable price (a finite number above zero) cannot be left out
+of it — before this change a missing BTC would have walked the qX20 basket
+down 59% in six band steps. If any name of the book being marked has no usable
+price in the day's pull, the leg posts **nothing** to its basket vault that
+run: no `setNav`, no `setRefPrice`, no registry diff. It logs
+
+    qX20 basket marks DEFERRED — no usable price today for BTC: nothing posted to the basket vault this run, …
+    markDeferred {"markDeferred":"missing-price","policy":"freeze","index":"qx20","date":"…","missing":["BTC"],"marketsSource":"…","retry":"next run"}
+
+plus a workflow warning and a line in the job summary, and **exits 0**: a
+deferral is not a failure, so the later steps still run and no
+`paper-index-failure` issue is opened (the same as a reconstitution deferred
+under `freeze`). The vault keeps its last marks; auction fills against a
+reference older than `maxRefAge` fail closed, exits are unaffected. The next
+run tries again.
+
+- qX20: the whole leg is the mark, so the whole leg waits.
+- qREV, qDEFI, qAI: only the vault post waits. The record line is still
+  written and anchored, and it still values the unpriced name at 0 (log:
+  `no live price today — valued at 0 in today's level`) — that is the
+  rulebooks' §9 as implemented, not the marking leg's to change.
+- Barbell, Triens: the daily record and its basket marks carry the last known
+  price for up to three runs (rulebook §9, "Sleeve indexes" below) — not
+  changed here. Only a re-post (a second run on a day that already has a
+  record) defers.
+
+Nothing alerts on a deferral that repeats — the watchdog reads the NAV
+tracker's ledger, not the basket vaults — so read the warning in the day's
+run. One day: nothing to do. Several: the feed has lost the name (a ticker that
+differs on the CoinPaprika fallback, a delisting); fix the feed side, never
+the book. To rehearse the path on real data:
+`PAPER_INDEX_TEST_DROP_SYMBOL=BTC node keeper/paper-index.mjs --index qx20 --dry-run`
+(dry run only; without `--dry-run` the variable is ignored, with a line saying
+so).
 
 ---
 
