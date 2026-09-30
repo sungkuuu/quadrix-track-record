@@ -424,6 +424,12 @@ called from `paper-index.mjs`):
    announcement carries the sha256 of an anchored decision document, which is
    a human step (RUNBOOK, "During a rebalance").
 
+If any name of the book being marked has no usable price in the day's pull,
+none of the three happens that run: the marks are deferred, not computed
+without the name (`markDeferred: missing-price`, exit 0; RUNBOOK failure
+mode 6, 2026-09-30). The record line of qREV, qDEFI and qAI is written and
+anchored as before.
+
 `--index qx20` runs only this leg for qX20: its book is `keeper/state.json`,
 written by `keeper/update-nav.mjs`, which keeps marking the NAV-tracker vault
 every six hours and is not changed. No record line and no anchor are written
