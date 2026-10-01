@@ -223,16 +223,51 @@ auction is open:
    its balance is zero (`finalizeRemoval`), post a first `setRefPrice` for the
    entering asset, and buy it from the overweight members. Redemption pays the
    old shape until `finalizeRemoval` and the new shape after; nothing about it
-   is paused at any point.
+   is paused at any point. The tools and the dispatch order are in
+   "Basket reconstitution — tools" below.
 4. **Daily loss budget.** Fills below reference draw on `dailyLossBudgetBps`;
    when it trips (`DailyBudgetExceeded`) the auction waits for the next UTC
    day. That is the policy working; do not loosen it mid-rebalance.
 5. **Log every override** in the table below, as for the NAV keeper.
 
-Auction execution is not automated in this repository yet — the calls above
-are made by hand from the keeper key. The paper record does not wait for
-any of this: the level moves on day 0, the vault follows over the week, and
-the gap is a stated tracking difference.
+The paper record does not wait for any of this: the level moves on day 0,
+the vault follows over the week, and the gap is a stated tracking difference.
+
+### Basket reconstitution — tools
+
+| Step | Tool (workflow) | Signs with |
+| --- | --- | --- |
+| whitelist a separate bidder | `keeper/set-bidder.mjs` (`basket-recon-setup`, task `set-bidder`) | owner (`KEEPER_PK`); bidder = `BIDDER_PK`'s address |
+| deploy the entering mocks | `keeper/deploy-mocks.mjs` (`basket-recon-setup`, task `deploy-mocks`) | `KEEPER_PK`; inventory to the bidder |
+| plan | `keeper/basket-plan.mjs` (`basket-reconstitution`, stage `plan`) | reads only |
+| decision draft | `node keeper/gen-recon-decision.mjs --index <x> --date <d>` (local) | — |
+| announce … verify | `keeper/basket-recon.mjs` (`basket-reconstitution`, stages) | owner/keeper; fills by the bidder |
+
+Every tool is a dry run unless `live` is ticked and `confirm` is `EXECUTE`.
+
+- **Mocks.** One mock per entering name *and basket* — the deployed convention
+  (no two vaults share a mock; NEAR entering three baskets gets three). The
+  output `keeper/mocks/{date}.json` is keyed by index and is what the plan
+  stage's `mocks` input takes. The bidder receives twice the vault's target
+  holding of each new mock, because the auctions sell it into the vault.
+- **Bidder log.** `setBidder` emits no event; every transaction is appended to
+  `keeper/bidder-log.jsonl` with its block and the `isBidder` read-back.
+- **Removals (option K).** A drain fill is followed at once by a balance read
+  and `finalizeRemoval`, not by the remaining auctions. If anything reached the
+  vault in between — a one-unit transfer from anyone, or a creation, which
+  pays in a pro-rata slice of the leaving asset — the remnant is re-drained at
+  once from the live balance (under $1: filled at the curve's open without
+  waiting, at most 2% over reference on less than $1, `lossAtRef` 0), up to
+  five times, then the asset is written to the plan's `finalizePending` and the
+  run continues. The auctions stage, `finalize` and `verify` print it as
+  **PENDING** and exit 0; the workflow summary shows the PENDING lines.
+  Nothing is lost while it waits — redemptions pay the remnant pro rata and
+  the record is unaffected — and re-running the `auctions` stage drains and
+  finalizes it. A remnant of $1 or more is not PENDING: it is drained like any
+  other, and if it cannot be the stage fails as before.
+- **Fill size.** A fill takes the smaller of the auction amount and the
+  vault's balance at that moment; a redemption in the window shrinks the fill
+  instead of reverting it, and the unfilled rest is cancelled.
 
 ## Sleeve indexes — Barbell and Triens (added 2026-09-22, not running)
 

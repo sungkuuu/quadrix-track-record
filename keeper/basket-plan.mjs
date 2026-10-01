@@ -489,9 +489,12 @@ export function computeTrades(rows, policy, { forceTraded = null, onlyForced = f
     if (v >= minValue) {
       const isLastForSeller = s.left - v < minValue;
       // A removal's last slice sells whatever REMAINS of the balance (drain:
-      // the executor re-reads the live balance and sells exactly that), so
-      // finalizeRemoval's balance == 0 requirement is met without a dust
-      // residue. Only the remainder, not the whole pre-session balance — a
+      // the executor re-reads the live balance and sells exactly that). The
+      // balance is zero after the fill only if nothing reached the vault
+      // between that read and the fill — a creation or a plain transfer in
+      // that window leaves a remnant, and finalizeRemoval refuses any nonzero
+      // balance; the executor drains the remnant and finalizes right after the
+      // fill. Only the remainder, not the whole pre-session balance — a
       // removal split over two buys would otherwise be booked twice here and
       // in expectedPostTradeWeights (the numbers the decision draft prints).
       const drain = sr.isRemove && isLastForSeller;

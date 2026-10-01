@@ -7,7 +7,9 @@
  *   first-prices  keeper: the first setRefPrice for every added asset
  *   auctions      keeper opens, the bidder fills, until every traded name is
  *                 inside the rulebook tolerance and every removal is drained
- *   finalize      anyone: finalizeRemoval for each drained removal
+ *                 — and finalized at once (below)
+ *   finalize      anyone: finalizeRemoval for each drained removal still in
+ *                 the registry; a remnant under $1 is reported PENDING
  *   verify        read-only: registry, order, prices, weights, a redeem simulation
  *   day7          execute → first-prices → auctions → finalize → verify in one run
  *
@@ -47,6 +49,22 @@
  * fair window is duration/30 seconds wide (30 s at 900 s); a missed window
  * cancels and reopens at most twice, then stops with a message to widen the
  * planner's --duration (1800 s gives 60 s on the public chain).
+ * Removals (red-team RT17, option K): finalizeRemoval needs the vault's
+ * balance to be exactly zero, and anyone can send one base unit, or create
+ * shares (which pays in a pro-rata slice of a leaving asset), between the
+ * drain fill and the finalize. So a drain is finalized right after its fill,
+ * not after every other auction: the balance is re-read, zero → finalize at
+ * once; not zero → re-drain from the live balance at once (a remnant under
+ * the plan's $1 trade minimum is filled at the curve's open without waiting
+ * — the bidder pays at most 2% over reference on less than $1, lossAtRef 0;
+ * $1 or more follows the fill policy), then check again — at most five
+ * re-drains. Still not zero → the asset is written to plan.finalizePending
+ * and the run goes on: the auctions stage, finalize and verify report it as
+ * PENDING, not as a failure (redemptions and the record are unaffected; the
+ * leg keeps paying out its remnant until a later drain). Each fill also
+ * takes min(auction amount, the vault's live balance), so a redemption in
+ * the window shrinks the fill instead of reverting it, and the unfilled rest
+ * of the auction is cancelled.
  * Every transaction is simulated first, sent with fixed gas, retried on a
  * nonce error (the keeper key is shared by the crons and the desk) and
  * required to be mined WITHOUT revert before the next one (a reverted
@@ -75,10 +93,15 @@
  *   --no-faucet           never top the bidder up from a mock's open faucet
  *   --max-faucet-calls n  cap on faucet() calls per asset (default 60)
  *   --allow-plan-date     accept a plan not generated today (first-prices, auctions)
+ *   --hook file           REHEARSAL ONLY (--live --from on a local anvil): a module whose
+ *                         default export is awaited at 'before-fill' (after the wait, before
+ *                         the live balance is re-read) and 'after-fill' (between a drain fill
+ *                         and the finalize check) — how the anvil rehearsal lands a donation,
+ *                         a creation or a redemption inside those windows
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createWalletClient, http, getAddress, isAddress, keccak256, encodeAbiParameters, parseEventLogs, maxUint256 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
@@ -90,6 +113,8 @@ import {
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ZERO32 = `0x${'0'.repeat(64)}`;
 const STAGES = ['announce', 'execute', 'first-prices', 'auctions', 'finalize', 'verify', 'day7'];
+/** Option K: re-drains of a removal remnant before it is left PENDING. */
+export const MAX_DRAIN_ATTEMPTS = 5;
 
 /** Fixed gas per call, scaled by the registry size where the contract loops
  *  over it. Same reason as basket-mark.mjs POST_GAS: a node estimate that is
@@ -140,6 +165,7 @@ function parseArgs(argv) {
     maxFaucetCalls: Number(opt('--max-faucet-calls', 60)),
     allowPlanDate: flag('--allow-plan-date'),
     paceMs: opt('--pace-ms', null) == null ? undefined : Number(opt('--pace-ms')),
+    hook: opt('--hook', null),
   };
   if (!INDEXES.includes(o.index) || !STAGES.includes(o.stage) || !['fair', 'open', 'natural'].includes(o.fill)) {
     console.error(`usage: node keeper/basket-recon.mjs --index ${INDEXES.join('|')} --stage ${STAGES.join('|')} [--plan p] [--rpc URL] [--live] [--from 0x…] [--bidder 0x…] [--fill fair|open|natural] [--warp] …`);
@@ -213,8 +239,13 @@ async function makeCtx(o) {
     mode = `DRY RUN (${clientVersion}) — nothing is sent`;
   }
   if (o.warp && !devNode) throw new Refused('--warp needs an anvil/hardhat node');
+  let hook = null;
+  if (o.hook) {
+    if (!(o.live && o.from && devNode && isLocalRpc(o.rpc))) throw new Refused('--hook is for the anvil rehearsal only (--live --from on a local anvil)');
+    hook = (await import(pathToFileURL(path.resolve(o.hook)).href)).default;
+  }
   log(`${mode}; rpc ${o.rpc}; plan ${path.relative(ROOT, planFile)} (${plan.date}, ${plan.adds.length} add, ${plan.removes.length} remove, ${plan.trades.length} auction); keeper/owner signer ${keeperAddr}; bidder ${bidderAddr}; fill ${o.fill}`);
-  return { o, log, plan, planFile, reader, pc: reader.publicClient, devNode, keeperAddr, keeperWallet, bidderAddr, bidderWallet, live: o.live };
+  return { o, log, plan, planFile, reader, pc: reader.publicClient, devNode, keeperAddr, keeperWallet, bidderAddr, bidderWallet, live: o.live, hook, pendingThisRun: new Set() };
 }
 
 // -------------------------------------------------------------- sending
@@ -489,8 +520,16 @@ async function requireRefsUnmoved(ctx, sell, buy, pSell, pBuy, t) {
  *  transactions, so the retries are bounded. */
 const MAX_WINDOW_ATTEMPTS = 3;
 
+async function runHook(ctx, point, info) {
+  if (ctx.hook) await ctx.hook(point, info, { rpc: ctx.o.rpc, vault: ctx.plan.vault, chainId: ctx.reader.chainId });
+}
+
 async function runTrade(ctx, v, t, round, attemptNo = 1) {
   const { plan, log, o } = ctx;
+  // A residual drain under $1 (option K) fills at the open: waiting ~10
+  // minutes for the fair point is the window a donation needs, and the most
+  // the bidder overpays at the open is 2% of less than $1.
+  const policy = t.immediate ? 'open' : o.fill;
   const sell = getAddress(t.sellAddress);
   const buy = getAddress(t.buyAddress);
   const [sellBal, pSell, pBuy, tsSell, tsBuy] = await ctx.reader.batch([
@@ -504,7 +543,11 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
   if (amount === 0n) { log(`  #${t.seq} ${t.sell}→${t.buy}: nothing left to sell — skipped`); return null; }
   if (pSell === 0n || pBuy === 0n) throw new Refused(`#${t.seq}: a leg has no reference (${t.sell} ${pSell}, ${t.buy} ${pBuy})`);
   const now = await chainTime(ctx);
-  log(`  #${t.seq} round ${round}${attemptNo > 1 ? ` attempt ${attemptNo}/${MAX_WINDOW_ATTEMPTS}` : ''}: sell ${amount} ${t.sell} for ${t.buy}${t.drain ? ' [drain to zero]' : ''}; refs ${pSell} / ${pBuy} aged ${now - tsSell}s / ${now - tsBuy}s (maxRefAge ${v.maxRefAge}s)`);
+  log(`  #${t.seq} round ${round}${attemptNo > 1 ? ` attempt ${attemptNo}/${MAX_WINDOW_ATTEMPTS}` : ''}: sell ${amount} ${t.sell} for ${t.buy}${t.drain ? ' [drain to zero]' : ''}${t.immediate ? ' [remnant under $1: fill at the open]' : ''}; refs ${pSell} / ${pBuy} aged ${now - tsSell}s / ${now - tsBuy}s (maxRefAge ${v.maxRefAge}s)`);
+  // An immediate fill skips the same-value re-posts while both references
+  // are comfortably fresh (they were re-posted by the fill a moment ago):
+  // fewer transactions, a narrower window.
+  const repost = !(t.immediate && now - tsSell < v.maxRefAge - 120n && now - tsBuy < v.maxRefAge - 120n);
 
   // Inventory for the worst case (+2% at the open), then the auction itself.
   const buyWorst = (amount * pSell * (10_000n + v.premiumBps) + pBuy * 10_000n - 1n) / (pBuy * 10_000n);
@@ -513,9 +556,9 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
   const opened = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'openAuction', args: [sell, buy, amount, BigInt(t.duration)], gas: GAS.openAuction, what: `open auction #${t.seq}` });
   const id = idBefore;
   const win = fairWindow(t.duration, Number(v.premiumBps), Number(v.maxFillLossBps), o.fairWindowBps);
-  const aimElapsed = o.fill === 'fair' ? win.aim : 0;
+  const aimElapsed = policy === 'fair' ? win.aim : 0;
   if (opened.dry) {
-    log(`  would wait ${aimElapsed} s to the ${o.fill === 'fair' ? `fair window [${win.eMin}, ${win.eMax}] s` : 'open'}, re-read and re-post both references at their current values, then fill(${id}, ${amount}) as bidder ${ctx.bidderAddr}`);
+    log(`  would wait ${aimElapsed} s to the ${policy === 'fair' ? `fair window [${win.eMin}, ${win.eMax}] s` : 'open'}, re-read and re-post both references at their current values, then fill(${id}, min(${amount}, live balance)) as bidder ${ctx.bidderAddr}${t.drain ? `; then read ${t.sell}'s balance: zero → finalizeRemoval at once, else re-drain at once (≤ ${MAX_DRAIN_ATTEMPTS}×), else PENDING` : ''}`);
     await requireRefsUnmoved(ctx, sell, buy, pSell, pBuy, t);
     await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [sell, pSell], gas: GAS.post, what: `re-post ${t.sell} (same value)` });
     await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [buy, pBuy], gas: GAS.post, what: `re-post ${t.buy} (same value)` });
@@ -527,15 +570,17 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
   if (getAddress(a[0]) !== sell || getAddress(a[1]) !== buy) throw new Error(`auction ${id} is not ours (${a[0]} → ${a[1]})`);
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    await waitUntil(ctx, startTime + BigInt(aimElapsed), o.fill === 'fair' ? `to the fair point of auction ${id}` : `auction ${id} open`);
+    await waitUntil(ctx, startTime + BigInt(aimElapsed), policy === 'fair' ? `to the fair point of auction ${id}` : `auction ${id} open`);
     // Same-value re-posts: refresh the staleness clock, move nothing — so the
     // values on chain must still be the ones read at the start of this trade.
-    await requireRefsUnmoved(ctx, sell, buy, pSell, pBuy, t);
-    await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [sell, pSell], gas: GAS.post, what: `re-post ${t.sell} (same value)` });
-    await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [buy, pBuy], gas: GAS.post, what: `re-post ${t.buy} (same value)` });
+    if (repost) {
+      await requireRefsUnmoved(ctx, sell, buy, pSell, pBuy, t);
+      await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [sell, pSell], gas: GAS.post, what: `re-post ${t.sell} (same value)` });
+      await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [buy, pBuy], gas: GAS.post, what: `re-post ${t.buy} (same value)` });
+    }
     const factorNow = Number(await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'curveFactorBps', args: [id] }));
-    const late = o.fill !== 'natural' && factorNow < 10_000;
-    const early = o.fill === 'fair' && factorNow > 10_000 + o.fairWindowBps;
+    const late = policy !== 'natural' && factorNow < 10_000;
+    const early = policy === 'fair' && factorNow > 10_000 + o.fairWindowBps;
     if (early) {
       log(`  factor ${factorNow} still above the window — waiting`);
       await waitUntil(ctx, (await chainTime(ctx)) + 5n, 'window');
@@ -543,31 +588,134 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
       continue;
     }
     if (late) {
-      log(`  factor ${factorNow} is below fair — too late for a ${o.fill} fill; cancelling auction ${id}${attemptNo < MAX_WINDOW_ATTEMPTS ? ' and reopening' : ''}`);
+      log(`  factor ${factorNow} is below fair — too late for a ${policy} fill; cancelling auction ${id}${attemptNo < MAX_WINDOW_ATTEMPTS ? ' and reopening' : ''}`);
       await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id}` });
       if (attemptNo >= MAX_WINDOW_ATTEMPTS) throw new Error(`#${t.seq}: missed the fair window ${attemptNo} times (window [${win.eMin}, ${win.eMax}] s of a ${t.duration} s auction = duration/30 wide; three mined transactions must land inside it) — widen the planner's --duration (1800 s gives a 60 s window on the public chain) or run when blocks are quick`);
       return runTrade(ctx, v, t, round, attemptNo + 1);
     }
-    const filled = await call(ctx, { who: 'bidder', to: plan.vault, functionName: 'fill', args: [id, amount], gas: GAS.fill(v.assetCount), what: `fill #${t.seq} (auction ${id})` });
+    // K-3: the fill takes what the vault holds NOW, at most the auction's
+    // amount — a redemption since the balance was read would otherwise make
+    // the fill revert; anything that arrived since stays and is re-drained.
+    await runHook(ctx, 'before-fill', { seq: t.seq, symbol: t.sell, asset: sell, auctionId: id, amount, drain: !!t.drain, residual: !!t.residual });
+    const liveBal = await ctx.pc.readContract({ address: sell, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] });
+    const take = liveBal < amount ? liveBal : amount;
+    if (take !== amount) log(`  live balance ${liveBal} ${t.sell} is below the auction's ${amount} (a redemption in the window) — filling ${take}`);
+    if (take === 0n) {
+      await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id} (nothing left to sell)` });
+      return null;
+    }
+    const filled = await call(ctx, { who: 'bidder', to: plan.vault, functionName: 'fill', args: [id, take], gas: GAS.fill(v.assetCount), what: `fill #${t.seq} (auction ${id})` });
     const ev = parseEventLogs({ abi: VAULT_ABI, logs: filled.receipt.logs, eventName: 'AuctionFilled' })[0]?.args;
     if (!ev) throw new Error(`no AuctionFilled event in ${filled.hash}`);
     const elapsed = Number(filled.blockTimestamp - startTime);
     const factor = 10_000 + Number(v.premiumBps) - Math.floor((win.range * elapsed) / t.duration);
     const rec = {
       seq: t.seq, round, auctionId: id.toString(), sell: t.sell, buy: t.buy, sellTaken: ev.sellTaken.toString(), buyPaid: ev.buyPaid.toString(),
-      lossAtRef: ev.lossAtRef.toString(), factorBps: factor, elapsed, policy: o.fill, bidder: ctx.bidderAddr,
+      lossAtRef: ev.lossAtRef.toString(), factorBps: factor, elapsed, policy, bidder: ctx.bidderAddr,
       openTx: opened.hash, fillTx: filled.hash, at: iso(filled.blockTimestamp),
+      ...(take !== amount ? { auctionAmount: amount.toString() } : {}),
+      ...(t.residual ? { residualOf: t.parentSeq ?? null } : {}),
     };
     plan.fills.push(rec);
     savePlan(ctx.planFile, plan);
     log(`  filled auction ${id}: took ${ev.sellTaken} ${t.sell}, paid ${ev.buyPaid} ${t.buy}, factor ${factor} bp (${elapsed} s in), lossAtRef ${ev.lossAtRef}`);
-    if (o.fill !== 'natural') {
-      if (ev.lossAtRef !== 0n) throw new Error(`HALT: fill ${filled.hash} booked lossAtRef ${ev.lossAtRef} under the ${o.fill} policy`);
-      if (o.fill === 'fair' && (factor < 10_000 || factor > 10_000 + o.fairWindowBps)) throw new Error(`HALT: fill ${filled.hash} landed at factor ${factor}, outside [10000, ${10_000 + o.fairWindowBps}]`);
+    if (policy !== 'natural') {
+      if (ev.lossAtRef !== 0n) throw new Error(`HALT: fill ${filled.hash} booked lossAtRef ${ev.lossAtRef} under the ${policy} policy`);
+      if (policy === 'fair' && (factor < 10_000 || factor > 10_000 + o.fairWindowBps)) throw new Error(`HALT: fill ${filled.hash} landed at factor ${factor}, outside [10000, ${10_000 + o.fairWindowBps}]`);
+    }
+    // K-1: a drain is finalized right here, not after the other auctions.
+    if (t.drain && !t.residual) await settleRemoval(ctx, v, t, round);
+    if (take !== amount) {
+      const a2 = await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] });
+      if (a2[5]) await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel the unfilled rest of auction ${id} (${a2[2]} ${t.sell})` });
     }
     return rec;
   }
   throw new Error(`auction for #${t.seq} could not be filled in the window`);
+}
+
+// ------------------------------------------------- removals (option K)
+const minTradeValue = (plan) => BigInt(Math.round((plan.policy.minTradeUsd ?? 1) * 1e18)); // USD × 1e18
+const usd = (x) => (Number(x) / 1e18).toFixed(Number(x) < 1e18 ? 6 : 2);
+
+/** finalizeRemoval for one drained asset; records it and clears any PENDING. */
+async function finalizeOne(ctx, asset, sym) {
+  const { plan, log } = ctx;
+  const v = await readVault(ctx.reader, plan.vault);
+  const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'finalizeRemoval', args: [asset], gas: GAS.finalize(v.assetCount), what: `finalize ${sym}` });
+  if (r.dry) return;
+  const after = await readVault(ctx.reader, plan.vault);
+  if (after.assets.some((x) => x.address === asset)) throw new Error(`${sym} still in the registry after finalizeRemoval`);
+  plan.finalize.push({ symbol: sym, address: asset, txHash: r.hash, at: iso(r.blockTimestamp), assetCount: after.assetCount, order: after.assets.map((x) => x.address) });
+  if (plan.finalizePending) plan.finalizePending = plan.finalizePending.filter((x) => x.address !== asset);
+  savePlan(ctx.planFile, plan);
+  log(`  ${sym} removed; registry order is now (swap-and-pop) ${after.assets.map((x) => plan.registry.find((p) => p.address === x.address)?.symbol ?? plan.adds.find((p) => p.address === x.address)?.symbol ?? x.address).join(' ')}`);
+}
+
+/** K-4: the remnant stays; the run goes on and says so. */
+function recordPending(ctx, entry) {
+  const { plan, log } = ctx;
+  ctx.pendingThisRun.add(entry.address);
+  log(`  PENDING ${entry.symbol} ${entry.address}: ${entry.balance} base units (≈ $${entry.valueUsd}) still in the vault after ${entry.attempts} re-drain(s) — finalizeRemoval waits for a later drain (re-run the auctions stage). Redemptions pay the remnant pro rata meanwhile; the record is unaffected.`);
+  if (!ctx.live) return;
+  plan.finalizePending = [...(plan.finalizePending ?? []).filter((x) => x.address !== entry.address), entry];
+  savePlan(ctx.planFile, plan);
+}
+
+/**
+ * K-1/K-2/K-4 after a drain fill (or for a remnant found later): read the
+ * balance; zero → finalize at once; otherwise re-drain from the live balance
+ * at once and look again, at most MAX_DRAIN_ATTEMPTS times; then PENDING.
+ */
+async function settleRemoval(ctx, v, t, round) {
+  const { plan, log, o } = ctx;
+  const asset = getAddress(t.sellAddress);
+  let lastTx = null;
+  for (let k = 0; ; k++) {
+    await runHook(ctx, 'after-fill', { seq: t.seq, symbol: t.sell, asset, attempt: k });
+    const [bal, ref] = await ctx.reader.batch([
+      { address: asset, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] },
+      { address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [asset] },
+    ]);
+    if (bal === 0n) {
+      log(`  ${t.sell}: balance 0 — finalizing now${k ? ` (after ${k} re-drain(s))` : ''}`);
+      await finalizeOne(ctx, asset, t.sell);
+      return 'finalized';
+    }
+    const value = bal * ref;
+    if (k >= MAX_DRAIN_ATTEMPTS) {
+      recordPending(ctx, { symbol: t.sell, address: asset, balance: bal.toString(), valueUsd: usd(value), attempts: k, lastTx, at: iso(await chainTime(ctx)), stage: o.stage });
+      return 'pending';
+    }
+    const dust = value < minTradeValue(plan);
+    log(`  ${t.sell}: ${bal} base units (≈ $${usd(value)}) in the vault after the drain — re-drain ${k + 1}/${MAX_DRAIN_ATTEMPTS} now${dust ? ', filled at the open (under the $1 trade minimum)' : `, ${o.fill} fill`}`);
+    const rec = await runTrade(ctx, v, { ...t, seq: `${t.seq}.r${k + 1}`, parentSeq: t.seq, sellAmount: bal, drain: true, residual: true, immediate: dust }, round);
+    if (rec?.fillTx) lastTx = rec.fillTx;
+  }
+}
+
+/** A buy leg for a remnant: the plan's own drain buy, else the largest holding. */
+function remnantBuy(ctx, v, sym) {
+  const t = ctx.plan.trades.find((x) => x.sell === sym && x.drain);
+  if (t && v.assets.some((a) => a.address === getAddress(t.buyAddress) && !a.inRemoval)) return { buy: t.buy, buyAddress: getAddress(t.buyAddress), duration: t.duration };
+  const best = v.assets.filter((a) => !a.inRemoval && a.refPrice > 0n).sort((a, b) => (b.balance * b.refPrice > a.balance * a.refPrice ? 1 : -1))[0];
+  const bySym = ctx.plan.registry.find((r) => r.address === best.address)?.symbol ?? ctx.plan.adds.find((r) => r.address === best.address)?.symbol ?? best.onchainSymbol;
+  return { buy: bySym, buyAddress: best.address, duration: ctx.plan.policy.duration };
+}
+
+/** After each round: every asset in removal is finalized when drained, or
+ *  re-drained (K-2) — this covers a re-run and a remnant that reached the
+ *  vault in another trade's window. One PENDING per asset per run. */
+async function sweepRemovals(ctx, round) {
+  const v = await readVault(ctx.reader, ctx.plan.vault);
+  for (const a of v.assets.filter((x) => x.inRemoval)) {
+    if (ctx.pendingThisRun.has(a.address)) continue;
+    const sym = ctx.plan.removes.find((r) => r.address === a.address)?.symbol ?? a.onchainSymbol;
+    if (a.balance === 0n) { await finalizeOne(ctx, a.address, sym); continue; }
+    const b = remnantBuy(ctx, v, sym);
+    ctx.log(`  ${sym} is in removal with ${a.balance} base units left — draining it now`);
+    await settleRemoval(ctx, v, { seq: `sweep-${sym}`, sell: sym, sellAddress: a.address, ...b, drain: true }, round);
+  }
 }
 
 /** Live rows for computeTrades: chain balances, chain references, plan targets. */
@@ -582,15 +730,18 @@ async function liveRows(ctx, v) {
   });
 }
 
-function residual(ctx, rows) {
+export function residual(ctx, rows) {
   const tol = ctx.plan.policy.tolerancePoints / 100;
   const total = rows.reduce((t, r) => t + Number(r.balance * r.ref), 0);
   const traded = new Set(ctx.plan.targets.filter((t) => t.traded).map((t) => t.symbol));
+  const minValue = minTradeValue(ctx.plan);
   const out = [];
   for (const r of rows) {
     const w = total > 0 ? Number(r.balance * r.ref) / total : 0;
     const drift = w - r.targetWeight;
-    out.push({ symbol: r.symbol, weight: w, targetWeight: r.targetWeight, drift, ok: r.isRemove ? r.balance === 0n : !traded.has(r.symbol) || Math.abs(drift) < tol });
+    // K-4: a removal remnant under the trade minimum is PENDING, not a failure.
+    const pending = r.isRemove && r.balance > 0n && r.balance * r.ref < minValue;
+    out.push({ symbol: r.symbol, weight: w, targetWeight: r.targetWeight, drift, ok: r.isRemove ? r.balance === 0n : !traded.has(r.symbol) || Math.abs(drift) < tol, pending });
   }
   return out;
 }
@@ -631,10 +782,11 @@ async function stageAuctions(ctx) {
     }
     for (const t of trades) await runTrade(ctx, v, t, round);
     if (!ctx.live) { log('dry run: residual rounds need the fills above to have happened — stopping after round 1'); return; }
+    await sweepRemovals(ctx, round);
     v = await readVault(ctx.reader, plan.vault);
     const res = residual(ctx, await liveRows(ctx, v));
-    for (const r of res) log(`  ${r.symbol.padEnd(7)} ${pct(r.weight).padStart(7)} vs trade target ${pct(r.targetWeight).padStart(7)} (${(r.drift * 100).toFixed(2)} pt) ${r.ok ? 'ok' : 'OUTSIDE'}`);
-    if (res.every((r) => r.ok)) { log(`inside tolerance after round ${round}`); return; }
+    for (const r of res) log(`  ${r.symbol.padEnd(7)} ${pct(r.weight).padStart(7)} vs trade target ${pct(r.targetWeight).padStart(7)} (${(r.drift * 100).toFixed(2)} pt) ${r.ok ? 'ok' : r.pending ? 'PENDING (remnant under $1, finalize waiting)' : 'OUTSIDE'}`);
+    if (res.every((r) => r.ok || r.pending)) { log(`inside tolerance after round ${round}${res.some((r) => r.pending) ? `; PENDING: ${res.filter((r) => r.pending).map((r) => r.symbol).join(', ')}` : ''}`); return; }
   }
   throw new Error(`still outside tolerance after ${o.maxRounds} round(s)`);
 }
@@ -649,17 +801,19 @@ async function stageFinalize(ctx) {
   for (const a of inRem) {
     const sym = plan.removes.find((r) => r.address === a.address)?.symbol ?? a.onchainSymbol;
     if (a.balance !== 0n) {
-      log(`  ${sym} ${a.address}: balance ${a.balance} is not zero — cannot finalize (drain by auction; a 1-unit donation from anyone blocks this, and the leg keeps paying out in every redemption meanwhile)`);
+      const value = a.balance * a.refPrice;
+      if (value < minTradeValue(plan)) {
+        // K-4: what the auctions stage could not drain in five tries, or a
+        // remnant that arrived since — PENDING, not a failure.
+        const prev = plan.finalizePending?.find((x) => x.address === a.address);
+        recordPending(ctx, { symbol: sym, address: a.address, balance: a.balance.toString(), valueUsd: usd(value), attempts: prev?.attempts ?? 0, lastTx: prev?.lastTx ?? null, at: iso(v.block.timestamp), stage: 'finalize' });
+        continue;
+      }
+      log(`  ${sym} ${a.address}: balance ${a.balance} (≈ $${usd(value)}) is not zero — cannot finalize; drain it with the auctions stage (it finalizes right after the drain)`);
       blocked++;
       continue;
     }
-    const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'finalizeRemoval', args: [a.address], gas: GAS.finalize(v.assetCount), what: `finalize ${sym}` });
-    if (r.dry) continue;
-    const after = await readVault(ctx.reader, plan.vault);
-    if (after.assets.some((x) => x.address === a.address)) throw new Error(`${sym} still in the registry after finalizeRemoval`);
-    plan.finalize.push({ symbol: sym, address: a.address, txHash: r.hash, at: iso(r.blockTimestamp), assetCount: after.assetCount, order: after.assets.map((x) => x.address) });
-    savePlan(ctx.planFile, plan);
-    log(`  ${sym} removed; registry order is now (swap-and-pop) ${after.assets.map((x) => plan.registry.find((p) => p.address === x.address)?.symbol ?? plan.adds.find((p) => p.address === x.address)?.symbol ?? x.address).join(' ')}`);
+    await finalizeOne(ctx, a.address, sym);
   }
   if (blocked) throw new Error(`${blocked} removal(s) not drained`);
 }
@@ -692,8 +846,11 @@ async function stageVerify(ctx) {
   const res = residual(ctx, await liveRows(ctx, v));
   for (const r of res) {
     const book = plan.targets.find((t) => t.symbol === r.symbol)?.targetWeight;
-    check(r.ok, `${r.symbol.padEnd(7)} weight ${pct(r.weight).padStart(7)} trade target ${pct(r.targetWeight).padStart(7)} (book ${book != null ? pct(book) : '—'}) drift ${(r.drift * 100).toFixed(2)} pt`);
+    const line = `${r.symbol.padEnd(7)} weight ${pct(r.weight).padStart(7)} trade target ${pct(r.targetWeight).padStart(7)} (book ${book != null ? pct(book) : '—'}) drift ${(r.drift * 100).toFixed(2)} pt`;
+    if (!r.ok && r.pending) log(`  PEND ${line} — PENDING: in removal, remnant under $1, finalize waiting (not a failure)`);
+    else check(r.ok, line);
   }
+  for (const p of plan.finalizePending ?? []) log(`  PENDING ${p.symbol} ${p.address}: ${p.balance} base units (≈ $${p.valueUsd}) after ${p.attempts} re-drain(s), since ${p.at}`);
   // A redeem simulation from the owner (the genesis holder): the payout must
   // have one slice per registry asset. Reads no price, so it works in any state.
   const ownerShares = await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'balanceOf', args: [v.owner] });
@@ -705,10 +862,10 @@ async function stageVerify(ctx) {
       check(false, `redeem simulation reverted: ${fmtErr(e)}`);
     }
   } else log(`  (owner holds ${ownerShares} share-wei — redeem simulation skipped)`);
-  plan.verify = { at: new Date().toISOString(), block: v.block.number.toString(), assetCount: v.assetCount, order: v.assets.map((x) => x.address), fails, weights: res.map((r) => ({ symbol: r.symbol, weight: r.weight, targetWeight: r.targetWeight })) };
+  plan.verify = { at: new Date().toISOString(), block: v.block.number.toString(), assetCount: v.assetCount, order: v.assets.map((x) => x.address), fails, pending: res.filter((r) => !r.ok && r.pending).map((r) => r.symbol), weights: res.map((r) => ({ symbol: r.symbol, weight: r.weight, targetWeight: r.targetWeight })) };
   savePlan(ctx.planFile, plan);
   if (fails.length) throw new Error(`verify: ${fails.length} check(s) failed`);
-  log('verify: all checks passed');
+  log(`verify: all checks passed${plan.verify.pending.length ? ` (PENDING: ${plan.verify.pending.join(', ')})` : ''}`);
 }
 
 // ---------------------------------------------------------------------- main
@@ -737,11 +894,13 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  if (e instanceof Refused) {
-    console.error(`REFUSED: ${e.message}`);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((e) => {
+    if (e instanceof Refused) {
+      console.error(`REFUSED: ${e.message}`);
+      process.exit(1);
+    }
+    console.error(e.shortMessage ?? e.message ?? e);
     process.exit(1);
-  }
-  console.error(e.shortMessage ?? e.message ?? e);
-  process.exit(1);
-});
+  });
+}

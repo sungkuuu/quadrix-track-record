@@ -180,6 +180,15 @@ jobs:
           {
             echo "## basket-reconstitution — $INDEX · $STAGE · $MODE_LABEL"
             echo
+            # A removal left waiting for finalizeRemoval (option K) ends the
+            # stage with exit 0, so it must be visible here.
+            if grep -q 'PENDING' recon.log 2>/dev/null; then
+              echo "**PENDING — a removal is not finalized yet (remnant under \$1; re-run the auctions stage):**"
+              echo '```'
+              grep 'PENDING' recon.log | head -n 10
+              echo '```'
+              echo
+            fi
             echo '```'
             tail -n 80 recon.log 2>/dev/null || echo '(no log)'
             echo '```'
