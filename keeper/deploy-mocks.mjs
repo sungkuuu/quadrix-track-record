@@ -43,7 +43,9 @@
  * key of every basket), or — rehearsal on a local anvil only — from an
  * unlocked --from. Every receipt must be mined without revert and every new
  * mock is read back (code, name, symbol, decimals, faucetAmount, genesis
- * balance) before the next one. Keys are never printed.
+ * balance) before the next one — repeated for up to 30 s while the node that
+ * answers has not yet seen the deployment block, and only then reported as a
+ * disagreement (readBackUntilAgrees). Keys are never printed.
  *
  * Usage:
  *   node keeper/deploy-mocks.mjs --date 2026-10-01                     # dry run, every index with adds that day
@@ -156,6 +158,58 @@ async function retryRead(fn, tries = 4) {
       if (i + 1 >= tries || !/RPC Request failed|429|rate|timeout|fetch failed/i.test(String(e?.shortMessage ?? e?.message))) throw e;
       await sleep(3000 * (i + 1));
     }
+  }
+}
+
+/**
+ * The read-back after a deployment. The public endpoint is load-balanced: the
+ * node that answered waitForTransactionReceipt need not be the node that
+ * answers the next read, and one behind the receipt's block has no code at the
+ * new address (2026-10-01, qX20 mZEC, block 37,515,992: getCode came back
+ * without the code; measured afterwards, the code equals the artifact). Such a
+ * node cannot make the read-back agree by mistake — without code, getCode is
+ * empty and every view call reverts or returns no data — so the read-back is
+ * repeated until it agrees or READBACK_WAIT_MS runs out, and only then is a
+ * disagreement reported. Not pinned to the receipt's block: a pinned read on a
+ * node behind it fails instead of answering empty, which is the same "not
+ * yet", and pinning the five views would need a block argument through the
+ * shared Multicall3 reader. Not "wait until eth_blockNumber reaches the block"
+ * either: behind a load balancer that proves nothing about the node that
+ * answers the next request.
+ */
+export const READBACK_WAIT_MS = 30_000;
+export const READBACK_STEP_MS = 2_000;
+
+/** One read-back `got` ({code, name, symbol, decimals, faucetAmount, balance};
+ *  only {code} while there is none) against what was deployed: 'ok',
+ *  'pending' (no code yet), or 'differs' with what disagrees. */
+export function readBackVerdict(got, want) {
+  if (!got?.code || got.code === '0x') return { state: 'pending', why: 'no runtime code at the address' };
+  const bad = [];
+  if (codeShape(got.code) !== ARTIFACT_SHAPE) bad.push('runtime code differs from the artifact');
+  if (got.name !== want.name) bad.push(`name ${got.name}`);
+  if (got.symbol !== want.symbol) bad.push(`symbol ${got.symbol}`);
+  if (Number(got.decimals) !== want.decimals) bad.push(`decimals ${got.decimals}`);
+  if (got.faucetAmount !== want.faucetAmount) bad.push(`faucetAmount ${got.faucetAmount}`);
+  if (!(typeof got.balance === 'bigint' && got.balance >= want.genesisAmount)) bad.push(`bidder balance ${got.balance} < ${want.genesisAmount}`);
+  return bad.length ? { state: 'differs', bad } : { state: 'ok' };
+}
+
+/** Repeats `readOnce` (a throw — a revert, no data, a rate limit — counts as
+ *  "not yet") every `stepMs` until the verdict is 'ok' or `waitMs` has passed;
+ *  then the last disagreement is returned. `now` and `wait` are injectable so
+ *  that the test runs without a network or a real clock. */
+export async function readBackUntilAgrees(readOnce, want, { waitMs = READBACK_WAIT_MS, stepMs = READBACK_STEP_MS, now = Date.now, wait = sleep } = {}) {
+  const t0 = now();
+  for (let reads = 1; ; reads++) {
+    let got = null;
+    let failed = null;
+    try { got = await readOnce(); } catch (e) { failed = e?.shortMessage ?? e?.message ?? String(e); }
+    const v = failed != null ? { state: 'pending', why: `read failed: ${failed}` } : readBackVerdict(got, want);
+    const elapsedMs = now() - t0;
+    if (v.state === 'ok') return { ok: true, reads, elapsedMs };
+    if (elapsedMs >= waitMs) return { ok: false, reads, elapsedMs, bad: v.state === 'differs' ? v.bad : [`not yet — ${v.why}`] };
+    await wait(Math.min(stepMs, waitMs - elapsedMs));
   }
 }
 
@@ -329,37 +383,37 @@ async function main() {
       const rc = await pc.waitForTransactionReceipt({ hash });
       if (rc.status !== 'success' || !rc.contractAddress) throw new Error(`${T} ${sym}: deployment reverted or created nothing (tx ${hash}, block ${rc.blockNumber})`);
       const address = getAddress(rc.contractAddress);
-      const code = await pc.getCode({ address });
-      const [nm, sy, dec, fa, gb] = await reader.batch([
-        { address, abi: MOCK_ABI, functionName: 'name' },
-        { address, abi: MOCK_ABI, functionName: 'symbol' },
-        { address, abi: MOCK_ABI, functionName: 'decimals' },
-        { address, abi: MOCK_ABI, functionName: 'faucetAmount' },
-        { address, abi: MOCK_ABI, functionName: 'balanceOf', args: [inventoryTo] },
-      ]);
-      const bad = [];
-      if (!code || codeShape(code) !== ARTIFACT_SHAPE) bad.push('runtime code differs from the artifact');
-      if (nm !== name) bad.push(`name ${nm}`);
-      if (sy !== mockSymbol) bad.push(`symbol ${sy}`);
-      if (Number(dec) !== decimals) bad.push(`decimals ${dec}`);
-      if (fa !== faucetAmount) bad.push(`faucetAmount ${fa}`);
-      if (gb < genesisAmount) bad.push(`bidder balance ${gb} < ${genesisAmount}`);
+      const readOnce = async () => {
+        const code = await pc.getCode({ address });
+        if (!code || code === '0x') return { code };
+        const [nm, sy, dec, fa, gb] = await reader.batch([
+          { address, abi: MOCK_ABI, functionName: 'name' },
+          { address, abi: MOCK_ABI, functionName: 'symbol' },
+          { address, abi: MOCK_ABI, functionName: 'decimals' },
+          { address, abi: MOCK_ABI, functionName: 'faucetAmount' },
+          { address, abi: MOCK_ABI, functionName: 'balanceOf', args: [inventoryTo] },
+        ]);
+        return { code, name: nm, symbol: sy, decimals: dec, faucetAmount: fa, balance: gb };
+      };
+      const rb = await readBackUntilAgrees(readOnce, { name, symbol: mockSymbol, decimals, faucetAmount, genesisAmount });
       out[index][sym] = {
         address, decimals, mockSymbol, name, faucetAmount, genesisTo: inventoryTo, genesisAmount, deskTo: desk, deskAmount,
         priceUsd: pw.price, weight: pw.weight, priceSource: pw.source, vault, txHash: hash, block: rc.blockNumber, gasUsed: rc.gasUsed, deployer: from,
       };
       writeOut(o.out, out);
       deployed++;
-      if (bad.length) throw new Error(`${T} ${sym}: deployed at ${address} but the read-back disagrees: ${bad.join('; ')}`);
-      log(`  deployed ${shown} at ${address} tx=${hash} block=${rc.blockNumber} gas=${rc.gasUsed}; read back ok`);
+      if (!rb.ok) throw new Error(`${T} ${sym}: deployed at ${address} but the read-back disagrees after ${rb.reads} read(s) over ${(rb.elapsedMs / 1000).toFixed(0)} s: ${rb.bad.join('; ')}`);
+      log(`  deployed ${shown} at ${address} tx=${hash} block=${rc.blockNumber} gas=${rc.gasUsed}; read back ok${rb.reads > 1 ? ` (at read ${rb.reads}, ${(rb.elapsedMs / 1000).toFixed(0)} s)` : ''}`);
     }
   }
   if (o.live) log(`${deployed} mock(s) deployed; ${path.relative(ROOT, o.out)} written — pass it as the planner's --mocks (workflow input mocks=${path.relative(ROOT, o.out)})`);
   else log(`dry run: ${planned} deployment(s) simulated; nothing sent, nothing written`);
 }
 
-main().catch((e) => {
-  if (e instanceof Refused) { console.error(`REFUSED: ${e.message}`); process.exit(1); }
-  console.error(e.shortMessage ?? e.message ?? e);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((e) => {
+    if (e instanceof Refused) { console.error(`REFUSED: ${e.message}`); process.exit(1); }
+    console.error(e.shortMessage ?? e.message ?? e);
+    process.exit(1);
+  });
+}
