@@ -460,9 +460,10 @@ async function stageExecute(ctx) {
     try { ev = await findExecution(ctx, t); } catch (e) { log(`  could not search for the RegistryChangeExecuted log (${fmtErr(e)})`); }
     const tx = ev ? await ctx.pc.getTransaction({ hash: ev.transactionHash }).catch(() => null) : null;
     const blk = ev ? await ctx.pc.getBlock({ blockNumber: ev.blockNumber }) : null;
-    log(`nothing pending, and the registry already holds this change — executeRegistryChange is permissionless and was called ${tx ? `by ${tx.from} in tx ${ev.transactionHash} (block ${ev.blockNumber})` : 'by someone else (tx not found in the last 100,000 blocks)'}; continuing with first-prices`);
+    const by = tx?.from ? getAddress(tx.from) : null;
+    log(`nothing pending, and the registry already holds this change — executeRegistryChange is permissionless and was called ${by ? `by ${by} in tx ${ev.transactionHash} (block ${ev.blockNumber})` : 'by someone else (tx not found in the last 100,000 blocks)'}; continuing with first-prices`);
     if (!ctx.live) return;
-    plan.execute = { txHash: ev?.transactionHash ?? null, block: ev?.blockNumber ?? null, at: blk ? iso(blk.timestamp) : null, assetCount: v.assetCount, order: v.assets.map((x) => x.address), signer: tx?.from ?? null, byThirdParty: true };
+    plan.execute = { txHash: ev?.transactionHash ?? null, block: ev?.blockNumber ?? null, at: blk ? iso(blk.timestamp) : null, assetCount: v.assetCount, order: v.assets.map((x) => x.address), signer: by, byThirdParty: by ? by !== ctx.keeperAddr : true };
     savePlan(ctx.planFile, plan);
     return;
   }
