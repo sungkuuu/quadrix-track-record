@@ -44,6 +44,8 @@
  *          --lag n (4) --port n (8571) --proxy-port n (8581) --work DIR
  *          --fork-block n --duration s (1800) --main-recon FILE --foundry-bin DIR
  *          --stop-variant
+ *          --anvil-pid n   use the anvil the caller started on --port (same fork
+ *                          arguments as below) and kill that pid at the end
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -75,6 +77,7 @@ const O = {
   mainRecon: opt('--main-recon', null),
   foundry: opt('--foundry-bin', process.env.FOUNDRY_BIN ?? path.join(os.homedir(), '.foundry', 'bin')),
   stopVariant: argv.includes('--stop-variant'),
+  anvilPid: opt('--anvil-pid', null) == null ? null : Number(opt('--anvil-pid')),
 };
 const ANVIL = `http://127.0.0.1:${O.port}`;
 const PROXY = `http://127.0.0.1:${O.proxyPort}`;
@@ -103,6 +106,12 @@ async function waitUp(url, ms) {
     await new Promise((r) => setTimeout(r, 300));
   }
   throw new Error(`${url} did not come up`);
+}
+/** The caller started the anvil (so that it holds the machine's one anvil slot from the first moment). */
+async function attachAnvil() {
+  log(`attaching to the anvil already started on ${ANVIL} (pid ${O.anvilPid})`);
+  await waitUp(ANVIL, 120_000);
+  return { kill: () => { try { process.kill(O.anvilPid); } catch { /* gone */ } } };
 }
 async function startAnvil() {
   const bin = fs.existsSync(path.join(O.foundry, 'anvil')) ? path.join(O.foundry, 'anvil') : 'anvil';
@@ -319,10 +328,10 @@ function firstDiff(a, b, p = '') {
 async function main() {
   if (process.env.GITHUB_ACTIONS === 'true') { console.error('REFUSED: a local rehearsal — not for a workflow'); process.exit(1); }
   if (O.date !== new Date().toISOString().slice(0, 10)) { console.error(`REFUSED: --date ${O.date} is not today (UTC) — the executor refuses a plan not generated today`); process.exit(1); }
-  for (const p of [O.port, O.proxyPort]) if (!(await portFree(p))) { console.error(`port ${p} is in use`); process.exit(1); }
+  for (const p of O.anvilPid ? [O.proxyPort] : [O.port, O.proxyPort]) if (!(await portFree(p))) { console.error(`port ${p} is in use`); process.exit(1); }
   fs.mkdirSync(O.work, { recursive: true });
   const env = setupWork();
-  const anvil = await startAnvil();
+  const anvil = O.anvilPid ? await attachAnvil() : await startAnvil();
   let fails = 1;
   try {
     reader = await makeReader(ANVIL, { chainId: GIWA_CHAIN_ID });
