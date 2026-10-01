@@ -14,9 +14,13 @@
  *
  *   set-bidder → deploy-mocks → plan → decision draft (rehearsal ledger) →
  *   plan with the decision → announce guards (a duplicate address, a wrong
- *   mock symbol) → announce → 7 days → re-plan (tuple carried) → the daily
- *   mark, emulated → day7 (execute → first prices → auctions → finalize →
- *   verify) with the bidder as a separate account → checks
+ *   mock symbol) → announce → 7 days → re-plan (tuple carried; it supplies
+ *   the day's prices) → the daily mark, emulated → the day-7 plan (sized at
+ *   the marked references) → day7 (execute → first prices → auctions →
+ *   finalize → verify) with the bidder as a separate account → checks,
+ *   including the planner spec's acceptance checks of 2026-10-01 §4
+ *   (sessionChecks: fills as sized, weights against the trade targets
+ *   within the fill bound and against the book)
  *
  * and, from a snapshot taken just before day 7 (anvil evm_snapshot/revert),
  * the acceptance criteria of option K (review of 2026-10-01, §2.7):
@@ -220,6 +224,9 @@ async function markToPlan(keeper, vault, plan) {
 }
 
 async function fillsSince(vault, fromBlock) {
+  // A run refused before it sent anything mined no block: nothing to read
+  // (anvil rejects a from-block past the head).
+  if (fromBlock > BigInt(await rpc('eth_blockNumber'))) return [];
   const v = await readVault(reader, vault);
   const logs = await pc.getLogs({ address: vault, event: AUCTION_FILLED, fromBlock, toBlock: 'latest' });
   const rows = [];
@@ -350,14 +357,24 @@ async function flowToDay7(env, index) {
   const vA = await readVault(reader, B.vault);
   must('a change is pending', vA.pendingRegistryChange !== ZERO32);
 
-  // 5. seven days, then the day's order: re-plan (carried), mark, day7
+  // 5. seven days, then the day's order on the chain: the daily mark, then
+  // the plan, then day7. The plan sizes its auctions at the references on
+  // chain and the executor refuses if they moved since (chainRefAtPlan), so
+  // the mark comes first; the first re-plan here only supplies the mark's
+  // target prices (the day's market price per name, planRefPrice).
   await rpc('evm_increaseTime', [Number(vA.registryDelay) + 60]);
   await rpc('evm_mine', []);
-  r = run(env, 'basket-plan.mjs', planArgs, 're-plan on day 7 (tuple carried)');
+  r = run(env, 'basket-plan.mjs', planArgs, 're-plan on day 7 (tuple carried) — the mark\'s prices');
   must('re-plan while pending exits 0 and carries the tuple', r.status === 0 && /carrying the announced tuple/.test(r.out));
   plan = loadPlan(planFile);
   const posts = await markToPlan(B.owner, B.vault, plan);
   log(`daily mark emulated: ${posts} in-band reference post(s)`);
+  r = run(env, 'basket-plan.mjs', planArgs, 'day-7 plan after the mark (tuple carried)');
+  must('day-7 plan after the mark exits 0 and carries the tuple', r.status === 0 && /carrying the announced tuple/.test(r.out));
+  plan = loadPlan(planFile);
+  const vM = await readVault(reader, B.vault);
+  const sized = plan.registry.filter((x) => x.chainRefAtPlan != null);
+  check('day-7 plan: every held name sized at the reference now on chain (chainRefAtPlan)', sized.length === plan.registry.length && sized.every((x) => vM.assets.find((a) => a.address === getAddress(x.address))?.refPrice === BigInt(x.chainRefAtPlan)), `${sized.length}/${plan.registry.length} names`, 'plan');
   const savedPlan = path.join(O.work, `${index}-plan-day7.json`);
   savePlan(savedPlan, plan);
   const snap = await snapshot();
@@ -399,6 +416,81 @@ function baseChecks(F, res, label, { expectPending = [] } = {}) {
   check(`${label}: every add in the registry with a reference`, F.plan.adds.every((a) => v.assets.some((x) => x.address === getAddress(a.address) && x.refPrice > 0n)), `assetCount ${v.assetCount}`);
 }
 
+/** Seconds one auction takes on the public chain: the executor's aim point
+ *  of an 1,800 s auction (1,166 s) plus four transactions (open, two
+ *  same-value re-posts, fill) — the planner spec of 2026-10-01 §2 uses
+ *  1,196 s. Only an estimate for the report; nothing here waits on it. */
+const PUBLIC_SECONDS_PER_AUCTION = 1_196;
+
+/**
+ * The planner spec's acceptance checks (2026-10-01 §4) on a session with no
+ * interference: the planned auctions filled as sized, no residual round,
+ * every traded name within the bound fair fills allow of its trade target,
+ * the vault against the book, the untraded sleeves untouched. The bound is
+ * re-derived here, not imported from the executor:
+ *   window × (bought_i + aim_i × bought) / V + (traded × $1 + fills × maxRef) / V
+ * with the executor's fair window (10 bp) and the plan's $1 minimum.
+ */
+function sessionChecks(F, res, label) {
+  const plan = F.plan; // the day-7 plan as made, before the run
+  const fills = res.plan.fills;
+  const symOf = (addr) => plan.registry.find((x) => getAddress(x.address) === addr)?.symbol ?? plan.adds.find((x) => x.address && getAddress(x.address) === addr)?.symbol ?? addr;
+  const rows = res.v.assets.map((a) => ({ symbol: symOf(a.address), balance: a.balance, ref: a.refPrice }));
+  const V = rows.reduce((t, r) => t + Number(r.balance * r.ref), 0);
+  const w = Object.fromEntries(rows.map((r) => [r.symbol, Number(r.balance * r.ref) / V]));
+  const tgt = Object.fromEntries(plan.targets.map((t) => [t.symbol, t]));
+  const refOf = Object.fromEntries(rows.map((r) => [r.symbol, r.ref]));
+
+  // 1. the planned auctions, as sized
+  const planned = fills.filter((f) => typeof f.seq === 'number' && f.round === 1);
+  const mism = plan.trades.filter((t) => planned.filter((f) => f.seq === t.seq).length !== 1 || planned.find((f) => f.seq === t.seq).sellTaken !== String(t.sellAmount));
+  check(`${label}: every planned auction filled once, for the amount the plan sized (${plan.trades.length})`, mism.length === 0 && planned.length === plan.trades.length, mism.length ? `differ: ${mism.map((t) => `#${t.seq} ${t.sell}→${t.buy} planned ${t.sellAmount} took ${planned.find((f) => f.seq === t.seq)?.sellTaken ?? '—'}`).join('; ')}` : `${planned.length} fill(s)`, 'spec §4');
+  // 2. nothing left for a residual round
+  const extra = fills.filter((f) => !(typeof f.seq === 'number' && f.round === 1));
+  check(`${label}: no residual round and no re-drain (no creation or redemption in the session)`, extra.length === 0, extra.map((f) => `${f.seq}/r${f.round}`).join(', ') || 'none', 'spec §4');
+  // 3. traded names inside the fill bound
+  const bought = {};
+  let boughtAll = 0;
+  for (const f of fills) { const v = Number(BigInt(f.buyPaid) * (refOf[f.buy] ?? 0n)); bought[f.buy] = (bought[f.buy] ?? 0) + v; boughtAll += v; }
+  const n = plan.targets.filter((t) => t.traded).length;
+  const maxRef = rows.reduce((m, r) => (r.ref > m ? r.ref : m), 0n);
+  const slack = (n * 1e18 + fills.length * Number(maxRef)) / V;
+  const bound = (s) => (0.001 * ((bought[s] ?? 0) + Math.max(0, tgt[s]?.tradeTargetWeight ?? 0) * boughtAll)) / V + slack;
+  const traded = rows.filter((r) => tgt[r.symbol]?.traded);
+  const worstAim = traded.map((r) => ({ s: r.symbol, gap: w[r.symbol] - tgt[r.symbol].tradeTargetWeight, b: bound(r.symbol) })).sort((a, b) => Math.abs(b.gap) / b.b - Math.abs(a.gap) / a.b)[0] ?? { s: '—', gap: 0, b: 0 };
+  const outside = traded.filter((r) => Math.abs(w[r.symbol] - tgt[r.symbol].tradeTargetWeight) > bound(r.symbol));
+  check(`${label}: every traded name within the fill bound of its trade target`, outside.length === 0, `${traded.length} traded; closest to its bound ${worstAim.s} ${(worstAim.gap * 100).toFixed(5)} pt (bound ${(worstAim.b * 100).toFixed(5)} pt)${outside.length ? `; OUTSIDE ${outside.map((r) => r.symbol).join(',')}` : ''}`, 'spec §4');
+  // 4. against the book (the same references the plan valued the book at)
+  const gaps = rows.map((r) => ({ s: r.symbol, gap: w[r.symbol] - (tgt[r.symbol]?.targetWeight ?? 0) })).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
+  const sleeveOf = (s) => tgt[s]?.sleeve ?? 'quality';
+  let bookDetail = `largest gap to the book ${gaps[0]?.s} ${((gaps[0]?.gap ?? 0) * 100).toFixed(4)} pt`;
+  if (plan.policy.sleeve) {
+    const sl = {};
+    for (const r of rows) { const k = sleeveOf(r.symbol); sl[k] ??= { w: 0, b: 0 }; sl[k].w += w[r.symbol]; sl[k].b += tgt[r.symbol]?.targetWeight ?? 0; }
+    bookDetail += `; sleeves ${Object.entries(sl).map(([k, x]) => `${k} ${((x.w - x.b) * 100).toFixed(4)} pt`).join(', ')}`;
+    const fixedRows = plan.registry.filter((x) => !tgt[x.symbol]?.traded);
+    const moved = fixedRows.filter((x) => res.v.assets.find((a) => a.address === getAddress(x.address))?.balance !== BigInt(x.balance));
+    check(`${label}: untraded names (${fixedRows.map((x) => x.symbol).join(', ')}) hold exactly their pre-session balances`, moved.length === 0, moved.map((x) => x.symbol).join(', ') || 'unchanged', 'spec §4');
+    const qGap = gaps.filter((g) => sleeveOf(g.s) === 'quality')[0];
+    bookDetail += `; largest inside Quality ${qGap?.s} ${((qGap?.gap ?? 0) * 100).toFixed(4)} pt`;
+  } else {
+    const off = rows.filter((r) => Math.abs(w[r.symbol] - (tgt[r.symbol]?.targetWeight ?? 0)) > bound(r.symbol));
+    check(`${label}: every name at its book weight within the fill bound`, off.length === 0, `${bookDetail}${off.length ? `; OUTSIDE ${off.map((r) => r.symbol).join(',')}` : ''}`, 'spec §4');
+  }
+  // 5. the entering names
+  const addRows = plan.adds.map((a) => ({ s: a.symbol, bal: res.v.assets.find((x) => x.address === getAddress(a.address))?.balance ?? 0n }));
+  check(`${label}: every entering name bought (balance > 0) to its book weight`, addRows.every((a) => a.bal > 0n), addRows.map((a) => `${a.s} ${(w[a.s] * 100).toFixed(3)}% vs book ${((tgt[a.s]?.targetWeight ?? 0) * 100).toFixed(3)}%`).join(', '), 'spec §4');
+  const auctions = new Set(fills.map((f) => f.auctionId)).size;
+  return {
+    auctions, planned: plan.trades.length, residualFills: extra.length,
+    publicChainEstimate: { seconds: auctions * PUBLIC_SECONDS_PER_AUCTION, hours: +((auctions * PUBLIC_SECONDS_PER_AUCTION) / 3600).toFixed(2), basis: `${auctions} auction(s) × ${PUBLIC_SECONDS_PER_AUCTION} s, one at a time; execute, first prices and finalize not included` },
+    largestGapToAim: { symbol: worstAim.s, points: +(worstAim.gap * 100).toFixed(6), boundPoints: +(worstAim.b * 100).toFixed(6) },
+    largestGapToBook: { symbol: gaps[0]?.s, points: +((gaps[0]?.gap ?? 0) * 100).toFixed(6) },
+    bookDetail,
+    weights: rows.map((r) => ({ symbol: r.symbol, vault: +(w[r.symbol] * 100).toFixed(5), book: +((tgt[r.symbol]?.targetWeight ?? 0) * 100).toFixed(5), aim: +((tgt[r.symbol]?.tradeTargetWeight ?? 0) * 100).toFixed(5) })),
+  };
+}
+
 // ------------------------------------------------------------- per basket
 async function rehearseBasket(env, index) {
   CURRENT = index;
@@ -407,16 +499,35 @@ async function rehearseBasket(env, index) {
   const removeSyms = F.removes.map((x) => x.symbol);
   const drains = F.plan.trades.filter((t) => t.drain).map((t) => t.sell);
   REPORT.baskets[index] = { vault: F.vault, adds: F.plan.adds.map((a) => `${a.symbol} ${a.address}`), removes: removeSyms, trades: F.plan.trades.length, unfundedAdds: F.plan.adds.filter((a) => !F.plan.trades.some((t) => t.buy === a.symbol)).map((a) => a.symbol) };
+  check('day-7 plan: every entering name is bought by a planned auction', REPORT.baskets[index].unfundedAdds.length === 0, `${F.plan.trades.length} auction(s); traded ${F.plan.targets.filter((t) => t.traded).length}/${F.plan.targets.length} names${REPORT.baskets[index].unfundedAdds.length ? `; NOT BOUGHT ${REPORT.baskets[index].unfundedAdds.join(',')}` : ''}`, 'plan');
 
   // Baseline: no interference.
   const base = await day7(env, F, { label: 'baseline' });
   baseChecks(F, base, 'baseline');
+  REPORT.baskets[index].session = sessionChecks(F, base, 'baseline');
+  const est = REPORT.baskets[index].session.publicChainEstimate;
+  log(`${TICKER[index]}: ${REPORT.baskets[index].session.auctions} auction(s) → ≈ ${est.hours} h on the public chain one at a time (${est.basis}); ${REPORT.baskets[index].session.bookDetail}`);
   const red = await redeemOne(F.vault);
   check('baseline: a holder redeems after the session', red.assetCount > 0, `assetCount ${red.assetCount}, gas ${red.gas}`);
   REPORT.baskets[index].baseline = { fills: base.plan.fills.map((f) => ({ seq: f.seq, sell: f.sell, buy: f.buy, sellTaken: f.sellTaken, buyPaid: f.buyPaid, factorBps: f.factorBps })), finalize: base.plan.finalize.map((f) => f.symbol), assetCount: base.v.assetCount };
   if (REPORT.baskets[index].unfundedAdds.length) {
     const z = REPORT.baskets[index].unfundedAdds.map((s) => { const a = F.plan.adds.find((x) => x.symbol === s); const on = base.v.assets.find((x) => x.address === getAddress(a.address)); return `${s} balance ${on?.balance}`; });
     log(`NOTE: no planned trade buys ${REPORT.baskets[index].unfundedAdds.join(', ')} — after the session: ${z.join('; ')}`);
+  }
+
+  // The plan sized its auctions at the references on chain: one reference
+  // moved after the plan (a mark in between) → day7 refuses BEFORE it sends
+  // execute, so the change is still pending and a new plan still sees the adds.
+  {
+    const r0 = F.plan.registry.find((x) => !x.inRemoval && x.chainRefAtPlan != null);
+    const res = await day7(env, F, {
+      label: 'reference moved after the plan',
+      before: async () => {
+        const cur = BigInt(r0.chainRefAtPlan);
+        await tx(F.owner, { address: F.vault, functionName: 'setRefPrice', args: [getAddress(r0.address), cur + cur / 1000n], gas: 150_000n });
+      },
+    });
+    check(`day7 refuses before execute when a reference moved after the plan (${r0.symbol} +0.1%); the change stays pending, nothing filled`, refused(res.r, /moved since the plan sized its auctions/) && res.v.pendingRegistryChange !== ZERO32 && res.plan.fills.length === 0 && !res.plan.execute, (res.r.out.match(/REFUSED: [^\n]*/) ?? [`exit ${res.r.status}`])[0].slice(0, 220), 'spec §1.3');
   }
 
   // ⑦ main's tool, same snapshot, same plan.
@@ -442,6 +553,7 @@ async function rehearseBasket(env, index) {
       },
     });
     baseChecks(F, res, '⑥ third party executed');
+    sessionChecks(F, res, '⑥ third party executed');
     check('day7 names the third party and continues (plan.execute.byThirdParty)', res.r.status === 0 && /executeRegistryChange is permissionless and was called by 0x90F79bf6EB2c4f870365E785982E1f101E93b906/i.test(res.r.out) && res.plan.execute?.byThirdParty === true && !!res.plan.execute.txHash, `execute tx ${res.plan.execute?.txHash ?? '—'} by ${res.plan.execute?.signer ?? '—'}`, '⑥');
   }
 
@@ -456,6 +568,7 @@ async function rehearseBasket(env, index) {
     baseChecks(F, res, '④ 1,000-share creation in window 1');
     const rem4 = res.plan.fills.filter((f) => typeof f.seq !== 'number');
     check(`${X}: a creation's pro-rata slice in window 1 is re-drained and ${X} finalized`, res.hooks.length === 1 && rem4.length >= 1 && res.plan.finalize.some((f) => f.symbol === X), `remnant fills ${rem4.map((f) => `${f.seq} ${f.policy} took ${f.sellTaken} at ${f.factorBps} bp`).join(', ')}`, '④');
+    check('④ after the creation: verify within the fill bound after the residual rounds', res.r.status === 0 && /verify: all checks passed/.test(res.r.out), `fills by round ${JSON.stringify(res.plan.fills.reduce((m, f) => ({ ...m, [f.round]: (m[f.round] ?? 0) + 1 }), {}))}`, 'spec §4');
     res = await day7(env, F, { label: 'window-1 redeem', hook: [{ point: 'before-fill', symbol: X, action: 'redeem', shares: '100', max: 1 }] });
     baseChecks(F, res, '⑤ redemption in window 1');
     const drainFill = res.plan.fills.find((f) => f.sell === X && typeof f.seq === 'number');
@@ -528,6 +641,7 @@ async function rehearseBasket(env, index) {
     const res2 = await day7(env, F, { label: 'window-1 create', before: () => prefundHolder(F), hook: [{ point: 'before-fill', symbol: Z, action: 'create', shares: '1000', max: 1 }] });
     baseChecks(F, res2, '④ 1,000-share creation in window 1');
     check(`${Z}: a creation in window 1 → re-drained and finalized`, res2.hooks.length === 1 && res2.plan.finalize.some((f) => f.symbol === Z) && res2.plan.fills.some((f) => f.sell === Z && typeof f.seq !== 'number'), res2.plan.fills.filter((f) => f.sell === Z).map((f) => `${f.seq} ${f.policy} ${f.sellTaken}`).join(', '), '④');
+    check('④ after the creation: verify within the fill bound after the residual rounds', res2.r.status === 0 && /verify: all checks passed/.test(res2.r.out), `fills by round ${JSON.stringify(res2.plan.fills.reduce((m, f) => ({ ...m, [f.round]: (m[f.round] ?? 0) + 1 }), {}))}`, 'spec §4');
   }
 }
 
