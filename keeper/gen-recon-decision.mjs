@@ -107,6 +107,7 @@ if (plan.adds.some((a) => !a.address)) toFill.push(`mock addresses of ${plan.add
 if (INDEX !== 'qx20' && !row) toFill.push(`the record row of ${RECON_DATE} (seq, hash): none was present when this draft was generated`);
 if (INDEX !== 'qx20' && row && row.reconstituted !== true) toFill.push(`the record row of ${RECON_DATE} is NOT a reconstitution row (reconstituted ${row.reconstituted}) — pass --recon-date with the day the index reconstituted`);
 if (INDEX === 'qx20' && !navMark) toFill.push(`the qX20 NAV mark of ${RECON_DATE} (keeper/nav-marks.jsonl): none was present`);
+if (INDEX === 'qx20' && plan.removes.length) toFill.push(`qX20 keeps no ranking ledger: add a "Membership" section saying why each removed name left the book (ranked beyond 23, or cut by the 20-seat limit while still inside 23) and from which snapshot that is read — the anchored 2026-09-23-qx20-exclusion-list says "leave only below 23" and does not mention the 20-seat cut, so a name removed inside rank 23 must be stated here`);
 if (plan.removes.length) toFill.push(`the two sentences on finalizing a removal (under "What leaves" and the exception under "Auction policy in force") describe option K of the 2026-10-01 review; they stand only if that option is the one chosen for this session — otherwise delete both`);
 toFill.push(`anchor this file on ${plan.date} UTC, the date in its name (it becomes effectiveFrom in the ledger, and the live record line of a day carries every decision effective by then); if that day has passed, regenerate the plan and this draft on the day of anchoring`);
 toFill.push(`after anchoring: trackrecord/decisions.jsonl gives this document's id and sha256 (the plan stage's decision input) and the anchor tx — none of them goes into this document, which is anchored before the announcement exists; the announce tx and the ETA are written to keeper/plans/${INDEX}/<date>.json by the announce stage`);
@@ -149,7 +150,18 @@ else {
 lines.push('');
 lines.push('## Target weights and the vault today');
 lines.push('');
-lines.push(`"Target (book)" is the keeper's book after the reconstitution, at the plan's prices; "vault" is the vault's holdings at the same prices.${row ? ` "Record row" is the weight the record row of ${RECON_DATE} prints, at that row's prices; on a reconstitution day the two can differ, because the book keeps a name inside the tolerance at its drifted unit count.` : ''} Rule: a name whose vault weight is within ${plan.policy.tolerancePoints} points of target is not traded${plan.policy.capMaxWeight ? `; any name above the ${pct(plan.policy.capMaxWeight)} cap is always cut` : ''}${plan.policy.sleeve ? '; if any sleeve is outside the tolerance every sleeve resets to target' : ''}.`);
+// Where the session's threshold comes from: the rulebook's reconstitution
+// tolerance (qREV, qDEFI, qAI, Triens), or — qX20, whose rulebook has no
+// such tolerance and whose book re-weights every name when membership
+// changes — the width of its drift band, used here as the threshold.
+// A reconstitution row of the ranked paper indexes written before the
+// record carried book weights prints the rule's target in `weight` (no
+// `targetWeight` field beside it); the sleeve indexes always printed the book.
+const rowPrintsTargets = !!row && !plan.policy.sleeve && row.reconstituted === true && !row.members?.some((m) => m.targetWeight != null);
+const thresholdSource = INDEX === 'qx20'
+  ? `the width of the qX20 drift band, used here as this session's threshold; the qX20 book itself re-weighted every name to its target on ${RECON_DATE}, because its membership changed`
+  : `the rulebook's reconstitution tolerance, applied here to the vault's weights`;
+lines.push(`"Target (book)" is the keeper's book after the reconstitution, at the plan's prices; "vault" is the vault's holdings at the same prices.${row ? ` "Record row" is the weight the record row of ${RECON_DATE} prints, at that row's prices.${rowPrintsTargets ? ' On that row the weight column is the rule\'s target weight; the book keeps a name inside the tolerance at its drifted unit count and then scales every holding by one factor, so the two columns differ.' : ''}` : ''} What this session trades: a name that enters or leaves the registry; a held name whose vault weight is ${plan.policy.tolerancePoints} points or more away from its book target (${thresholdSource})${plan.policy.capMaxWeight ? `; any name above the ${pct(plan.policy.capMaxWeight)} cap` : ''}${plan.policy.sleeve ? '; and every name, if any sleeve is that far from its target (every sleeve then resets)' : ''}. Every other name is held and not auctioned.`);
 lines.push('');
 lines.push(`| Name |${plan.policy.sleeve ? ' Sleeve |' : ''} Target (book) |${row ? ' Record row |' : ''} Vault | Drift | Action | Auctions aim at |`);
 lines.push(`| --- |${plan.policy.sleeve ? ' --- |' : ''} --- |${row ? ' --- |' : ''} --- | --- | --- | --- |`);
@@ -157,7 +169,19 @@ for (const t of [...plan.targets].sort((a, b) => b.targetWeight - a.targetWeight
   lines.push(`| ${t.symbol} |${plan.policy.sleeve ? ` ${t.sleeve ?? ''} |` : ''} ${pct(t.targetWeight)} |${row ? ` ${rowWeight(t.symbol) != null ? pct(rowWeight(t.symbol)) : '—'} |` : ''} ${pct(t.currentWeight)} | ${pt(t.driftPoints)} | ${t.traded ? `trade (${t.reason})` : 'hold'} | ${t.traded ? pct(t.tradeTargetWeight ?? t.targetWeight) : '—'} |`);
 }
 lines.push('');
-lines.push('"Auctions aim at" is what the trades can reach while the held names keep their value: the traded set shares its own value in proportion to the book targets. The gap to the book target on a traded name is the tolerance rule holding the others back, not a shortfall of the session.');
+// What the session leaves open against the book, stated as a fact and not as
+// a consequence of the index rule: the book paid for the entering names by
+// scaling its other holdings; the session does not sell a held name.
+const addGaps = plan.adds.map((a) => ({ symbol: a.symbol, book: Number(bookWeight(a.symbol) ?? 0), aim: Number(plan.targets.find((t) => t.symbol === a.symbol)?.tradeTargetWeight ?? 0) }));
+const addShortfall = addGaps.reduce((t, g) => t + (g.book - g.aim), 0);
+// The names the session does not trade keep today's weight; their excess over the book.
+const heldExcess = plan.targets.filter((t) => !t.traded).reduce((t, x) => t + (Number(x.currentWeight) - Number(x.targetWeight)), 0);
+const bookDid = INDEX === 'qx20'
+  ? 're-weighted every name to its target'
+  : plan.policy.sleeve
+    ? 'bought the entering name at its target inside its sleeve and scaled every holding of that sleeve by one factor'
+    : 'set each traded name, the entering ones included, to its target and then scaled every holding by one factor';
+lines.push(`"Auctions aim at" is what this session's trades reach. Only the names marked "trade" are auctioned: together they keep the value they hold today and share it in proportion to their book targets. A held name is not sold to pay for an entering one.${addGaps.length ? ` The book did otherwise on ${RECON_DATE}: it ${bookDid}. After the session the vault therefore holds ${(addShortfall * 100).toFixed(2)} points less of the entering names than the book (${addGaps.map((g) => `${g.symbol} ${pct(g.aim)} against ${pct(g.book)}`).join(', ')}) and ${(heldExcess * 100).toFixed(2)} points more of the names it does not trade. The session leaves this difference between the vault and the index open; it stays until a later session trades those names.` : ''}`);
 lines.push('');
 lines.push('## The seven-day lag');
 lines.push('');
@@ -168,17 +192,17 @@ lines.push('');
 lines.push(`- Every weight change goes through the vault's bounded dutch auctions (keeper opens \`openAuction(sell, buy, amount, ${plan.policy.duration} s)\`; the curve runs from +${Number(plan.vaultState.premiumBps) / 100}% to −${Number(plan.vaultState.maxFillLossBps) / 100}% of the reference over the duration; per-fill floor ${Number(plan.vaultState.maxFillLossBps)} bp and daily budget ${Number(plan.vaultState.dailyLossBudgetBps)} bp are the contract's and are not changed).`);
 lines.push(`- Fills by our own bidder are taken at the curve's fair point (\`fill\` policy \`${plan.policy.fill}\`: factor 10,000 to 10,010 bp, \`lossAtRef\` 0), so share value at reference prices is unchanged by the session and the record shows no gift either way.${plan.removes.length ? ' The one exception is a remainder under $1 of a leaving asset, filled at the start of the curve (at most 2% above reference) so that the removal can be finalized at once.' : ''}${bidder ? ` Bidder: \`${bidder}\`.` : ''}`);
 lines.push(`- During a session a reference price is re-posted only at the value already on chain (to refresh the v3.1 staleness clock, \`maxRefAge\` ${Number(plan.vaultState.maxRefAge)} s); a session never moves a reference, and it refuses to start while any reference is more than ${pct(plan.policy.refDriftTolBps / 10_000)} away from the day's mark.`);
-lines.push(`- Roles as deployed: owner \`${owner}\`, keeper \`${keeper}\`${rolesCollapsed ? ' — the same key, which is also whitelisted to create and to bid. This is the testnet shape and not the mainnet one; the contract cannot bound a keeper that both marks and fills, so every safety of this reconstitution rests on the script guards stated here.' : '.'} Fills are signed by a whitelisted bidder; \`setBidder\` emits no event, so each whitelisting transaction is listed in \`keeper/bidder-log.jsonl\`.`);
+lines.push(`- Roles as deployed: owner \`${owner}\`, keeper \`${keeper}\`${rolesCollapsed ? ' — the same key, which is also whitelisted to create and to bid. This is the testnet shape and not the mainnet one; the contract cannot bound a keeper that both marks and fills, so every safety of this reconstitution rests on the script guards stated here.' : '.'} ${fs.existsSync(path.join(ROOT, 'keeper', 'bidder-log.jsonl')) ? 'Fills are signed by a whitelisted bidder; `setBidder` emits no event, so each whitelisting transaction is listed in `keeper/bidder-log.jsonl`.' : `Fills are signed by ${rolesCollapsed ? 'that same key' : 'the keeper key'} (\`isBidder\` is true for it on this vault); no separate bidder key is used in this session.`}`);
 lines.push('');
 lines.push('## Planned auctions');
 lines.push('');
 if (plan.trades.length === 0) {
   lines.push(unfunded.length
-    ? `None. Every held name is inside the tolerance, and an entering name is bought only with the value of names the auctions trade, so ${unfunded.map((a) => a.symbol).join(', ')} ${unfunded.length > 1 ? 'enter' : 'enters'} the registry with a zero balance and ${unfunded.length > 1 ? 'are' : 'is'} bought only when a later session trades the names that would pay for ${unfunded.length > 1 ? 'them' : 'it'}. Until then the vault holds 0% of ${unfunded.length > 1 ? 'them' : 'it'} against ${unfunded.map((a) => `${pct(bookWeight(a.symbol))}`).join(', ')} in the book.`
+    ? `None. No held name is marked for trading, and this session buys an entering name only with the value of the names it trades, so ${unfunded.map((a) => a.symbol).join(', ')} ${unfunded.length > 1 ? 'enter' : 'enters'} the registry with a zero balance. The book holds ${unfunded.map((a) => `${pct(bookWeight(a.symbol))}`).join(', ')} of ${unfunded.length > 1 ? 'them' : 'it'}; the vault holds 0% until a later session trades other names of this basket, which this method does not guarantee at the next reconstitution either.`
     : 'None — the registry change alone; no weight-only trade is inside the rule.');
 }
 else {
-  lines.push('| # | Sell | Buy | Sell amount (base units) | ≈ USD | Duration | Note |');
+  lines.push('| # | Sell | Buy | Sell amount (base units) | ≈ USD at plan prices (testnet mocks, no market value) | Duration | Note |');
   lines.push('| --- | --- | --- | --- | --- | --- | --- |');
   for (const t of plan.trades) lines.push(`| ${t.seq} | ${t.sell} | ${t.buy} | ${t.sellAmount} | ${Math.round(t.sellValueUsd).toLocaleString('en-US')} | ${t.duration} s | ${t.drain ? 'drains the removal to zero' : t.reason} |`);
   lines.push('');
@@ -191,7 +215,7 @@ lines.push('## Pinned');
 lines.push('');
 lines.push(`| Item | Value |`);
 lines.push(`| --- | --- |`);
-lines.push(`| Plan file | \`${path.relative(ROOT, planFile)}\` sha256 \`${sha256(fs.readFileSync(planFile))}\` (generated ${plan.generatedAt}) |`);
+lines.push(`| Plan file | \`${path.relative(ROOT, planFile)}\` as generated ${plan.generatedAt}, sha256 \`${sha256(fs.readFileSync(planFile))}\`. Later stages rewrite this path (the plan stage adds the decision id, the announce stage the announce transaction), so the hash is of that earlier version, which stays in the repository history |`);
 lines.push(`| Rulebook | \`${plan.sources.rulebook.path}\` sha256 \`${plan.sources.rulebook.sha256}\` |`);
 lines.push(`| Book | \`${plan.sources.book}\` |`);
 lines.push(`| Prices | A: ${plan.sources.priceA}; B: ${plan.sources.priceB} |`);
