@@ -102,13 +102,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createWalletClient, http, getAddress, isAddress, keccak256, encodeAbiParameters, parseEventLogs, maxUint256 } from 'viem';
+import { createWalletClient, http, getAddress, isAddress, keccak256, encodeAbiParameters, parseEventLogs, parseAbi, maxUint256 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
   INDEXES, GIWA_RPC, GIWA_CHAIN_ID, VAULT_ABI, ERC20_ABI, DECISIONS_LEDGER,
   chainFor, isLocalRpc, sleep, makeReader, readVault, toRefPrice, bpsDiff, sha256,
   loadDecisions, loadPlan, savePlan, latestPlan, computeTrades,
 } from './basket-plan.mjs';
+import { retryRead, latestReader, pinnedReader, blockAtLeast, notYetReason, eventsIn, ReadTimeout } from './readback.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ZERO32 = `0x${'0'.repeat(64)}`;
@@ -245,7 +246,9 @@ async function makeCtx(o) {
     hook = (await import(pathToFileURL(path.resolve(o.hook)).href)).default;
   }
   log(`${mode}; rpc ${o.rpc}; plan ${path.relative(ROOT, planFile)} (${plan.date}, ${plan.adds.length} add, ${plan.removes.length} remove, ${plan.trades.length} auction); keeper/owner signer ${keeperAddr}; bidder ${bidderAddr}; fill ${o.fill}`);
-  return { o, log, plan, planFile, reader, pc: reader.publicClient, devNode, keeperAddr, keeperWallet, bidderAddr, bidderWallet, live: o.live, hook, pendingThisRun: new Set() };
+  // floor: the highest receipt block this run has seen (or this plan's
+  // "sent" list records); every read after it is made at a block ≥ floor.
+  return { o, log, plan, planFile, reader, pc: reader.publicClient, devNode, keeperAddr, keeperWallet, bidderAddr, bidderWallet, live: o.live, hook, pendingThisRun: new Set(), floor: 0n, receipts: new Map(), events: null };
 }
 
 // -------------------------------------------------------------- sending
@@ -262,19 +265,109 @@ async function sendNonceSafe(fn, tries = 5) {
   throw last;
 }
 
-/** basket-mark.mjs requireMined: a reverted receipt must stop the run. */
-async function requireMined(pc, hash, what) {
-  const receipt = await pc.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') throw new Error(`${what} reverted on chain (tx ${hash}, block ${receipt.blockNumber}, gasUsed ${receipt.gasUsed})`);
+// ------------------------------------------- reads after a write (2026-10-01)
+/**
+ * Every chain read of this script goes through readAt. Before the run's
+ * first receipt (ctx.floor = 0) it reads at `latest`, as it always did — a
+ * dry run never leaves that path. After a receipt it never reads at
+ * `latest` again: it reads at a NAMED block, either `at` (a receipt's own
+ * block — exact: what that transaction did) or the newest block the RPC
+ * reports raised to ctx.floor (the highest receipt block seen) — and repeats
+ * the read, for at most READ_WAIT_MS, while the node that answers lacks that
+ * block or answers empty. A load-balanced node that has not seen our last
+ * block therefore errors or answers empty; it can no longer answer with the
+ * state from before our transaction (keeper/readback.mjs).
+ */
+async function readAt(ctx, what, fn, at = null) {
+  if (at == null && ctx.floor === 0n) return fn(latestReader(ctx.reader));
+  const label = at != null ? `${what} at block ${at}` : `${what} at a block ≥ ${ctx.floor}`;
+  const { value, reads } = await retryRead(async () => fn(pinnedReader(ctx.reader, at ?? await blockAtLeast(ctx.pc, ctx.floor))), { what: label });
+  if (reads > 1) ctx.log(`  (${label}: answered at read ${reads})`);
+  return value;
+}
+const vaultNow = (ctx, what = 'vault state', at = null) => readAt(ctx, what, (r) => readVault(r, ctx.plan.vault), at);
+const batchNow = (ctx, what, contracts, at = null) => readAt(ctx, what, (r) => r.batch(contracts), at);
+const readNow = (ctx, what, contract, at = null) => readAt(ctx, what, (r) => r.read(contract), at);
+
+/** A simulation after a write runs at a block ≥ ctx.floor, so a node that
+ *  has not seen our last transaction cannot fake a revert; it is repeated
+ *  only while the node lacks that block — a revert is final, as before. */
+async function simulate(ctx, params) {
+  if (ctx.floor === 0n) return ctx.pc.simulateContract(params);
+  const { value } = await retryRead(async () => ctx.pc.simulateContract({ ...params, blockNumber: await blockAtLeast(ctx.pc, ctx.floor) }), {
+    what: `simulation of ${params.functionName} at a block ≥ ${ctx.floor}`,
+    retryIf: (e) => notYetReason(e) != null,
+  });
+  return value;
+}
+
+/** Receipt waits per transaction (each viem's default 180 s): a transport
+ *  error while waiting is not the transaction's failure. */
+const RECEIPT_WAITS = 3;
+
+/** basket-mark.mjs requireMined, plus the "sent" entry: a reverted receipt
+ *  must stop the run. The entry is updated and saved before that throw. */
+async function waitMined(ctx, entry, label) {
+  let receipt = null;
+  let last = null;
+  for (let i = 1; i <= RECEIPT_WAITS && !receipt; i++) {
+    try { receipt = await ctx.pc.waitForTransactionReceipt({ hash: entry.hash }); } catch (e) {
+      last = e;
+      ctx.log(`  no receipt yet for ${entry.hash} (${fmtErr(e)})${i < RECEIPT_WAITS ? ' — waiting again' : ''}`);
+    }
+  }
+  if (!receipt) throw new Error(`${label}: tx ${entry.hash} was sent but no receipt came back after ${RECEIPT_WAITS} waits (${fmtErr(last)}) — it is in the plan's "sent" list, and the next run looks it up before it does anything else`);
+  if (receipt.blockNumber > ctx.floor) ctx.floor = receipt.blockNumber;
+  ctx.receipts.set(entry.hash.toLowerCase(), receipt);
+  entry.block = receipt.blockNumber;
+  entry.status = receipt.status;
+  entry.gasUsed = receipt.gasUsed;
+  savePlan(ctx.planFile, ctx.plan);
+  if (receipt.status !== 'success') throw new Error(`${label} reverted on chain (tx ${entry.hash}, block ${receipt.blockNumber}, gasUsed ${receipt.gasUsed})`);
   return receipt;
 }
+
+/** The time of a receipt's block, read at that block number and repeated
+ *  while the node lacks it; null if it still cannot be read. Never throws. */
+async function receiptTime(ctx, receipt) {
+  try {
+    const { value, reads } = await retryRead(() => ctx.pc.getBlock({ blockNumber: receipt.blockNumber }), { what: `block ${receipt.blockNumber}` });
+    if (reads > 1) ctx.log(`  (block ${receipt.blockNumber} answered at read ${reads})`);
+    return value.timestamp;
+  } catch (e) {
+    ctx.log(`  WARN the time of block ${receipt.blockNumber} could not be read (${e.message}) — the transaction is recorded without it`);
+    return null;
+  }
+}
+const isoOrNull = (ts) => (ts == null ? null : iso(ts));
 
 /**
  * Simulate, print, and (live) send one call as `who` ('keeper' | 'bidder').
  * `dependsOnUnsent` marks a dry-run step whose simulation cannot succeed
  * because an earlier step was not sent; it is printed, not simulated.
+ *
+ * THE RECORD CONTRACT (live; RUNBOOK "Reads after a write"):
+ *   1. The moment the RPC returns the hash, it is printed and appended to
+ *      the plan's `sent` list ({what, call, to, from, hash, sentAt}) and the
+ *      plan is saved — before the receipt is awaited, before any read.
+ *   2. call() then waits for the receipt and writes block/status/gasUsed
+ *      into that entry and saves again. A reverted receipt throws (nothing
+ *      changed on chain); a receipt that never comes throws with the hash
+ *      already on disk.
+ *   3. After a successful receipt call() reads only the block's time —
+ *      at the receipt's block number, repeated within the bound — and
+ *      returns null for it rather than throw. call() never throws after a
+ *      successful receipt.
+ *   4. The CALLER writes its stage record (plan.announce, plan.execute,
+ *      plan.firstPrices, plan.fills, plan.finalize) from what call()
+ *      returned — the receipt, its events, the arguments it sent — and
+ *      saves the plan BEFORE it makes any further chain read. A read that
+ *      checks the write comes after that save, at the receipt's block or a
+ *      block ≥ ctx.floor; if it fails, the record is already on disk.
+ * A re-run settles every `sent` entry without a receipt before it does
+ * anything else (settleSent) and reconciles each stage from the chain.
  */
-async function call(ctx, { who, to, abi = VAULT_ABI, functionName, args = [], gas, what, dependsOnUnsent = false }) {
+export async function call(ctx, { who, to, abi = VAULT_ABI, functionName, args = [], gas, what, dependsOnUnsent = false }) {
   const from = who === 'bidder' ? ctx.bidderAddr : ctx.keeperAddr;
   const wallet = who === 'bidder' ? ctx.bidderWallet : ctx.keeperWallet;
   const shown = `${functionName}(${args.map((a) => (typeof a === 'bigint' ? a.toString() : Array.isArray(a) ? `[${a.join(', ')}]` : String(a))).join(', ')})`;
@@ -282,8 +375,9 @@ async function call(ctx, { who, to, abi = VAULT_ABI, functionName, args = [], ga
   let result;
   if (!(dependsOnUnsent && !ctx.live)) {
     try {
-      ({ request, result } = await ctx.pc.simulateContract({ address: to, abi, functionName, args, account: from }));
+      ({ request, result } = await simulate(ctx, { address: to, abi, functionName, args, account: from }));
     } catch (e) {
+      if (e instanceof ReadTimeout) throw new Error(`${what}: ${shown} could not be simulated — ${e.message}`);
       throw new Refused(`${what}: ${shown} would revert as ${from} — ${fmtErr(e)}`);
     }
   }
@@ -291,11 +385,88 @@ async function call(ctx, { who, to, abi = VAULT_ABI, functionName, args = [], ga
     ctx.log(`  would ${what}: ${shown} as ${from}${dependsOnUnsent ? ' (not simulated — depends on an unsent call)' : ' (simulated ok)'}`);
     return { dry: true, result };
   }
-  const hash = await sendNonceSafe(() => wallet.writeContract({ ...request, gas }));
-  const receipt = await requireMined(ctx.pc, hash, `${what}: ${shown}`);
-  const block = await ctx.pc.getBlock({ blockNumber: receipt.blockNumber });
+  // The block a simulation ran at is how it was read, not part of the
+  // transaction: what is sent is the same request as before.
+  const { blockNumber: _simulatedAt, ...req } = request;
+  const hash = await sendNonceSafe(() => wallet.writeContract({ ...req, gas }));
+  const entry = { what, call: shown, to, from, hash, sentAt: new Date().toISOString() };
+  (ctx.plan.sent ??= []).push(entry);
+  savePlan(ctx.planFile, ctx.plan);
+  ctx.log(`  ${what}: sent tx=${hash}`);
+  const receipt = await waitMined(ctx, entry, `${what}: ${shown}`);
+  const blockTimestamp = await receiptTime(ctx, receipt);
+  entry.at = isoOrNull(blockTimestamp);
+  savePlan(ctx.planFile, ctx.plan);
   ctx.log(`  ${what}: ${shown} tx=${hash} block=${receipt.blockNumber} gas=${receipt.gasUsed}`);
-  return { hash, receipt, result, blockTimestamp: block.timestamp };
+  return { hash, receipt, result, blockTimestamp };
+}
+
+// --------------------------------------------- a re-run: settle, reconcile
+/**
+ * Before anything else, a run settles the plan's `sent` entries that have no
+ * receipt yet (an earlier run stopped while waiting): mined → the entry is
+ * completed and the stages below reconcile its effect; no receipt → REFUSED,
+ * because acting while an earlier transaction may still land is how a trade
+ * happens twice. Every recorded block raises ctx.floor, so the run's reads
+ * see what the earlier run did.
+ */
+export async function settleSent(ctx, { waitMs } = {}) {
+  const sent = ctx.plan.sent ?? [];
+  let changed = false;
+  for (const e of sent) {
+    if (e.status === 'dropped') continue;
+    if (!e.status) {
+      let rc = null;
+      try {
+        rc = (await retryRead(() => ctx.pc.getTransactionReceipt({ hash: e.hash }), { what: `receipt of ${e.hash}`, ...(waitMs != null ? { waitMs } : {}) })).value;
+      } catch { rc = null; }
+      if (!rc) throw new Refused(`${e.what} (${e.call}) was sent by an earlier run in tx ${e.hash} (${e.sentAt}) and no receipt is found — it may still be pending, or it was dropped. Look the hash up on chain before anything else: once it is mined, re-run (this run records it); if it was dropped, set "status": "dropped" on that entry in the plan's "sent" list and re-run.`);
+      ctx.receipts.set(e.hash.toLowerCase(), rc);
+      e.block = rc.blockNumber;
+      e.status = rc.status;
+      e.gasUsed = rc.gasUsed;
+      e.settledLater = true;
+      changed = true;
+      ctx.log(`  earlier tx ${e.hash} (${e.what}) was mined in block ${rc.blockNumber}, ${rc.status} — recorded in "sent"`);
+    }
+    const b = BigInt(e.block);
+    if (b > ctx.floor) ctx.floor = b;
+  }
+  if (changed && ctx.live) savePlan(ctx.planFile, ctx.plan);
+}
+
+/** Receipts of this plan's successful `sent` entries whose `what` matches. */
+async function sentReceipts(ctx, re) {
+  const out = [];
+  for (const e of (ctx.plan.sent ?? []).filter((x) => x.status === 'success' && re.test(x.what))) {
+    const k = e.hash.toLowerCase();
+    if (!ctx.receipts.has(k)) ctx.receipts.set(k, (await retryRead(() => ctx.pc.getTransactionReceipt({ hash: e.hash }), { what: `receipt of ${e.hash}` })).value);
+    out.push({ entry: e, receipt: ctx.receipts.get(k) });
+  }
+  return out;
+}
+
+const EVENT_ABI = [...VAULT_ABI.filter((x) => x.type === 'event'), ...parseAbi(['event AuctionCancelled(uint256 indexed id)'])];
+/** How far back a log search goes when the plan has no block (≈ 2.3 days of 1-s blocks). */
+const EVENT_LOOKBACK = 200_000n;
+
+/** The vault's events named in `names` since the plan was made (plan.block),
+ *  up to a block ≥ ctx.floor, in 10,000-block slices; a later call in the
+ *  same run reads only the blocks after the last one. */
+async function vaultEvents(ctx, names) {
+  const to = await blockAtLeast(ctx.pc, ctx.floor);
+  if (!ctx.events) {
+    const floorFrom = to > EVENT_LOOKBACK ? to - EVENT_LOOKBACK : 0n;
+    const planBlock = ctx.plan.block?.number != null ? BigInt(ctx.plan.block.number) : 0n;
+    ctx.events = { next: planBlock > floorFrom ? planBlock : floorFrom, list: [] };
+  }
+  for (let lo = ctx.events.next; lo <= to; lo += 10_000n) {
+    const hi = lo + 9_999n < to ? lo + 9_999n : to;
+    const { value: logs } = await retryRead(() => ctx.pc.getLogs({ address: ctx.plan.vault, fromBlock: lo, toBlock: hi }), { what: `vault logs ${lo}–${hi}` });
+    ctx.events.list.push(...parseEventLogs({ abi: EVENT_ABI, logs }));
+    ctx.events.next = hi + 1n;
+  }
+  return ctx.events.list.filter((e) => names.includes(e.eventName));
 }
 
 function tuple(plan) {
@@ -340,6 +511,8 @@ export const mockSymbolMismatch = (planSymbol, onchainSymbol) => onchainSymbol !
 
 const tupleHash = ({ adds, removes, sha }) =>
   keccak256(encodeAbiParameters([{ type: 'address[]' }, { type: 'address[]' }, { type: 'bytes32' }], [adds, removes, sha]));
+/** keccak of a RegistryChangeAnnounced/Executed event's tuple, lower case. */
+const tupleHashOf = (args) => tupleHash({ adds: args.adds.map((a) => getAddress(a)), removes: args.removes.map((a) => getAddress(a)), sha: args.decisionSha256 }).toLowerCase();
 
 function requirePlanFresh(ctx) {
   if (ctx.plan.date === todayUTC() || ctx.o.allowPlanDate) return;
@@ -356,7 +529,7 @@ async function assetIndex(ctx, v) {
 }
 
 // ================================================================ announce
-async function stageAnnounce(ctx) {
+export async function stageAnnounce(ctx) {
   const { plan, log } = ctx;
   const t = tuple(plan);
   // An empty tuple is a valid call for the contract, and it would lock this
@@ -376,10 +549,16 @@ async function stageAnnounce(ctx) {
   if (fs.existsSync(onDisk) && sha256(fs.readFileSync(onDisk)) !== sha) throw new Refused(`${entry.file} on disk does not hash to the anchored ${sha.slice(0, 12)}… — the document was edited after anchoring`);
   log(`decision ${entry.id} anchored in ${entry.txHash} (${entry.anchoredAt})`);
 
-  const v = await readVault(ctx.reader, plan.vault);
-  if (v.pendingRegistryChange !== ZERO32) throw new Refused(`a registry change is already pending (${v.pendingRegistryChange}, eta ${iso(v.pendingRegistryEta)}) — re-announcing would restart the 7 days; execute or wait`);
+  const expectedHash = tupleHash(t);
+  const v = await vaultNow(ctx);
+  if (v.pendingRegistryChange !== ZERO32) {
+    if (v.pendingRegistryChange.toLowerCase() !== expectedHash.toLowerCase()) throw new Refused(`a registry change is already pending (${v.pendingRegistryChange}, eta ${iso(v.pendingRegistryEta)}) — re-announcing would restart the 7 days; execute or wait`);
+    if (plan.announce?.pendingHash?.toLowerCase() === expectedHash.toLowerCase()) throw new Refused(`this plan's change is already pending and recorded (tx ${plan.announce.txHash ?? 'not found'}, eta ${iso(v.pendingRegistryEta)}) — nothing to send; re-announcing would restart the 7 days`);
+    await adoptAnnounce(ctx, { t, v, entry, expectedHash });
+    return;
+  }
   if (ctx.keeperAddr !== v.owner) throw new Refused(`announce is onlyOwner; owner is ${v.owner}, signer is ${ctx.keeperAddr}`);
-  const reads = await ctx.reader.batch([
+  const reads = await batchNow(ctx, 'announce checks', [
     ...t.adds.flatMap((a) => [
       { address: plan.vault, abi: VAULT_ABI, functionName: 'isRegistryAsset', args: [a] },
       { address: a, abi: ERC20_ABI, functionName: 'decimals' },
@@ -408,19 +587,83 @@ async function stageAnnounce(ctx) {
     log(`  remove ${rem.symbol.padEnd(7)} ${a} ${sym} (balance ${rem.balance})`);
   });
   log(`checks: no duplicate address in adds or removes, none in both; every chain symbol is m{SYMBOL} (${t.adds.length} add, ${t.removes.length} remove)`);
-  const expectedHash = tupleHash(t);
   log(`tuple keccak ${expectedHash}; eta would be now + ${Number(v.registryDelay) / 86400} days`);
   const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'announceRegistryChange', args: [t.adds, t.removes, t.sha], gas: GAS.announce(t.adds.length + t.removes.length), what: 'announce' });
   if (r.dry) return;
-  const [pending, eta] = await ctx.reader.batch([
-    { address: plan.vault, abi: VAULT_ABI, functionName: 'pendingRegistryChange' },
-    { address: plan.vault, abi: VAULT_ABI, functionName: 'pendingRegistryEta' },
-  ]);
-  if (pending.toLowerCase() !== expectedHash.toLowerCase()) throw new Error(`announced hash ${pending} != expected ${expectedHash}`);
-  plan.announce = { txHash: r.hash, block: r.receipt.blockNumber, at: iso(r.blockTimestamp), eta: eta.toString(), etaIso: iso(eta), pendingHash: pending, tuple: { adds: t.adds, removes: t.removes, decisionSha256: t.sha }, decisionId: entry.id, signer: ctx.keeperAddr };
+  // Recorded from the receipt alone: the RegistryChangeAnnounced event
+  // carries the tuple (whose keccak IS pendingRegistryChange) and the eta;
+  // the announce block's time is eta − REGISTRY_DELAY by construction.
+  const ev = eventsIn(r.receipt, VAULT_ABI, 'RegistryChangeAnnounced', plan.vault)[0]?.args;
+  const pendingHash = ev ? tupleHashOf(ev) : expectedHash;
+  const eta = ev ? ev.eta : null;
+  plan.announce = announceRecord({ txHash: r.hash, block: r.receipt.blockNumber, at: r.blockTimestamp ?? (eta != null ? eta - v.registryDelay : null), eta, pendingHash, t, entry, signer: ctx.keeperAddr });
   plan.announceTuple = plan.announce.tuple;
   savePlan(ctx.planFile, plan);
-  log(`announced; execute on or after ${iso(eta)}; plan updated`);
+  log(`announced; recorded in the plan from the receipt (pending ${pendingHash}, eta ${eta != null ? iso(eta) : 'not in the receipt'})`);
+  // Then the check, at the receipt's block (exact).
+  const [pending, etaOnChain] = await batchNow(ctx, 'pending change after announce', [
+    { address: plan.vault, abi: VAULT_ABI, functionName: 'pendingRegistryChange' },
+    { address: plan.vault, abi: VAULT_ABI, functionName: 'pendingRegistryEta' },
+  ], r.receipt.blockNumber);
+  if (eta == null) {
+    plan.announce = announceRecord({ ...plan.announce, block: r.receipt.blockNumber, at: r.blockTimestamp ?? etaOnChain - v.registryDelay, eta: etaOnChain, pendingHash: pending, t, entry, signer: ctx.keeperAddr, txHash: r.hash });
+    plan.announceTuple = plan.announce.tuple;
+    savePlan(ctx.planFile, plan);
+  }
+  if (pending.toLowerCase() !== expectedHash.toLowerCase()) throw new Error(`announced hash ${pending} != expected ${expectedHash} (block ${r.receipt.blockNumber})`);
+  if (etaOnChain !== BigInt(plan.announce.eta)) throw new Error(`pendingRegistryEta ${etaOnChain} at block ${r.receipt.blockNumber} != the event's ${plan.announce.eta}`);
+  log(`announced; execute on or after ${iso(etaOnChain)}; plan updated`);
+}
+
+/** The plan.announce record — the fields basket-plan.mjs carries to day 7
+ *  (pendingHash, tuple) and gen-recon-decision.mjs prints (txHash, at). */
+function announceRecord({ txHash, block, at, eta, pendingHash, t, entry, signer, adopted = false, note = null }) {
+  return {
+    txHash, block, at: at == null ? null : (typeof at === 'string' ? at : iso(at)),
+    eta: eta == null ? null : eta.toString(), etaIso: eta == null ? null : iso(eta), pendingHash,
+    tuple: { adds: t.adds, removes: t.removes, decisionSha256: t.sha }, decisionId: entry.id, signer,
+    ...(adopted ? { adopted: true } : {}), ...(note ? { note } : {}),
+  };
+}
+
+/**
+ * Re-run after an announcement that was mined but not recorded (the run
+ * stopped between the receipt and its savePlan): the change pending on chain
+ * hashes to THIS plan's tuple, so an earlier run announced it — the owner is
+ * the only one who can. It is adopted into the plan instead of refused (the
+ * day-7 planner needs plan.announce.pendingHash to plan at all). Nothing is
+ * sent. The transaction is the plan's own `sent` entry, else the
+ * RegistryChangeAnnounced log with the same tuple and eta found since the
+ * plan's block; `at` is eta − REGISTRY_DELAY, the announce block's time by
+ * construction (eta = block.timestamp + REGISTRY_DELAY).
+ */
+async function adoptAnnounce(ctx, { t, v, entry, expectedHash }) {
+  const { plan, log } = ctx;
+  let txHash = null;
+  let block = null;
+  let how;
+  const fromSent = (await sentReceipts(ctx, /^announce$/)).map(({ receipt }) => ({ receipt, ev: eventsIn(receipt, VAULT_ABI, 'RegistryChangeAnnounced', plan.vault)[0]?.args }))
+    .filter((x) => x.ev && tupleHashOf(x.ev) === expectedHash.toLowerCase() && x.ev.eta === v.pendingRegistryEta).at(-1);
+  if (fromSent) {
+    txHash = fromSent.receipt.transactionHash;
+    block = fromSent.receipt.blockNumber;
+    how = "the plan's own sent list";
+  } else {
+    const hit = (await vaultEvents(ctx, ['RegistryChangeAnnounced'])).filter((e) => tupleHashOf(e.args) === expectedHash.toLowerCase() && e.args.eta === v.pendingRegistryEta).at(-1);
+    if (hit) { txHash = hit.transactionHash; block = hit.blockNumber; how = 'the RegistryChangeAnnounced log'; }
+  }
+  let signer = v.owner; // announceRegistryChange is onlyOwner
+  if (txHash) {
+    const tx = await retryRead(() => ctx.pc.getTransaction({ hash: txHash }), { what: `tx ${txHash}` }).then((x) => x.value).catch(() => null);
+    if (tx?.from) signer = getAddress(tx.from);
+  }
+  const at = v.pendingRegistryEta - v.registryDelay;
+  const found = txHash ? `tx ${txHash} (block ${block}, from ${how})` : `the announce tx was not found since the plan's block ${ctx.plan.block?.number ?? '—'}`;
+  if (!ctx.live) { log(`this plan's change is already pending on chain (${v.pendingRegistryChange}, eta ${iso(v.pendingRegistryEta)}) but not recorded in the plan — a live run adopts it (${found}); nothing is sent`); return; }
+  plan.announce = announceRecord({ txHash, block, at, eta: v.pendingRegistryEta, pendingHash: v.pendingRegistryChange, t, entry, signer, adopted: true, note: `adopted from the chain by a later run: ${found}` });
+  plan.announceTuple = plan.announce.tuple;
+  savePlan(ctx.planFile, plan);
+  log(`this plan's change was already pending on chain and is now recorded in the plan (adopted: ${found}); nothing sent; execute on or after ${iso(v.pendingRegistryEta)}`);
 }
 
 // ================================================================= execute
@@ -436,32 +679,40 @@ function executedAlready(v, t) {
 const EXECUTED_EVENT = VAULT_ABI.find((x) => x.type === 'event' && x.name === 'RegistryChangeExecuted');
 
 async function findExecution(ctx, t) {
-  const latest = await ctx.pc.getBlockNumber();
+  // Our own execute, when this plan's sent list has it (a re-run after a stop).
+  for (const { receipt } of (await sentReceipts(ctx, /^execute$/)).reverse()) {
+    const ev = eventsIn(receipt, VAULT_ABI, 'RegistryChangeExecuted', ctx.plan.vault)[0];
+    if (ev && tupleHashOf(ev.args) === tupleHash(t).toLowerCase()) return { ...ev, transactionHash: receipt.transactionHash, blockNumber: receipt.blockNumber };
+  }
+  const latest = await blockAtLeast(ctx.pc, ctx.floor);
   const floor = latest > 100_000n ? latest - 100_000n : 0n; // ≈ 28 h of 1-s blocks, 10 reads at most
   const lo = ctx.plan.announce?.block && BigInt(ctx.plan.announce.block) > floor ? BigInt(ctx.plan.announce.block) : floor;
   for (let to = latest; to >= lo; to -= 10_000n) {
     const from = to - 9_999n > lo ? to - 9_999n : lo;
-    const logs = await ctx.pc.getLogs({ address: ctx.plan.vault, event: EXECUTED_EVENT, fromBlock: from, toBlock: to });
-    const hit = logs.reverse().find((l) => tupleHash({ adds: l.args.adds.map((a) => getAddress(a)), removes: l.args.removes.map((a) => getAddress(a)), sha: l.args.decisionSha256 }).toLowerCase() === tupleHash(t).toLowerCase());
+    const { value: logs } = await retryRead(() => ctx.pc.getLogs({ address: ctx.plan.vault, event: EXECUTED_EVENT, fromBlock: from, toBlock: to }), { what: `RegistryChangeExecuted logs ${from}–${to}` });
+    const hit = logs.reverse().find((l) => tupleHashOf(l.args) === tupleHash(t).toLowerCase());
     if (hit) return hit;
     if (from === lo) break;
   }
   return null;
 }
 
-async function stageExecute(ctx) {
+export async function stageExecute(ctx) {
   const { plan, log } = ctx;
   const t = tuple(plan);
-  const v = await readVault(ctx.reader, plan.vault);
+  const v = await vaultNow(ctx);
   if (v.pendingRegistryChange === ZERO32) {
     if (!executedAlready(v, t)) throw new Refused('nothing is pending on chain — announce first');
     if (plan.execute?.txHash) { log(`already executed (tx ${plan.execute.txHash}); continuing`); return; }
+    // K-6, and the re-run after our own execute was mined but not recorded:
+    // the registry holds the change, so it is recorded from the chain.
     let ev = null;
     try { ev = await findExecution(ctx, t); } catch (e) { log(`  could not search for the RegistryChangeExecuted log (${fmtErr(e)})`); }
-    const tx = ev ? await ctx.pc.getTransaction({ hash: ev.transactionHash }).catch(() => null) : null;
-    const blk = ev ? await ctx.pc.getBlock({ blockNumber: ev.blockNumber }) : null;
+    const tx = ev ? await retryRead(() => ctx.pc.getTransaction({ hash: ev.transactionHash }), { what: `tx ${ev.transactionHash}` }).then((x) => x.value).catch(() => null) : null;
+    const blk = ev ? await retryRead(() => ctx.pc.getBlock({ blockNumber: ev.blockNumber }), { what: `block ${ev.blockNumber}` }).then((x) => x.value).catch(() => null) : null;
     const by = tx?.from ? getAddress(tx.from) : null;
-    log(`nothing pending, and the registry already holds this change — executeRegistryChange is permissionless and was called ${by ? `by ${by} in tx ${ev.transactionHash} (block ${ev.blockNumber})` : 'by someone else (tx not found in the last 100,000 blocks)'}; continuing with first-prices`);
+    const ours = by != null && by === ctx.keeperAddr;
+    log(`nothing pending, and the registry already holds this change — executeRegistryChange is permissionless and was called ${by ? `by ${by}${ours ? ' (this keeper: an earlier run that stopped before recording it)' : ''} in tx ${ev.transactionHash} (block ${ev.blockNumber})` : 'by someone else (tx not found in the last 100,000 blocks)'}; continuing with first-prices`);
     if (!ctx.live) return;
     plan.execute = { txHash: ev?.transactionHash ?? null, block: ev?.blockNumber ?? null, at: blk ? iso(blk.timestamp) : null, assetCount: v.assetCount, order: v.assets.map((x) => x.address), signer: by, byThirdParty: by ? by !== ctx.keeperAddr : true };
     savePlan(ctx.planFile, plan);
@@ -473,19 +724,41 @@ async function stageExecute(ctx) {
   log(`pending ${v.pendingRegistryChange} matches the plan; eta ${iso(v.pendingRegistryEta)} passed; assetCount ${v.assetCount} → ${v.assetCount + t.adds.length}`);
   const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'executeRegistryChange', args: [t.adds, t.removes, t.sha], gas: GAS.execute(t.adds.length + t.removes.length), what: 'execute' });
   if (r.dry) return;
-  const after = await readVault(ctx.reader, plan.vault);
-  if (after.assetCount !== v.assetCount + t.adds.length) throw new Error(`assetCount ${after.assetCount} after execute, expected ${v.assetCount + t.adds.length}`);
-  for (const a of t.removes) if (!after.assets.find((x) => x.address === a)?.inRemoval) throw new Error(`${a} not flagged inRemoval after execute`);
-  plan.execute = { txHash: r.hash, block: r.receipt.blockNumber, at: iso(r.blockTimestamp), assetCount: after.assetCount, order: after.assets.map((x) => x.address), signer: ctx.keeperAddr };
+  // Record first (call() contract), then read the registry AT the receipt's block.
+  plan.execute = { txHash: r.hash, block: r.receipt.blockNumber, at: isoOrNull(r.blockTimestamp), assetCount: null, order: null, signer: ctx.keeperAddr };
   savePlan(ctx.planFile, plan);
+  const after = await vaultNow(ctx, 'registry after execute', r.receipt.blockNumber);
+  plan.execute = { ...plan.execute, assetCount: after.assetCount, order: after.assets.map((x) => x.address) };
+  savePlan(ctx.planFile, plan);
+  if (after.assetCount !== v.assetCount + t.adds.length) throw new Error(`assetCount ${after.assetCount} after execute (block ${r.receipt.blockNumber}), expected ${v.assetCount + t.adds.length}`);
+  for (const a of t.removes) if (!after.assets.find((x) => x.address === a)?.inRemoval) throw new Error(`${a} not flagged inRemoval after execute (block ${r.receipt.blockNumber})`);
   log(`executed; ${after.assetCount} assets; every fill on this vault is closed until first-prices runs (portfolioValueAtRef reverts PriceUnset)`);
 }
 
 // ============================================================ first-prices
-async function stageFirstPrices(ctx) {
+/** A first price that is on chain but not in plan.firstPrices (a run that
+ *  stopped between the receipt and its savePlan): recorded from the plan's
+ *  sent list or the RefPricePosted log, never posted again. */
+async function adoptFirstPrice(ctx, add, target, on) {
+  const { plan, log } = ctx;
+  let txHash = null;
+  let at = null;
+  const mine = (await sentReceipts(ctx, new RegExp(`^first price ${add.symbol}$`))).map(({ receipt }) => ({ receipt, ev: eventsIn(receipt, VAULT_ABI, 'RefPricePosted', plan.vault).find((e) => getAddress(e.args.asset) === getAddress(add.address) && e.args.price === target) })).filter((x) => x.ev).at(-1);
+  if (mine) { txHash = mine.receipt.transactionHash; at = (plan.sent ?? []).find((e) => e.hash === txHash)?.at ?? null; } else {
+    const hit = (await vaultEvents(ctx, ['RefPricePosted'])).filter((e) => getAddress(e.args.asset) === getAddress(add.address) && e.args.price === target).at(-1);
+    if (hit) txHash = hit.transactionHash;
+  }
+  at ??= iso(on.refPriceUpdatedAt);
+  if (!ctx.live) { log(`  ${add.symbol}: reference already ${target} on chain but not recorded in the plan — a live run records it (tx ${txHash ?? 'not found'}); nothing is sent`); return; }
+  plan.firstPrices.push({ symbol: add.symbol, address: add.address, price: target.toString(), priceA: add.priceA, priceB: add.priceB, txHash, at, adopted: true });
+  savePlan(ctx.planFile, plan);
+  log(`  ${add.symbol}: reference already ${target} on chain — recorded in the plan (adopted, tx ${txHash ?? 'not found'}); nothing sent`);
+}
+
+export async function stageFirstPrices(ctx) {
   const { plan, log, o } = ctx;
   requirePlanFresh(ctx);
-  const v = await readVault(ctx.reader, plan.vault);
+  const v = await vaultNow(ctx);
   if (v.pendingRegistryChange !== ZERO32) throw new Refused('a registry change is still pending — execute first');
   if (ctx.keeperAddr !== v.keeper) throw new Refused(`setRefPrice is keeper-only; keeper is ${v.keeper}, signer is ${ctx.keeperAddr}`);
   if (plan.adds.length === 0) { log('no adds in the plan — nothing to post'); return; }
@@ -500,7 +773,11 @@ async function stageFirstPrices(ctx) {
     if (diff > o.firstPriceTol) throw new Refused(`${add.symbol}: sources disagree by ${pct(diff)} (A ${add.priceA}, B ${add.priceB}) > ${pct(o.firstPriceTol)}`);
     const target = toRefPrice(add.priceA, add.decimals);
     if (target !== big(add.firstRefPrice)) throw new Refused(`${add.symbol}: plan firstRefPrice ${add.firstRefPrice} != toRefPrice(${add.priceA}, ${add.decimals}) = ${target}`);
-    if (on.refPrice === target) { log(`  ${add.symbol}: reference already ${target} — skipped`); continue; }
+    if (on.refPrice === target) {
+      if (!plan.firstPrices.some((f) => getAddress(f.address) === getAddress(add.address))) { await adoptFirstPrice(ctx, add, target, on); continue; }
+      log(`  ${add.symbol}: reference already ${target} — skipped`);
+      continue;
+    }
     if (on.refPrice !== 0n) {
       const span = (on.refPrice * bandBps) / 10_000n;
       if (target > on.refPrice + span || target < on.refPrice - span) throw new Refused(`${add.symbol}: reference is already set (${on.refPrice}) and ${target} is outside the ±15% band — the daily mark steps references, this stage does not`);
@@ -509,10 +786,10 @@ async function stageFirstPrices(ctx) {
     log(`  ${add.symbol}: first post ${target} = $${add.priceA} at ${add.decimals} dec (B $${add.priceB}, ${add.disagreementBps} bp apart); ${on.refPrice === 0n ? 'BAND-FREE first post' : 'in-band post'}`);
     const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [add.address, target], gas: GAS.post, what: `first price ${add.symbol}` });
     if (r.dry) continue;
-    const back = await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [add.address] });
-    if (back !== target) throw new Error(`${add.symbol}: refPrice reads ${back} after posting ${target}`);
-    plan.firstPrices.push({ symbol: add.symbol, address: add.address, price: target.toString(), priceA: add.priceA, priceB: add.priceB, txHash: r.hash, at: iso(r.blockTimestamp) });
+    plan.firstPrices.push({ symbol: add.symbol, address: add.address, price: target.toString(), priceA: add.priceA, priceB: add.priceB, txHash: r.hash, at: isoOrNull(r.blockTimestamp) });
     savePlan(ctx.planFile, plan);
+    const back = await readNow(ctx, `refPrice(${add.symbol}) after posting`, { address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [add.address] }, r.receipt.blockNumber);
+    if (back !== target) throw new Error(`${add.symbol}: refPrice reads ${back} at block ${r.receipt.blockNumber} after posting ${target}`);
   }
 }
 
@@ -956,6 +1233,9 @@ async function stageVerify(ctx) {
 async function main() {
   const o = parseArgs(process.argv.slice(2));
   const ctx = await makeCtx(o);
+  // A re-run first settles what an earlier run sent (plan.sent) and reads
+  // at or after the blocks it recorded.
+  await settleSent(ctx);
   const run = async (stage, fn) => { ctx.o.stage = stage; ctx.log(`— ${stage} —`); await fn(ctx); };
   switch (o.stage) {
     case 'announce': return stageAnnounce(ctx);
