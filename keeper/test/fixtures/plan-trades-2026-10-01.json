@@ -1,0 +1,1558 @@
+{
+ "_doc": "The five basket plans of 2026-10-01 (keeper/plans/{index}/2026-10-01.json as built by the plan stage at blocks 37499168-37499187, GIWA Sepolia testnet mocks): the rows computeTrades took at the plan prices, the policy, the auctions the planner on main (6036647) planned (present), and the auctions of the block rule (block) as computed in the planner spec of 2026-10-01 (proto/fixtures). Trades are [sell, buy, sellAmount, drain]. Used by keeper/test/plan-trades.test.mjs.",
+ "baskets": {
+  "qx20": {
+   "source": "keeper/plans/qx20/2026-10-01.json (builder plan, block 37499183, generated 2026-10-01T08:45:01.200Z)",
+   "policy": {
+    "tolerancePoints": 5,
+    "capMaxWeight": 0.6,
+    "qualityCap": null,
+    "sleeve": false,
+    "duration": 1800,
+    "minTradeUsd": 1,
+    "fill": "fair",
+    "firstPriceTolBps": 200,
+    "refDriftTolBps": 500
+   },
+   "rows": [
+    {
+     "symbol": "BTC",
+     "address": "0xfe90560cf3eE5f85493dca38fB2bF56179F0a4FE",
+     "decimals": 13,
+     "balance": "80536689148819",
+     "ref": "8323100000",
+     "targetWeight": 0.6006511728435941,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "ETH",
+     "address": "0xdBb6c0f79935a8dD3cfAc88B4F8586F563320aC2",
+     "decimals": 12,
+     "balance": "76835752992748",
+     "ref": "2676460000",
+     "targetWeight": 0.17154588917014477,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "BNB",
+     "address": "0x1607e70cAC3FAc0B413d0948D2117b12b1F78212",
+     "decimals": 11,
+     "balance": "8477843123707",
+     "ref": "7641800000",
+     "targetWeight": 0.05341996290968885,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "XRP",
+     "address": "0x5C0F15100649789902ddF31D6991e38E29256266",
+     "decimals": 9,
+     "balance": "40026943496713",
+     "ref": "1480000000",
+     "targetWeight": 0.048931566253876964,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "SOL",
+     "address": "0x47420cD0A6e2bBA16DebbC6a126Bf8a7af9c174d",
+     "decimals": 10,
+     "balance": "3726810065248",
+     "ref": "11741000000",
+     "targetWeight": 0.03624408163566643,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "TRX",
+     "address": "0x4037f0608746d8AfEFaD786e62a8b567DB1A067A",
+     "decimals": 8,
+     "balance": "6043802082345",
+     "ref": "3375490000",
+     "targetWeight": 0.016833240835899314,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "HYPE",
+     "address": "0xe7007EE036b22880eCe81b959DF1c8a5458b0A96",
+     "decimals": 10,
+     "balance": "1415975254617",
+     "ref": "8890000000",
+     "targetWeight": 0.010382228276789687,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "DOGE",
+     "address": "0xCeF31a0a4a630B8D850E328C44B8D18718FB0D12",
+     "decimals": 7,
+     "balance": "991498581217",
+     "ref": "9403600000",
+     "targetWeight": 0.007707731471579905,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "RAIN",
+     "address": "0x643F0b8b6D3F1543D622ab265d23d2647f0CC02A",
+     "decimals": 7,
+     "balance": "4515038370507",
+     "ref": "1222806000",
+     "targetWeight": 0.004552928151502605,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "LINK",
+     "address": "0xf0Abf814683dbe1CF8cF423450ADFDcf85b744BC",
+     "decimals": 10,
+     "balance": "4763009476659",
+     "ref": "1419000000",
+     "targetWeight": 0.005572567918344507,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "ADA",
+     "address": "0x466AE80FA247Da24764C9Cae9A1F8fDc240960C4",
+     "decimals": 8,
+     "balance": "2386781834875",
+     "ref": "2461680000",
+     "targetWeight": 0.0048495007605817405,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "XLM",
+     "address": "0x6d70C5084f5bf3F0CD94aDb803b958c456fB2324",
+     "decimals": 8,
+     "balance": "2208651449266",
+     "ref": "2226050000",
+     "targetWeight": 0.004093774784971084,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "BCH",
+     "address": "0x358B0f199008dE9a2A6005698BBbc6950E19d22A",
+     "decimals": 11,
+     "balance": "1278375739324",
+     "ref": "3060200000",
+     "targetWeight": 0.0032289900594813224,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "UNI",
+     "address": "0x93765eBdf4b75d1d945c0EfA656A8802170040b6",
+     "decimals": 9,
+     "balance": "396738702680",
+     "ref": "8900000000",
+     "targetWeight": 0.0028966895579172858,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "GRAM",
+     "address": "0x293eE9abd3F625D8844b66eA82A57dcD40c6156B",
+     "decimals": 9,
+     "balance": "1764907036200",
+     "ref": "1490000000",
+     "targetWeight": 0,
+     "isAdd": false,
+     "isRemove": true
+    },
+    {
+     "symbol": "CC",
+     "address": "0x579Cc91336eA92E06F30e725D303625836aDdC6A",
+     "decimals": 7,
+     "balance": "251140316490",
+     "ref": "12291400000",
+     "targetWeight": 0.0025657441812444526,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "HBAR",
+     "address": "0x6DEeb1B63d7F4BAF8874452B80223521F6aBF895",
+     "decimals": 7,
+     "balance": "279064591641",
+     "ref": "10440000000",
+     "targetWeight": 0,
+     "isAdd": false,
+     "isRemove": true
+    },
+    {
+     "symbol": "AVAX",
+     "address": "0x3C725e370f8Ab6557eC21d9b94e6F95269f71674",
+     "decimals": 9,
+     "balance": "274908884497",
+     "ref": "11030000000",
+     "targetWeight": 0.0025668204367499674,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "SHIB",
+     "address": "0x1Bf8091DB22e3C34a9F28A53F38e3822E57195a3",
+     "decimals": 3,
+     "balance": "374993013179",
+     "ref": "5730000000",
+     "targetWeight": 0,
+     "isAdd": false,
+     "isRemove": true
+    },
+    {
+     "symbol": "SUI",
+     "address": "0xB6Ea7403356Ec41526D52E9C9051725930278464",
+     "decimals": 8,
+     "balance": "259458857166",
+     "ref": "11500000000",
+     "targetWeight": 0.0024716689033057277,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "ZEC",
+     "address": "0x0000000000000000000000000000000000000001",
+     "decimals": 12,
+     "balance": "0",
+     "ref": "1406520000",
+     "targetWeight": 0.012526146413533215,
+     "isAdd": true,
+     "isRemove": false
+    },
+    {
+     "symbol": "XMR",
+     "address": "0x0000000000000000000000000000000000000002",
+     "decimals": 11,
+     "balance": "0",
+     "ref": "5450700000",
+     "targetWeight": 0.005378132362894025,
+     "isAdd": true,
+     "isRemove": false
+    },
+    {
+     "symbol": "NEAR",
+     "address": "0x0000000000000000000000000000000000000003",
+     "decimals": 9,
+     "balance": "0",
+     "ref": "5220000000",
+     "targetWeight": 0.0035811630722343887,
+     "isAdd": true,
+     "isRemove": false
+    }
+   ],
+   "present": {
+    "traded": [
+     "GRAM",
+     "HBAR",
+     "SHIB",
+     "ZEC",
+     "XMR",
+     "NEAR"
+    ],
+    "trades": [
+     [
+      "HBAR",
+      "ZEC",
+      "279064591641",
+      true
+     ],
+     [
+      "GRAM",
+      "ZEC",
+      "1054339257098",
+      false
+     ],
+     [
+      "GRAM",
+      "XMR",
+      "710567779102",
+      true
+     ],
+     [
+      "SHIB",
+      "XMR",
+      "151246477740",
+      false
+     ],
+     [
+      "SHIB",
+      "NEAR",
+      "223746535439",
+      true
+     ]
+    ]
+   },
+   "block": {
+    "traded": [
+     "BTC",
+     "ETH",
+     "BNB",
+     "XRP",
+     "SOL",
+     "TRX",
+     "HYPE",
+     "DOGE",
+     "RAIN",
+     "LINK",
+     "ADA",
+     "XLM",
+     "BCH",
+     "UNI",
+     "GRAM",
+     "CC",
+     "HBAR",
+     "AVAX",
+     "SHIB",
+     "SUI",
+     "ZEC",
+     "XMR",
+     "NEAR"
+    ],
+    "trades": [
+     [
+      "ETH",
+      "ZEC",
+      "4193354970123",
+      false
+     ],
+     [
+      "BNB",
+      "ZEC",
+      "389093643810",
+      false
+     ],
+     [
+      "BNB",
+      "BTC",
+      "165952466616",
+      false
+     ],
+     [
+      "XRP",
+      "BTC",
+      "2555707709109",
+      false
+     ],
+     [
+      "HBAR",
+      "BTC",
+      "279064591641",
+      true
+     ],
+     [
+      "SOL",
+      "BTC",
+      "211167960737",
+      false
+     ],
+     [
+      "SOL",
+      "XMR",
+      "16974963950",
+      false
+     ],
+     [
+      "GRAM",
+      "XMR",
+      "1764907036200",
+      true
+     ],
+     [
+      "SHIB",
+      "XMR",
+      "374993013179",
+      true
+     ],
+     [
+      "TRX",
+      "XMR",
+      "331114580916",
+      false
+     ],
+     [
+      "TRX",
+      "NEAR",
+      "60695669765",
+      false
+     ],
+     [
+      "HYPE",
+      "NEAR",
+      "92367122111",
+      false
+     ],
+     [
+      "DOGE",
+      "NEAR",
+      "62525685572",
+      false
+     ],
+     [
+      "LINK",
+      "NEAR",
+      "312153010495",
+      false
+     ],
+     [
+      "ADA",
+      "NEAR",
+      "154052652087",
+      false
+     ],
+     [
+      "RAIN",
+      "NEAR",
+      "295121943000",
+      false
+     ],
+     [
+      "XLM",
+      "NEAR",
+      "124354244880",
+      false
+     ],
+     [
+      "BCH",
+      "NEAR",
+      "82495990900",
+      false
+     ],
+     [
+      "UNI",
+      "NEAR",
+      "27860866728",
+      false
+     ],
+     [
+      "SUI",
+      "NEAR",
+      "15866831193",
+      false
+     ],
+     [
+      "CC",
+      "NEAR",
+      "14557817604",
+      false
+     ],
+     [
+      "AVAX",
+      "NEAR",
+      "11160025024",
+      false
+     ]
+    ]
+   }
+  },
+  "qrev": {
+   "source": "keeper/plans/qrev/2026-10-01.json (builder plan, block 37499168, generated 2026-10-01T08:44:46.822Z)",
+   "policy": {
+    "tolerancePoints": 5,
+    "capMaxWeight": 0.35,
+    "qualityCap": null,
+    "sleeve": false,
+    "duration": 1800,
+    "minTradeUsd": 1,
+    "fill": "fair",
+    "firstPriceTolBps": 200,
+    "refDriftTolBps": 500
+   },
+   "rows": [
+    {
+     "symbol": "HYPE",
+     "address": "0xF2ff6A94474C03d3032CFd248f4Ca3A40BD58617",
+     "decimals": 10,
+     "balance": "45614796175959",
+     "ref": "8890000000",
+     "targetWeight": 0.2843279247158599,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "SKY",
+     "address": "0xE4f0Bd727D956dFE5EF7Bf67EC5aF36Bab3df680",
+     "decimals": 7,
+     "balance": "24982110702254",
+     "ref": "7746500000",
+     "targetWeight": 0.05732904631860751,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "CAKE",
+     "address": "0x7f927b96846212Efe86604Ea1A53037CCF3E005d",
+     "decimals": 9,
+     "balance": "63250758909657",
+     "ref": "2580000000",
+     "targetWeight": 0.053792044827024585,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "UNI",
+     "address": "0x3D03d466051879D2c41b60112Fc7085b8b8b8c56",
+     "decimals": 9,
+     "balance": "17200286682389",
+     "ref": "8900000000",
+     "targetWeight": 0.021603593979891797,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "RAY",
+     "address": "0x9De23CF10aFE8b3fD021FC465f984A0523fd9E9b",
+     "decimals": 9,
+     "balance": "34442504528608",
+     "ref": "1900000000",
+     "targetWeight": 0.04588390160922717,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "CRV",
+     "address": "0xA105CB36C0f613f2a24188F25Ff781808D0812be",
+     "decimals": 8,
+     "balance": "13527356201441",
+     "ref": "3869140000",
+     "targetWeight": 0.03669774670302398,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "PENDLE",
+     "address": "0xcE60a9aC653b9a44fC689cd90b081E129FB2A3FD",
+     "decimals": 9,
+     "balance": "18897656933138",
+     "ref": "2430000000",
+     "targetWeight": 0.03219780445480283,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "JUP",
+     "address": "0x0F59Aa0CbC85BE9556446970DEd14cd7313ea803",
+     "decimals": 8,
+     "balance": "20007825734990",
+     "ref": "3222270000",
+     "targetWeight": 0.04520368572728328,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "AERO",
+     "address": "0x51c3D8257200f2D2142570511F799A3A8F3E6F58",
+     "decimals": 8,
+     "balance": "8132063738781",
+     "ref": "8013820000",
+     "targetWeight": 0.04569328547573806,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "ZRO",
+     "address": "0xe2dcF51f5c7F03bd502C0948D8541063F2c8df04",
+     "decimals": 8,
+     "balance": "4435603750082",
+     "ref": "16500000000",
+     "targetWeight": 0.051315524469853685,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "SYRUP",
+     "address": "0x0000000000000000000000000000000000000001",
+     "decimals": 8,
+     "balance": "0",
+     "ref": "2230940000",
+     "targetWeight": 0.021129171610429067,
+     "isAdd": true,
+     "isRemove": false
+    },
+    {
+     "symbol": "TRX",
+     "address": "0x0000000000000000000000000000000000000002",
+     "decimals": 8,
+     "balance": "0",
+     "ref": "3375490000",
+     "targetWeight": 0.24137767581250003,
+     "isAdd": true,
+     "isRemove": false
+    },
+    {
+     "symbol": "LINK",
+     "address": "0x0000000000000000000000000000000000000003",
+     "decimals": 10,
+     "balance": "0",
+     "ref": "1419000000",
+     "targetWeight": 0.02129894144143574,
+     "isAdd": true,
+     "isRemove": false
+    },
+    {
+     "symbol": "NEAR",
+     "address": "0x0000000000000000000000000000000000000004",
+     "decimals": 9,
+     "balance": "0",
+     "ref": "5220000000",
+     "targetWeight": 0.020604539545103186,
+     "isAdd": true,
+     "isRemove": false
+    },
+    {
+     "symbol": "BNB",
+     "address": "0x0000000000000000000000000000000000000005",
+     "decimals": 11,
+     "balance": "0",
+     "ref": "7641800000",
+     "targetWeight": 0.021545113309219224,
+     "isAdd": true,
+     "isRemove": false
+    }
+   ],
+   "present": {
+    "traded": [
+     "SKY",
+     "CAKE",
+     "UNI",
+     "SYRUP",
+     "TRX",
+     "LINK",
+     "NEAR",
+     "BNB"
+    ],
+    "trades": [
+     [
+      "SKY",
+      "TRX",
+      "16756777455516",
+      false
+     ],
+     [
+      "UNI",
+      "TRX",
+      "14502421085139",
+      false
+     ],
+     [
+      "CAKE",
+      "TRX",
+      "3642566647633",
+      false
+     ],
+     [
+      "CAKE",
+      "BNB",
+      "9281397796515",
+      false
+     ],
+     [
+      "CAKE",
+      "LINK",
+      "9175349664000",
+      false
+     ],
+     [
+      "CAKE",
+      "SYRUP",
+      "9102214688452",
+      false
+     ],
+     [
+      "CAKE",
+      "NEAR",
+      "8876208966161",
+      false
+     ]
+    ]
+   },
+   "block": {
+    "traded": [
+     "HYPE",
+     "SKY",
+     "CAKE",
+     "UNI",
+     "RAY",
+     "CRV",
+     "PENDLE",
+     "JUP",
+     "AERO",
+     "ZRO",
+     "SYRUP",
+     "TRX",
+     "LINK",
+     "NEAR",
+     "BNB"
+    ],
+    "trades": [
+     [
+      "UNI",
+      "TRX",
+      "14088793276383",
+      false
+     ],
+     [
+      "SKY",
+      "TRX",
+      "15495696632621",
+      false
+     ],
+     [
+      "CAKE",
+      "TRX",
+      "24798147285010",
+      false
+     ],
+     [
+      "CAKE",
+      "BNB",
+      "10704390934670",
+      false
+     ],
+     [
+      "CAKE",
+      "LINK",
+      "1022388769518",
+      false
+     ],
+     [
+      "HYPE",
+      "LINK",
+      "2774354703924",
+      false
+     ],
+     [
+      "HYPE",
+      "SYRUP",
+      "1843577276918",
+      false
+     ],
+     [
+      "ZRO",
+      "SYRUP",
+      "449049184513",
+      false
+     ],
+     [
+      "RAY",
+      "SYRUP",
+      "1729181850059",
+      false
+     ],
+     [
+      "RAY",
+      "NEAR",
+      "1757694327514",
+      false
+     ],
+     [
+      "AERO",
+      "NEAR",
+      "823270303333",
+      false
+     ],
+     [
+      "JUP",
+      "NEAR",
+      "2025543735912",
+      false
+     ],
+     [
+      "CRV",
+      "NEAR",
+      "1369476568649",
+      false
+     ],
+     [
+      "PENDLE",
+      "NEAR",
+      "1913152881940",
+      false
+     ]
+    ]
+   }
+  },
+  "qdefi": {
+   "source": "keeper/plans/qdefi/2026-10-01.json (builder plan, block 37499173, generated 2026-10-01T08:44:51.696Z)",
+   "policy": {
+    "tolerancePoints": 5,
+    "capMaxWeight": 0.35,
+    "qualityCap": null,
+    "sleeve": false,
+    "duration": 1800,
+    "minTradeUsd": 1,
+    "fill": "fair",
+    "firstPriceTolBps": 200,
+    "refDriftTolBps": 500
+   },
+   "rows": [
+    {
+     "symbol": "HYPE",
+     "address": "0x08F6F33B572e480898dfE9F8dE66372183C33000",
+     "decimals": 10,
+     "balance": "45738518266983",
+     "ref": "8890000000",
+     "targetWeight": 0.30349936575181974,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "LINK",
+     "address": "0x842009C22152D5D26593db93Ca6664e4a61D667d",
+     "decimals": 10,
+     "balance": "203762027759000",
+     "ref": "1419000000",
+     "targetWeight": 0.21581398613720046,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "UNI",
+     "address": "0xECc53491f29eFf3fc5B000d5C6367CD7D86c532B",
+     "decimals": 9,
+     "balance": "16998383419446",
+     "ref": "8900000000",
+     "targetWeight": 0.11292018691792045,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "AAVE",
+     "address": "0x0d55244F54CDdF665705fA6114504414097C6162",
+     "decimals": 11,
+     "balance": "42006251593897",
+     "ref": "1651100000",
+     "targetWeight": 0.0517679829550217,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "ONDO",
+     "address": "0x83615E8756B6818Fa22bFE53FDa61Ec0215E3bDF",
+     "decimals": 8,
+     "balance": "13277129412673",
+     "ref": "5010520000",
+     "targetWeight": 0.04965476570148106,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "MORPHO",
+     "address": "0x00D05c5FE9B145DE447d9440F95eEFcaD61804c2",
+     "decimals": 9,
+     "balance": "18763791321843",
+     "ref": "2480000000",
+     "targetWeight": 0.03473331365073299,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "SKY",
+     "address": "0x4e0C8d1d03679852A230C20cFAF050B679a03d26",
+     "decimals": 7,
+     "balance": "6365776199404",
+     "ref": "7746500000",
+     "targetWeight": 0.03680703995643526,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "ENA",
+     "address": "0xf7bCBD24Bb216D3F54DF55e3C8A9cb94d2aA794f",
+     "decimals": 8,
+     "balance": "27624928325111",
+     "ref": "2602220000",
+     "targetWeight": 0.05365610189961441,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "JST",
+     "address": "0x5eA3Ad21048BA8a3C429D0B0f67A0860cD7e2e17",
+     "decimals": 8,
+     "balance": "22225856162893",
+     "ref": "1341680000",
+     "targetWeight": 0.02225775669419449,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "JUP",
+     "address": "0xBe527e2a4E222b8dd08e5CfAf4161D82A4C45fdB",
+     "decimals": 8,
+     "balance": "9031253132785",
+     "ref": "3222270000",
+     "targetWeight": 0.021721204954841193,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "CAKE",
+     "address": "0x490DA6844e2500f1e122eC1a6Ca2E70383a93A03",
+     "decimals": 9,
+     "balance": "8682872873065",
+     "ref": "2580000000",
+     "targetWeight": 0.01672080163067659,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "ETHFI",
+     "address": "0x0cc621d8c525E0096fdF3cE2177C65dEAd9FD7C2",
+     "decimals": 8,
+     "balance": "2628453225167",
+     "ref": "7522250000",
+     "targetWeight": 0.014757812289484579,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "AERO",
+     "address": "0xb5EFDC24BD58aAb5d6929C155705919b1062fa9B",
+     "decimals": 8,
+     "balance": "2691515219471",
+     "ref": "8013820000",
+     "targetWeight": 0.016099427838408124,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "CRV",
+     "address": "0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6",
+     "decimals": 8,
+     "balance": "4253869897532",
+     "ref": "3869140000",
+     "targetWeight": 0,
+     "isAdd": false,
+     "isRemove": true
+    },
+    {
+     "symbol": "PYTH",
+     "address": "0x196fb515cdd98b2C84FE60A2F53588af75Ea13F5",
+     "decimals": 7,
+     "balance": "2154125558905",
+     "ref": "7727900000",
+     "targetWeight": 0.012425291971495939,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "ASTER",
+     "address": "0x0000000000000000000000000000000000000001",
+     "decimals": 8,
+     "balance": "0",
+     "ref": "7488070000",
+     "targetWeight": 0.03716496165067325,
+     "isAdd": true,
+     "isRemove": false
+    }
+   ],
+   "present": {
+    "traded": [
+     "CRV",
+     "ASTER"
+    ],
+    "trades": [
+     [
+      "CRV",
+      "ASTER",
+      "4253869897532",
+      true
+     ]
+    ]
+   },
+   "block": {
+    "traded": [
+     "HYPE",
+     "LINK",
+     "UNI",
+     "AAVE",
+     "ONDO",
+     "MORPHO",
+     "SKY",
+     "ENA",
+     "JST",
+     "JUP",
+     "CAKE",
+     "ETHFI",
+     "AERO",
+     "CRV",
+     "PYTH",
+     "ASTER"
+    ],
+    "trades": [
+     [
+      "CRV",
+      "ASTER",
+      "4253869897532",
+      true
+     ],
+     [
+      "HYPE",
+      "ASTER",
+      "1137977186657",
+      false
+     ],
+     [
+      "LINK",
+      "ASTER",
+      "5069611349823",
+      false
+     ],
+     [
+      "UNI",
+      "ASTER",
+      "422919884912",
+      false
+     ],
+     [
+      "ENA",
+      "ASTER",
+      "687309185380",
+      false
+     ],
+     [
+      "AAVE",
+      "ASTER",
+      "1045118013630",
+      false
+     ],
+     [
+      "ONDO",
+      "ASTER",
+      "330335420981",
+      false
+     ],
+     [
+      "SKY",
+      "ASTER",
+      "158379970664",
+      false
+     ],
+     [
+      "MORPHO",
+      "ASTER",
+      "466843991003",
+      false
+     ],
+     [
+      "JST",
+      "ASTER",
+      "552980204071",
+      false
+     ],
+     [
+      "JUP",
+      "ASTER",
+      "224697435320",
+      false
+     ],
+     [
+      "CAKE",
+      "ASTER",
+      "216030214225",
+      false
+     ],
+     [
+      "AERO",
+      "ASTER",
+      "66964566199",
+      false
+     ],
+     [
+      "ETHFI",
+      "ASTER",
+      "65395900029",
+      false
+     ],
+     [
+      "PYTH",
+      "ASTER",
+      "53594005860",
+      false
+     ]
+    ]
+   }
+  },
+  "qai": {
+   "source": "keeper/plans/qai/2026-10-01.json (builder plan, block 37499178, generated 2026-10-01T08:44:56.439Z)",
+   "policy": {
+    "tolerancePoints": 5,
+    "capMaxWeight": 0.35,
+    "qualityCap": null,
+    "sleeve": false,
+    "duration": 1800,
+    "minTradeUsd": 1,
+    "fill": "fair",
+    "firstPriceTolBps": 200,
+    "refDriftTolBps": 500
+   },
+   "rows": [
+    {
+     "symbol": "TAO",
+     "address": "0x44fF37Ef6Ff714E77630d715A0969db1977a7cEb",
+     "decimals": 11,
+     "balance": "107670212567381",
+     "ref": "3054700000",
+     "targetWeight": 0.1932830117684603,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "VVV",
+     "address": "0xf4A8b84D459B7Cf0cf586Dc87ea564b571E5aA1F",
+     "decimals": 10,
+     "balance": "54058208088749",
+     "ref": "2765000000",
+     "targetWeight": 0.07432193154392355,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "AKE",
+     "address": "0xe4e80bCa8D96bA5bDA3AC27F1D68eE7E49588fFc",
+     "decimals": 7,
+     "balance": "25671527659959",
+     "ref": "3238068000",
+     "targetWeight": 0.07776389158389924,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "RENDER",
+     "address": "0x2eB321948717C2481a437Ea11CcAb052c433C51D",
+     "decimals": 9,
+     "balance": "58480219448232",
+     "ref": "1900000000",
+     "targetWeight": 0.05485054414973318,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "VIRTUAL",
+     "address": "0x072b0BAB1397dE3b3193617ae3dD61a9c04Ea928",
+     "decimals": 8,
+     "balance": "7404909456329",
+     "ref": "8034280000",
+     "targetWeight": 0.05565536882905314,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "FET",
+     "address": "0xcb6aeA59876E3059F2f9518F421db8B1BDbb4972",
+     "decimals": 8,
+     "balance": "25952371536374",
+     "ref": "2334860000",
+     "targetWeight": 0.05668631131498145,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "UB",
+     "address": "0xacc4B3083f76888afE4C1a0FCc09a52d2f0Af329",
+     "decimals": 8,
+     "balance": "27913851730463",
+     "ref": "1485530000",
+     "targetWeight": 0.03879194034749367,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "GRASS",
+     "address": "0xf57E67f92679587fF8E09cC7634661aECDD708eF",
+     "decimals": 8,
+     "balance": "7620538532903",
+     "ref": "6957140000",
+     "targetWeight": 0.04959714957309413,
+     "isAdd": false,
+     "isRemove": false
+    },
+    {
+     "symbol": "GRT",
+     "address": "0x8BB34857ffF580158357102fa96bB0931e07E373",
+     "decimals": 7,
+     "balance": "12291676087315",
+     "ref": "2896676000",
+     "targetWeight": 0,
+     "isAdd": false,
+     "isRemove": true
+    },
+    {
+     "symbol": "AKT",
+     "address": "0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634",
+     "decimals": 8,
+     "balance": "3353542608629",
+     "ref": "6550920000",
+     "targetWeight": 0,
+     "isAdd": false,
+     "isRemove": true
+    },
+    {
+     "symbol": "NEAR",
+     "address": "0x0000000000000000000000000000000000000001",
+     "decimals": 9,
+     "balance": "0",
+     "ref": "5220000000",
+     "targetWeight": 0.2963193503426578,
+     "isAdd": true,
+     "isRemove": false
+    },
+    {
+     "symbol": "ICP",
+     "address": "0x0000000000000000000000000000000000000002",
+     "decimals": 9,
+     "balance": "0",
+     "ref": "3310000000",
+     "targetWeight": 0.10273050054670363,
+     "isAdd": true,
+     "isRemove": false
+    }
+   ],
+   "present": {
+    "traded": [
+     "TAO",
+     "VVV",
+     "RENDER",
+     "GRT",
+     "AKT",
+     "NEAR",
+     "ICP"
+    ],
+    "trades": [
+     [
+      "TAO",
+      "NEAR",
+      "50925114950813",
+      false
+     ],
+     [
+      "VVV",
+      "NEAR",
+      "29952212073631",
+      false
+     ],
+     [
+      "RENDER",
+      "NEAR",
+      "14402655896382",
+      false
+     ],
+     [
+      "RENDER",
+      "ICP",
+      "18187651952083",
+      false
+     ],
+     [
+      "GRT",
+      "ICP",
+      "12291676087315",
+      true
+     ],
+     [
+      "AKT",
+      "ICP",
+      "3353542608629",
+      true
+     ]
+    ]
+   },
+   "block": {
+    "traded": [
+     "TAO",
+     "VVV",
+     "AKE",
+     "RENDER",
+     "VIRTUAL",
+     "FET",
+     "UB",
+     "GRASS",
+     "GRT",
+     "AKT",
+     "NEAR",
+     "ICP"
+    ],
+    "trades": [
+     [
+      "TAO",
+      "NEAR",
+      "47891758029699",
+      false
+     ],
+     [
+      "VVV",
+      "NEAR",
+      "28663605781039",
+      false
+     ],
+     [
+      "RENDER",
+      "NEAR",
+      "28631368214335",
+      false
+     ],
+     [
+      "RENDER",
+      "ICP",
+      "2574972633593",
+      false
+     ],
+     [
+      "GRT",
+      "ICP",
+      "12291676087315",
+      true
+     ],
+     [
+      "AKT",
+      "ICP",
+      "3353542608629",
+      true
+     ],
+     [
+      "AKE",
+      "ICP",
+      "2982724624249",
+      false
+     ],
+     [
+      "FET",
+      "ICP",
+      "3015355610580",
+      false
+     ],
+     [
+      "VIRTUAL",
+      "ICP",
+      "860361330237",
+      false
+     ],
+     [
+      "GRASS",
+      "ICP",
+      "885415424772",
+      false
+     ],
+     [
+      "UB",
+      "ICP",
+      "3243255802717",
+      false
+     ]
+    ]
+   }
+  },
+  "triens": {
+   "source": "keeper/plans/triens/2026-10-01.json (builder plan, block 37499187, generated 2026-10-01T08:45:05.808Z)",
+   "policy": {
+    "tolerancePoints": 5,
+    "capMaxWeight": null,
+    "qualityCap": 0.35,
+    "sleeve": true,
+    "duration": 1800,
+    "minTradeUsd": 1,
+    "fill": "fair",
+    "firstPriceTolBps": 200,
+    "refDriftTolBps": 500
+   },
+   "rows": [
+    {
+     "symbol": "WC",
+     "address": "0x942962DaB257d0f192144a231068442E183e5686",
+     "decimals": 9,
+     "balance": "464029109221647",
+     "ref": "1000982315",
+     "targetWeight": 0.4676482137599726,
+     "isAdd": false,
+     "isRemove": false,
+     "sleeve": "workingCapital"
+    },
+    {
+     "symbol": "BTC",
+     "address": "0xB2Ad35fd230dD543Df2EA9706B4D5cb0e24554d4",
+     "decimals": 13,
+     "balance": "35035678101157",
+     "ref": "8323100000",
+     "targetWeight": 0.2935913760839659,
+     "isAdd": false,
+     "isRemove": false,
+     "sleeve": "monetary"
+    },
+    {
+     "symbol": "HYPE",
+     "address": "0x03519f0E8b46b234cc364af2234Dc3BCA7592B89",
+     "decimals": 10,
+     "balance": "9011564792273",
+     "ref": "8890000000",
+     "targetWeight": 0.07826920938854373,
+     "isAdd": false,
+     "isRemove": false,
+     "sleeve": "quality"
+    },
+    {
+     "symbol": "TRX",
+     "address": "0xc5fA80B3A633049f5175412DdFaCa10e9B4D2301",
+     "decimals": 8,
+     "balance": "23284663176497",
+     "ref": "3375490000",
+     "targetWeight": 0.07678842093570401,
+     "isAdd": false,
+     "isRemove": false,
+     "sleeve": "quality"
+    },
+    {
+     "symbol": "SKY",
+     "address": "0x92D3046E9a0Ba5d8714EC7aa5770fe18eeb668Ce",
+     "decimals": 7,
+     "balance": "2917625094579",
+     "ref": "7746500000",
+     "targetWeight": 0.022081267980029837,
+     "isAdd": false,
+     "isRemove": false,
+     "sleeve": "quality"
+    },
+    {
+     "symbol": "CAKE",
+     "address": "0x5915A00ceF914111B52E73C5a9a9Fd0FBaE9c7D4",
+     "decimals": 9,
+     "balance": "7186052439865",
+     "ref": "2580000000",
+     "targetWeight": 0.018113362540183385,
+     "isAdd": false,
+     "isRemove": false,
+     "sleeve": "quality"
+    },
+    {
+     "symbol": "UNI",
+     "address": "0x43DE3Be40dDFE9E21b4F1cC51F829b7C5903C277",
+     "decimals": 9,
+     "balance": "1703489303954",
+     "ref": "8900000000",
+     "targetWeight": 0.014812163649730939,
+     "isAdd": false,
+     "isRemove": false,
+     "sleeve": "quality"
+    },
+    {
+     "symbol": "BNB",
+     "address": "0x2A21b8cF3f260Bb71C70625ACafdfc96c39567f8",
+     "decimals": 11,
+     "balance": "945568638978",
+     "ref": "7641800000",
+     "targetWeight": 0.007059563729718693,
+     "isAdd": false,
+     "isRemove": false,
+     "sleeve": "quality"
+    },
+    {
+     "symbol": "PENDLE",
+     "address": "0x11C8823899AF4Bc575B2ADEF0A22B788574fC554",
+     "decimals": 9,
+     "balance": "2986240860158",
+     "ref": "2430000000",
+     "targetWeight": 0.0070895743775929694,
+     "isAdd": false,
+     "isRemove": false,
+     "sleeve": "quality"
+    },
+    {
+     "symbol": "RAY",
+     "address": "0x43901cE3E49252e57d490D54Ef74692F134E572d",
+     "decimals": 9,
+     "balance": "4197328294496",
+     "ref": "1900000000",
+     "targetWeight": 0.0077914000990144915,
+     "isAdd": false,
+     "isRemove": false,
+     "sleeve": "quality"
+    },
+    {
+     "symbol": "AERO",
+     "address": "0x0000000000000000000000000000000000000001",
+     "decimals": 8,
+     "balance": "0",
+     "ref": "8013820000",
+     "targetWeight": 0.006755447455543529,
+     "isAdd": true,
+     "isRemove": false,
+     "sleeve": "quality"
+    }
+   ],
+   "present": {
+    "traded": [
+     "AERO"
+    ],
+    "trades": []
+   },
+   "block": {
+    "traded": [
+     "HYPE",
+     "TRX",
+     "SKY",
+     "CAKE",
+     "UNI",
+     "BNB",
+     "PENDLE",
+     "RAY",
+     "AERO"
+    ],
+    "trades": [
+     [
+      "HYPE",
+      "AERO",
+      "254971894820",
+      false
+     ],
+     [
+      "TRX",
+      "AERO",
+      "658814165403",
+      false
+     ],
+     [
+      "SKY",
+      "AERO",
+      "82550719524",
+      false
+     ],
+     [
+      "CAKE",
+      "AERO",
+      "203320871906",
+      false
+     ],
+     [
+      "UNI",
+      "AERO",
+      "48197866938",
+      false
+     ],
+     [
+      "RAY",
+      "AERO",
+      "118758683812",
+      false
+     ],
+     [
+      "PENDLE",
+      "AERO",
+      "84491730017",
+      false
+     ],
+     [
+      "BNB",
+      "AERO",
+      "26753442762",
+      false
+     ]
+    ]
+   }
+  }
+ }
+}
