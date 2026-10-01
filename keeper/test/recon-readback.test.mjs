@@ -15,7 +15,7 @@ import path from 'node:path';
 import { getAddress } from 'viem';
 import { savePlan, loadPlan, toRefPrice, readVault } from '../basket-plan.mjs';
 import { READ_TIMING } from '../readback.mjs';
-import { stageAnnounce, stageExecute, stageFirstPrices, settleSent, reconcileSession, runTrade, call } from '../basket-recon.mjs';
+import { stageAnnounce, stageExecute, stageFirstPrices, stageAuctions, settleSent, reconcileSession, runTrade, call } from '../basket-recon.mjs';
 import { FakeChain, ZERO32 } from './fake-chain.mjs';
 
 READ_TIMING.stepMs = 2; // the bound stays 30 s of fake waits; each wait is 2 ms here
@@ -391,6 +391,36 @@ test('fills: a fill whose receipt never came — the re-run settles it from plan
   const r = loadPlan(f).fills[0];
   assert.deepEqual([r.seq, r.fillTx, r.adopted, r.factorBps], [1, hash, true, 10_005]);
   assert.equal(chain.sent.at(-1).hash, hash, 'nothing sent: the auction is closed, no orphan to cancel');
+});
+
+test('auctions stage re-run on a lagging node: the fill an earlier run made but did not record is NOT traded again; its orphan-free session goes on with the rest', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, trades: [T1, T2] }));
+  const { fillTx } = earlierFill(chain, { sell: AAA, buy: ASTER, amount: 100n * 10n ** 8n });
+  // …and an auction it opened for #2 and never filled.
+  chain.send(OWNER, { address: V, functionName: 'openAuction', args: [CRV, BBB, 4_000n * 10n ** 8n, 1800n] });
+  const orphan = BigInt(chain.head.state.auctions.length - 1);
+  const n0 = chain.sent.length;
+  // A dry run first: it says what it would record and cancel, and plans no auction for #1.
+  const dry = ctxFor(chain, f, { live: false });
+  await stageAuctions(dry);
+  assert.equal(chain.sent.length, n0, 'a dry run sends nothing');
+  assert.equal(loadPlan(f).fills.length, 0, 'and writes nothing');
+  assert.ok(dry.lines.some((l) => /would record a fill .* planned #1, not traded again/.test(l)));
+  assert.ok(dry.lines.some((l) => /would open auction #2/.test(l)) && !dry.lines.some((l) => /would open auction #1/.test(l)));
+  chain.lagReads = 3;
+  const ctx = ctxFor(chain, f);
+  await stageAuctions(ctx);
+  const after = chain.sent.slice(n0).map((x) => `${x.functionName}(${x.args.map(String).join(',')})`);
+  assert.equal(after[0], `cancelAuction(${orphan})`, 'the orphan first');
+  assert.equal(after.filter((x) => x.startsWith(`openAuction(${AAA}`)).length, 0, '#1 is not opened again');
+  assert.deepEqual(after.filter((x) => x.startsWith('openAuction')).map((x) => x.split(',')[0]), [`openAuction(${CRV}`]);
+  assert.ok(after.at(-1).startsWith(`finalizeRemoval(${CRV}`));
+  const p = loadPlan(f);
+  assert.deepEqual(p.fills.map((x) => [x.seq, x.adopted ?? false]), [[1, true], [2, false]]);
+  assert.equal(p.fills[0].fillTx, fillTx);
+  assert.deepEqual(p.finalize.map((x) => x.symbol), ['CRV']);
 });
 
 test('orphans: an auction an earlier run opened and never filled is cancelled before anything is opened (dry run: printed only)', async () => {
