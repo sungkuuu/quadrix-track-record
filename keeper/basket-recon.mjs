@@ -833,14 +833,17 @@ async function liveRows(ctx, v) {
 export const VERIFY_FIXED_POINTS = null;
 
 /**
- * How far a traded name can sit from its trade target after fills inside
- * the fair window, as a weight (planner spec §4):
- *   window × (bought_i + aim_i × bought) / V  +  (n × $1 + k × maxRef) / V
- * window — the fill policy's fair window (--fair-window-bps, 10 bp): a fill
- * at factor f pays (f − 10,000)/10,000 more of the buy asset than fair, so
- * the name bought gains and every name's share of the larger vault shrinks;
- * bought_i / bought — value the plan's fills put into the name / into all
- * names, at today's references; n — traded names (each matching step of the
+ * How far a traded name can sit from its trade target after the session's
+ * fills, as a weight (planner spec §4):
+ *   (Σ_f→i e_f·v_f + aim_i × Σ_f e_f·v_f) / V  +  (n × $1 + k × maxRef) / V
+ * v_f — the value a fill put into its buy asset, at today's references; e_f
+ * — that fill's distance from fair, |factor − 10,000| / 10,000, never less
+ * than the fair window (--fair-window-bps, 10 bp): a fill at factor f pays
+ * (f − 10,000)/10,000 more (or less) of the buy asset than fair, so the name
+ * bought gains and every name's share of the larger vault shrinks. For fair
+ * fills this is the spec's window × (bought_i + aim_i × bought) / V; a
+ * remnant filled at the open, or a session run with --fill open / natural,
+ * is bounded by its own factor. n — traded names (each matching step of the
  * planner leaves at most the $1 trade minimum unmatched on a name, and there
  * are fewer steps than traded names); k × maxRef — one base unit per fill
  * from rounding; V — the vault's value now.
@@ -848,22 +851,23 @@ export const VERIFY_FIXED_POINTS = null;
 export function residualBound(ctx, rows) {
   const total = rows.reduce((t, r) => t + Number(r.balance * r.ref), 0);
   const traded = new Set(ctx.plan.targets.filter((t) => t.traded).map((t) => t.symbol));
-  const windowFrac = (ctx.o?.fairWindowBps ?? 10) / 10_000;
+  const windowBps = ctx.o?.fairWindowBps ?? 10;
   const refOf = Object.fromEntries(rows.map((r) => [r.symbol, r.ref]));
-  const bought = {};
-  let boughtAll = 0;
+  const excess = {}; // Σ e_f·v_f per buy asset
+  let excessAll = 0;
   const fills = ctx.plan.fills ?? [];
   for (const f of fills) {
     const ref = refOf[f.buy];
     if (ref == null) continue;
-    const v = Number(big(f.buyPaid) * ref);
-    bought[f.buy] = (bought[f.buy] ?? 0) + v;
-    boughtAll += v;
+    const e = Math.max(windowBps, Math.abs(Number(f.factorBps ?? 10_000) - 10_000)) / 10_000;
+    const ev = e * Number(big(f.buyPaid) * ref);
+    excess[f.buy] = (excess[f.buy] ?? 0) + ev;
+    excessAll += ev;
   }
   const n = rows.filter((r) => traded.has(r.symbol) || r.isRemove).length;
   const maxRef = rows.reduce((m, r) => (r.ref > m ? r.ref : m), 0n);
   const slack = total > 0 ? (n * Number(minTradeValue(ctx.plan)) + fills.length * Number(maxRef)) / total : 0;
-  return (r) => (total > 0 ? (windowFrac * ((bought[r.symbol] ?? 0) + Math.max(0, r.targetWeight) * boughtAll)) / total : 0) + slack;
+  return (r) => (total > 0 ? ((excess[r.symbol] ?? 0) + Math.max(0, r.targetWeight) * excessAll) / total : 0) + slack;
 }
 
 export function residual(ctx, rows) {
