@@ -54,6 +54,7 @@ export class FakeChain {
     this.receiptFails = 0; // waitForTransactionReceipt throws this many times
     this.receiptHidden = new Set(); // hashes whose receipt is "not found"
     this.reads = 0;
+    this.inFlight = {}; // address(lower) → transactions sent but not mined (pending nonce − latest)
     this.sent = [];
     this.timeOffset = 0n;
     const state = {
@@ -316,6 +317,10 @@ export class FakeChain {
         const r = self.receipts.get(lc(hash));
         if (!r) { const e = new Error(`Transaction receipt with hash "${hash}" could not be found.`); e.name = 'TransactionReceiptNotFoundError'; throw e; }
         return r;
+      },
+      async getTransactionCount({ address, blockTag }) {
+        const mined = self.sent.filter((x) => x.from.toLowerCase() === String(address).toLowerCase()).length;
+        return blockTag === 'pending' ? mined + (self.inFlight[String(address).toLowerCase()] ?? 0) : mined;
       },
       async getTransaction({ hash }) { const t = self.txs.get(lc(hash)); if (!t) throw new Error('tx not found'); return t; },
       async getLogs({ address, fromBlock, toBlock, event }) {

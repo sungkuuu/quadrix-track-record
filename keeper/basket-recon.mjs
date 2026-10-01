@@ -436,6 +436,25 @@ export async function settleSent(ctx, { waitMs } = {}) {
   if (changed && ctx.live) savePlan(ctx.planFile, ctx.plan);
 }
 
+/**
+ * A live run refuses while a signer has a transaction that is sent but not
+ * mined (pending nonce above the latest): an earlier run may have sent it and
+ * lost its `sent` entry — a cancelled workflow run does not commit the plan
+ * file — and acting before it lands is how a trade happens twice. Wait for it
+ * to be mined (or replaced) and re-run; the chain-side reconciliation then
+ * sees it. The keeper key is shared with the crons, which never run at the
+ * same time (the `keeper-key` concurrency group).
+ */
+export async function requireNothingPending(ctx) {
+  for (const addr of [...new Set([ctx.keeperAddr, ctx.bidderAddr])]) {
+    const [mined, pending] = await Promise.all([
+      ctx.pc.getTransactionCount({ address: addr, blockTag: 'latest' }),
+      ctx.pc.getTransactionCount({ address: addr, blockTag: 'pending' }),
+    ]);
+    if (pending > mined) throw new Refused(`${pending - mined} transaction(s) from ${addr} are sent but not mined yet (nonce: latest ${mined}, pending ${pending}) — an earlier run may have sent them and lost its "sent" list (a cancelled workflow run does not commit the plan file). Wait until they are mined or replaced, then re-run.`);
+  }
+}
+
 /** Receipts of this plan's successful `sent` entries whose `what` matches. */
 async function sentReceipts(ctx, re) {
   const out = [];
@@ -1358,8 +1377,10 @@ async function main() {
   const o = parseArgs(process.argv.slice(2));
   const ctx = await makeCtx(o);
   // A re-run first settles what an earlier run sent (plan.sent) and reads
-  // at or after the blocks it recorded.
+  // at or after the blocks it recorded; a live run then refuses while a
+  // signer still has a transaction in flight.
   await settleSent(ctx);
+  if (ctx.live) await requireNothingPending(ctx);
   const run = async (stage, fn) => { ctx.o.stage = stage; ctx.log(`— ${stage} —`); await fn(ctx); };
   switch (o.stage) {
     case 'announce': return stageAnnounce(ctx);

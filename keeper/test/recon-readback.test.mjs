@@ -15,7 +15,7 @@ import path from 'node:path';
 import { getAddress } from 'viem';
 import { savePlan, loadPlan, toRefPrice, readVault } from '../basket-plan.mjs';
 import { READ_TIMING } from '../readback.mjs';
-import { stageAnnounce, stageExecute, stageFirstPrices, stageAuctions, stageFinalize, stageVerify, settleSent, reconcileSession, runTrade, call } from '../basket-recon.mjs';
+import { stageAnnounce, stageExecute, stageFirstPrices, stageAuctions, stageFinalize, stageVerify, settleSent, requireNothingPending, reconcileSession, runTrade, call } from '../basket-recon.mjs';
 import { FakeChain, ZERO32 } from './fake-chain.mjs';
 
 READ_TIMING.stepMs = 2; // the bound stays 30 s of fake waits; each wait is 2 ms here
@@ -204,6 +204,14 @@ test('settleSent: an entry without a receipt is REFUSED with the hash and what t
   await settleSent(ctx);
   assert.equal(loadPlan(f).sent[0].status, 'success');
   assert.equal(ctx.floor, chain.head.number);
+});
+
+test('a live run refuses while the signer has a transaction sent but not mined (a cancelled run that lost its sent list)', async () => {
+  const chain = newChain();
+  const f = planOn(chain);
+  await requireNothingPending(ctxFor(chain, f)); // nothing in flight: passes
+  chain.inFlight[OWNER.toLowerCase()] = 1;
+  await assert.rejects(requireNothingPending(ctxFor(chain, f)), (e) => isRefused(e) && /1 transaction\(s\) from 0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902 are sent but not mined yet/.test(e.message));
 });
 
 // ======================================================== execute & prices

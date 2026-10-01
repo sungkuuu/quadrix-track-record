@@ -423,7 +423,11 @@ settles the plan's `sent` entries that have no receipt: mined → completed, and
 its block raises the run's read floor; no receipt → **REFUSED** with the hash
 ("look the hash up on chain …; if it was dropped, set `"status": "dropped"` on
 that entry and re-run") — nothing is done while an earlier transaction may
-still land. Then, per stage:
+still land. A live run also **refuses while a signer has a transaction sent
+but not mined** (pending nonce above the latest): a workflow run that was
+*cancelled* does not commit its plan file, so its `sent` list is lost, and
+this keeps the re-run from acting before that transaction lands; once it is
+mined the chain-side records below pick it up. Then, per stage:
 
 | Stopped right after | A re-run |
 | --- | --- |
