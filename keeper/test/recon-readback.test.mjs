@@ -211,7 +211,13 @@ test('a live run refuses while the signer has a transaction sent but not mined (
   const f = planOn(chain);
   await requireNothingPending(ctxFor(chain, f)); // nothing in flight: passes
   chain.inFlight[OWNER.toLowerCase()] = 1;
-  await assert.rejects(requireNothingPending(ctxFor(chain, f)), (e) => isRefused(e) && /1 transaction\(s\) from 0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902 are sent but not mined yet/.test(e.message));
+  await assert.rejects(requireNothingPending(ctxFor(chain, f), { waitMs: 20 }), (e) => isRefused(e) && /1 transaction\(s\) from 0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902 are sent but not mined yet/.test(e.message));
+  // A transaction that is mined while the run asks again is not a refusal.
+  let asks = 0;
+  const ctx = ctxFor(chain, f);
+  const real = ctx.pc.getTransactionCount;
+  ctx.pc = { ...ctx.pc, getTransactionCount: async (q) => { if (q.blockTag === 'pending' && ++asks === 2) chain.inFlight = {}; return real(q); } };
+  await requireNothingPending(ctx, { waitMs: 200 });
 });
 
 // ======================================================== execute & prices

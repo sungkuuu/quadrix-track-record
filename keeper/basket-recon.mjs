@@ -445,13 +445,24 @@ export async function settleSent(ctx, { waitMs } = {}) {
  * sees it. The keeper key is shared with the crons, which never run at the
  * same time (the `keeper-key` concurrency group).
  */
-export async function requireNothingPending(ctx) {
+export async function requireNothingPending(ctx, { waitMs = 15_000 } = {}) {
   for (const addr of [...new Set([ctx.keeperAddr, ctx.bidderAddr])]) {
-    const [mined, pending] = await Promise.all([
-      ctx.pc.getTransactionCount({ address: addr, blockTag: 'latest' }),
-      ctx.pc.getTransactionCount({ address: addr, blockTag: 'pending' }),
-    ]);
-    if (pending > mined) throw new Refused(`${pending - mined} transaction(s) from ${addr} are sent but not mined yet (nonce: latest ${mined}, pending ${pending}) — an earlier run may have sent them and lost its "sent" list (a cancelled workflow run does not commit the plan file). Wait until they are mined or replaced, then re-run.`);
+    let last = null;
+    try {
+      // Asked again for up to 15 s: one lagging node can answer `latest`
+      // from before a transaction that another node already counts.
+      await retryRead(async () => {
+        const [mined, pending] = await Promise.all([
+          ctx.pc.getTransactionCount({ address: addr, blockTag: 'latest' }),
+          ctx.pc.getTransactionCount({ address: addr, blockTag: 'pending' }),
+        ]);
+        last = { mined, pending };
+        if (pending > mined) throw new Error('in flight');
+      }, { what: `nonces of ${addr}`, waitMs });
+    } catch (e) {
+      if (!last || last.pending <= last.mined) throw e;
+      throw new Refused(`${last.pending - last.mined} transaction(s) from ${addr} are sent but not mined yet (nonce: latest ${last.mined}, pending ${last.pending}, for ${(waitMs / 1000).toFixed(0)} s) — an earlier run may have sent them and lost its "sent" list (a cancelled workflow run does not commit the plan file). Wait until they are mined or replaced, then re-run.`);
+    }
   }
 }
 
