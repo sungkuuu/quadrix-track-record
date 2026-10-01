@@ -19,7 +19,7 @@
  *   verify) with the bidder as a separate account → checks
  *
  * and, from a snapshot taken just before day 7 (anvil evm_snapshot/revert),
- * the acceptance criteria of option K (Fable review 2026-10-01 §2.7):
+ * the acceptance criteria of option K (review of 2026-10-01, §2.7):
  *   ① one base unit donated in window 1 (after the drain auction is read and
  *     opened, before the fill) → finalized in the same run
  *   ② a donation between the drain fill and the finalize, three times → the

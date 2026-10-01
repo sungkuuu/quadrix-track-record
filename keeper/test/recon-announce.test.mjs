@@ -1,5 +1,5 @@
 /**
- * Announce-stage checks (Fable review 2026-10-01 §6-1): a duplicate address in
+ * Announce-stage checks (review of 2026-10-01, §6-1): a duplicate address in
  * the tuple is accepted by announceRegistryChange and refused by
  * executeRegistryChange for good, and a wrong mock address shows up as a
  * chain symbol that is not m{SYMBOL}. Both refuse before anything is sent.
