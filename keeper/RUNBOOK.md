@@ -445,14 +445,17 @@ node can be stale; a send it refuses as "nonce too low" is retried by
 without a receipt (REFUSED on the next run until it is looked up).
 
 **Rehearsal.** `node keeper/test/rehearse-readback.mjs --date <today> --index
-qdefi --main-recon <basket-recon.mjs as on main>` forks GIWA Sepolia, runs
-announce → 7 days → re-plan → mark → day7 (the keeper bids) once through the
-anvil and once through `keeper/test/lag-proxy.mjs` (after every receipt the
-next reads of each read method come from a node one block behind: stale,
-empty, not found, in turn), with block times fixed, and requires the same
-plan records, the same mined transactions and the same vault state; the tool
-on main through the same proxy loses the announcement, and on a clean node
-sends exactly what this tool sends. Unit tests: `node --test keeper/test/*.test.mjs`
+qdefi --main-recon <basket-recon.mjs as on main> --stop-variant` forks GIWA
+Sepolia and runs announce → 7 days → re-plan → mark → day7 (the keeper bids)
+through `keeper/test/lag-proxy.mjs`, once with no lag and once lagging (after
+every receipt the next reads of each read method come from a node one block
+behind: stale, empty, not found, in turn), with block times fixed, and
+requires the same plan records, the same mined transactions and the same
+vault state. The tool on main through the same lagging proxy loses the
+announcement, and with no lag it sends exactly what this tool sends.
+`--stop-variant` adds a node that goes dark for 40 s right after the fill's
+receipt (the run stops, fill recorded) and a re-run on the clean node, which
+must finish with the same transactions and vault state as the clean run. Unit tests: `node --test keeper/test/*.test.mjs`
 (`readback-helpers`, `recon-readback`, `set-bidder-readback`).
 
 ## Sleeve indexes — Barbell and Triens (added 2026-09-22, not running)
