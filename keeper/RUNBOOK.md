@@ -300,6 +300,33 @@ the vault follows over the week, and the gap is a stated tracking difference.
 
 Every tool is a dry run unless `live` is ticked and `confirm` is `EXECUTE`.
 
+- **What a session trades (block rule, planner change of 2026-10-01).** The
+  book re-weights every name of a block when it trades any of them, so the
+  plan does too: an add, a removal not yet in removal on chain, a name 5
+  points or more off its book weight, or a name over the cap while its book
+  weight is not, makes every name of its block trade to the book's weight —
+  the whole basket for qX20, qREV, qDEFI, qAI; the Quality sleeve for Triens
+  unless the sleeves reset (then every name). The block's own value pays for
+  the entering names. A remnant already in removal does not open a block.
+  Expect more auctions than before (2026-10-01 plans: 22 · 14 · 15 · 11 · 8
+  for qX20 · qREV · qDEFI · qAI · qTRI), about 20 minutes each one at a time.
+- **Order on the day: mark, then plan, then the session.** The plan sizes
+  every auction at the references on chain (`chainRefAtPlan` per name; the
+  day's market price stays in `planRefPrice` for the 5% guard). The auctions
+  stage refuses if any reference moved since the plan ("regenerate the
+  plan"): let the daily run finish, run `plan`, then `day7` right after; if
+  it refuses, run `plan` again and dispatch again.
+- **Verification.** A traded name passes when it is within the bound fair
+  fills allow of its trade target — fair window × (value bought into it + its
+  weight × all bought) / vault value + traded names × $1 / vault value
+  (`residualBound` in `basket-recon.mjs`) — not within the 5-point tolerance,
+  which let a whole entering name through.
+- **Resuming after execute.** A plan made after the registry change was
+  executed (the manual path under "Someone else executed") sees no add; tick
+  `reweight_block` on the plan stage (`--reweight-block`) so the session
+  still trades the block to the book. The flag is written to the plan's
+  notes.
+
 - **Mocks.** One mock per entering name *and basket* — the deployed convention
   (no two vaults share a mock; NEAR entering three baskets gets three). The
   output `keeper/mocks/{date}.json` is keyed by index and is what the plan

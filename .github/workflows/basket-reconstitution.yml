@@ -22,8 +22,10 @@ name: basket-reconstitution
 # first-prices and auctions refuse a plan not generated today, and day7
 # checks that BEFORE it sends execute, so a stale plan stops the run instead
 # of executing and then refusing. Schedule the plan right after the daily
-# mark (paper-index, 00:25 UTC): the auctions stage refuses when a chain
-# reference is more than 5% from the plan's price.
+# mark (paper-index, 00:25 UTC) and day7 right after the plan: the plan sizes
+# every auction at the references on chain, and the auctions stage refuses
+# when a reference moved since the plan (regenerate the plan) or is more than
+# 5% from the day's market price.
 #
 # The plan file (keeper/plans/{index}/{date}.json) is the work order and the
 # log: announce/execute tx hashes, first posts and fills are appended to it,
@@ -67,6 +69,10 @@ on:
         description: 'plan stage only: repo path of the deployed mocks — keeper/mocks/{date}.json from basket-recon-setup (keyed by index), or a flat {SYMBOL: {address, decimals}} file'
         required: false
         default: ''
+      reweight_block:
+        description: 'plan stage only: trade every block to the book although nothing is marked — only to resume a session whose registry change was already executed (written to the plan notes)'
+        type: boolean
+        default: false
       duration:
         description: 'plan stage only: auction duration in seconds. The fair-fill window is duration/30 s wide (1800 → 60 s, the setting for the public chain, where three transactions must be mined inside it; 900 → 30 s); the runner gives up after 3 missed windows. Keep the value the anchored decision document states.'
         required: false
@@ -90,6 +96,7 @@ env:
   DECISION: ${{ inputs.decision }}
   MOCKS: ${{ inputs.mocks }}
   DURATION: ${{ inputs.duration }}
+  REWEIGHT_BLOCK: ${{ inputs.reweight_block }}
   RPC: ${{ inputs.rpc }}
 
 jobs:
@@ -127,6 +134,7 @@ jobs:
           args=(--index "$INDEX" --rpc "$RPC" --duration "${DURATION:-1800}")
           [ -n "$DECISION" ] && args+=(--decision "$DECISION")
           [ -n "$MOCKS" ] && args+=(--mocks "$MOCKS")
+          [ "$REWEIGHT_BLOCK" = "true" ] && args+=(--reweight-block)
           node keeper/basket-plan.mjs "${args[@]}" 2>&1 | tee recon.log
         env:
           # Source A of the plan; the keyless endpoint answers 403 from the
