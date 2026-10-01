@@ -42,6 +42,15 @@ const body = fs.readFileSync(abs);
 const sha256 = crypto.createHash('sha256').update(body).digest('hex');
 const id = path.basename(abs, '.md');
 
+// An anchor cannot be undone. A generated draft (keeper/gen-recon-decision.mjs)
+// carries a DRAFT marker, a TO FILL comment and, before the mocks exist,
+// "_to be deployed_" in place of addresses; none of them may be anchored.
+const text = body.toString('utf8');
+const unfinished = [/<!-- DRAFT/, /<!-- TO FILL/, /_to be deployed_/].filter((re) => re.test(text));
+if (unfinished.length) {
+  throw new Error(`${rel} is not final (${unfinished.map(String).join(', ')}) — remove the draft lines and fill what they list before anchoring`);
+}
+
 const existing = fs.existsSync(LEDGER)
   ? fs
       .readFileSync(LEDGER, 'utf8')
