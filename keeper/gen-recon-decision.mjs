@@ -10,11 +10,20 @@
  * before anchoring (the sha256 the announcement carries is the anchored
  * file's, read back from decisions.jsonl; never this draft's).
  *
- * Usage:
- *   node keeper/gen-recon-decision.mjs --index qrev [--date YYYY-MM-DD | --plan p] [--out p] [--force]
+ * Two dates, kept apart: the RECONSTITUTION date is the day the index (the
+ * keeper's book) changed — the work order's date, keeper/pending-registry-
+ * {index}.json — and names the record row the document cites; the DOCUMENT
+ * date is the plan's date, which names the file and becomes `effectiveFrom`
+ * in trackrecord/decisions.jsonl when it is anchored. The live record line
+ * of a day carries every decision effective on or before that day, so a
+ * document must be anchored on the UTC day in its file name, never later
+ * (scripts/anchor-decision.mjs refuses a back-dated file).
  *
- * Default output: trackrecord/decisions/{date}-{index}-basket-reconstitution.md
- * (the path the plan and the pending-registry file both name).
+ * Usage:
+ *   node keeper/gen-recon-decision.mjs --index qrev [--date YYYY-MM-DD | --plan p] [--recon-date YYYY-MM-DD] [--out p] [--force]
+ *
+ * Default output: trackrecord/decisions/{plan date}-{index}-basket-reconstitution.md
+ * (the path the plan names).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,7 +37,7 @@ const flag = (n) => argv.includes(n);
 const opt = (n, d) => { const i = argv.indexOf(n); return i >= 0 && argv[i + 1] != null ? argv[i + 1] : d; };
 const INDEX = opt('--index', null);
 if (!INDEXES.includes(INDEX)) {
-  console.error(`usage: node keeper/gen-recon-decision.mjs --index ${INDEXES.join('|')} [--date YYYY-MM-DD | --plan p] [--out p] [--force]`);
+  console.error(`usage: node keeper/gen-recon-decision.mjs --index ${INDEXES.join('|')} [--date YYYY-MM-DD | --plan p] [--recon-date YYYY-MM-DD] [--out p] [--force]`);
   process.exit(2);
 }
 const planFile = opt('--plan', null) ?? (opt('--date', null) ? planPath(INDEX, opt('--date')) : latestPlan(INDEX));
@@ -38,7 +47,16 @@ if (!planFile || !fs.existsSync(planFile)) {
 }
 const plan = loadPlan(planFile);
 const T = TICKER[INDEX];
-const row = recordRow(INDEX, plan.date);
+// The reconstitution date: --recon-date, else the work order's date, else
+// the plan's (a plan made on the reconstitution day itself).
+const workOrderPath = plan.sources?.pending ? path.join(ROOT, plan.sources.pending) : null;
+const workOrder = workOrderPath && fs.existsSync(workOrderPath) ? JSON.parse(fs.readFileSync(workOrderPath, 'utf8')) : null;
+const RECON_DATE = opt('--recon-date', null) ?? workOrder?.date ?? plan.date;
+if (!/^\d{4}-\d{2}-\d{2}$/.test(RECON_DATE) || RECON_DATE > plan.date) {
+  console.error(`reconstitution date ${RECON_DATE} is not a date on or before the plan's ${plan.date}`);
+  process.exit(1);
+}
+const row = recordRow(INDEX, RECON_DATE);
 const out = opt('--out', path.join(ROOT, plan.decisionFile));
 if (fs.existsSync(out) && !flag('--force')) {
   console.error(`${path.relative(ROOT, out)} exists — pass --force to overwrite the draft`);
@@ -75,7 +93,7 @@ const bookWeight = (sym) => plan.targets.find((t) => t.symbol === sym)?.targetWe
 const rowWeight = (sym) => row?.members?.find((m) => m.symbol === sym)?.weight;
 // qX20 has no record series: its day is the keeper book and the NAV mark.
 const navMark = INDEX === 'qx20' && fs.existsSync(path.join(ROOT, 'keeper', 'nav-marks.jsonl'))
-  ? fs.readFileSync(path.join(ROOT, 'keeper', 'nav-marks.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((m) => String(m.postedAt).slice(0, 10) === plan.date).pop() ?? null
+  ? fs.readFileSync(path.join(ROOT, 'keeper', 'nav-marks.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((m) => String(m.postedAt).slice(0, 10) === RECON_DATE)[0] ?? null
   : null;
 const qx20State = INDEX === 'qx20' && fs.existsSync(path.join(ROOT, 'keeper', 'state.json')) ? JSON.parse(fs.readFileSync(path.join(ROOT, 'keeper', 'state.json'), 'utf8')) : null;
 const unfunded = plan.adds.filter((a) => !plan.trades.some((t) => t.buy === a.symbol));
@@ -85,17 +103,23 @@ lines.push(`<!-- DRAFT — generated ${new Date().toISOString()} by keeper/gen-r
 // What is still open, as a comment outside the document body (deleted with
 // the DRAFT line before anchoring).
 const toFill = [];
-if (plan.adds.some((a) => !a.address)) toFill.push(`mock addresses of ${plan.adds.filter((a) => !a.address).map((a) => a.symbol).join(', ')}: deploy them (basket-recon-setup, task deploy-mocks), re-run the plan stage with mocks=keeper/mocks/${plan.date}.json, then regenerate this draft with --force — the address and decimals columns and the Pinned table come from that plan`);
-if (INDEX !== 'qx20' && !row) toFill.push(`the record row of ${plan.date} (seq, hash): none was present when this draft was generated`);
-if (INDEX === 'qx20' && !navMark) toFill.push(`the qX20 NAV mark of ${plan.date} (keeper/nav-marks.jsonl): none was present`);
+if (plan.adds.some((a) => !a.address)) toFill.push(`mock addresses of ${plan.adds.filter((a) => !a.address).map((a) => a.symbol).join(', ')}: deploy them (basket-recon-setup, task deploy-mocks), re-run the plan stage with mocks=keeper/mocks/${RECON_DATE}.json (the file is named by the work order's date), then regenerate this draft with --force — the address and decimals columns and the Pinned table come from that plan`);
+if (INDEX !== 'qx20' && !row) toFill.push(`the record row of ${RECON_DATE} (seq, hash): none was present when this draft was generated`);
+if (INDEX !== 'qx20' && row && row.reconstituted !== true) toFill.push(`the record row of ${RECON_DATE} is NOT a reconstitution row (reconstituted ${row.reconstituted}) — pass --recon-date with the day the index reconstituted`);
+if (INDEX === 'qx20' && !navMark) toFill.push(`the qX20 NAV mark of ${RECON_DATE} (keeper/nav-marks.jsonl): none was present`);
+if (plan.removes.length) toFill.push(`the two sentences on finalizing a removal (under "What leaves" and the exception under "Auction policy in force") describe option K of the 2026-10-01 review; they stand only if that option is the one chosen for this session — otherwise delete both`);
+toFill.push(`anchor this file on ${plan.date} UTC, the date in its name (it becomes effectiveFrom in the ledger, and the live record line of a day carries every decision effective by then); if that day has passed, regenerate the plan and this draft on the day of anchoring`);
 toFill.push(`after anchoring: trackrecord/decisions.jsonl gives this document's id and sha256 (the plan stage's decision input) and the anchor tx — none of them goes into this document, which is anchored before the announcement exists; the announce tx and the ETA are written to keeper/plans/${INDEX}/<date>.json by the announce stage`);
 lines.push(`<!-- TO FILL / CHECK BEFORE ANCHORING (delete with the line above): ${toFill.map((x, i) => `(${i + 1}) ${x}`).join(' ')} -->`);
-lines.push(`# ${T} basket — registry reconstitution of ${plan.date}`);
+lines.push(`# ${T} basket — registry reconstitution of ${RECON_DATE}`);
 lines.push('');
 const seriesLine = INDEX === 'qx20'
-  ? `the qX20 keeper book (\`keeper/state.json\`${qx20State?.reconstitutedIn ? `, reconstituted for ${qx20State.reconstitutedIn}` : ''}) and its NAV marks (\`keeper/nav-marks.jsonl\`)${navMark ? `; the mark of ${plan.date}: level ${navMark.level}, tx \`${navMark.txHash}\`` : ''}`
+  ? `the qX20 keeper book (\`keeper/state.json\`${qx20State?.reconstitutedIn ? `, reconstituted for ${qx20State.reconstitutedIn}` : ''}) and its NAV marks (\`keeper/nav-marks.jsonl\`)${navMark ? `; the first mark of ${RECON_DATE}, which carried the reconstitution: level ${navMark.level}, tx \`${navMark.txHash}\`${navMark.vault ? ` on the qX20 NAV vault \`${navMark.vault}\`` : ''}` : ''}`
   : `\`trackrecord/record-${INDEX}.jsonl\`${row ? `, row seq ${row.seq} of ${row.date} (hash \`${row.hash}\`, reconstituted ${row.reconstituted === true})` : ''}`;
-lines.push(`**Decided:** ${plan.date}, on the keeper's reconstitution of the same day${plan.keeperRun ? ` (run ${plan.keeperRun.id})` : ''}. **Effective on chain:** announced ${plan.announce ? `${plan.announce.at.slice(0, 10)} (tx \`${plan.announce.txHash}\`)` : 'on the day this document is anchored'}; executable from ${eta} — \`REGISTRY_DELAY\` is ${days} days and is not shortened. **Series:** ${seriesLine}. **Vault:** \`${plan.vault}\` (GIWA Sepolia, chain ${plan.chainId}), \`assetCount\` ${plan.vaultState.assetCount} at block ${plan.block.number}.`);
+// The registry grows by the adds at execute; a removal leaves it only at finalizeRemoval.
+const countAfterExecute = plan.vaultState.assetCount + plan.adds.length;
+const countFinal = plan.vaultState.assetCount + plan.adds.length - plan.removes.length;
+lines.push(`**Decided:** ${plan.date}, on the keeper's reconstitution of ${RECON_DATE === plan.date ? 'the same day' : RECON_DATE}. **Effective on chain:** ${plan.announce ? `announced ${plan.announce.at.slice(0, 10)} (tx \`${plan.announce.txHash}\`)` : 'announced after this document is anchored (the announcement carries its sha256)'}; executable from ${eta} — \`REGISTRY_DELAY\` is ${days} days and is not shortened. **Series:** ${seriesLine}. **Vault:** \`${plan.vault}\` (GIWA Sepolia, chain ${plan.chainId}), \`assetCount\` ${plan.vaultState.assetCount} at block ${plan.block.number}; ${countAfterExecute} once the change is executed${plan.removes.length ? `, ${countFinal} once every removal is finalized` : ''}.`);
 lines.push('');
 lines.push('## What enters');
 lines.push('');
@@ -120,12 +144,12 @@ else {
   lines.push('');
   lines.push('A leaving asset stays in every redemption payout until auctions drain its balance to exactly zero; only then does `finalizeRemoval` drop it, by swap-and-pop, which changes the on-chain order of the remaining assets. The site\'s creation vector must follow `assets(i)`, not the manifest.');
   lines.push('');
-  lines.push(`\`finalizeRemoval\` is called right after the auction that drains the asset. Anything that reaches the vault in between — a transfer from anyone, or the pro-rata slice a creation pays in — is drained again at once (a remainder under $1 is filled at the start of the curve, at most 2% above reference), up to five times; after that the asset is recorded as pending, disclosed, and drained again in a later session. A pending remainder stays in redemption payouts and does not change the record.`);
+  lines.push(`\`finalizeRemoval\` is called right after the auction that drains the asset. Anything that reaches the vault in between — a transfer from anyone, or the pro-rata slice a creation pays in — is drained again at once (a remainder under $1 is filled at the start of the curve, at most 2% above reference), up to five times; after that the asset is recorded as pending in the session's plan file (\`keeper/plans/${INDEX}/\`) and drained again in a later session. A pending remainder stays in redemption payouts and does not change the record.`);
 }
 lines.push('');
 lines.push('## Target weights and the vault today');
 lines.push('');
-lines.push(`"Target (book)" is the keeper's book after the reconstitution, at the plan's prices; "vault" is the vault's holdings at the same prices.${row ? ' "Record row" is the weight the day\'s record row prints, at the record\'s prices; on a reconstitution day the two can differ, because the book keeps a name inside the tolerance at its drifted unit count.' : ''} Rule: a name whose vault weight is within ${plan.policy.tolerancePoints} points of target is not traded${plan.policy.capMaxWeight ? `; any name above the ${pct(plan.policy.capMaxWeight)} cap is always cut` : ''}${plan.policy.sleeve ? '; if any sleeve is outside the tolerance every sleeve resets to target' : ''}.`);
+lines.push(`"Target (book)" is the keeper's book after the reconstitution, at the plan's prices; "vault" is the vault's holdings at the same prices.${row ? ` "Record row" is the weight the record row of ${RECON_DATE} prints, at that row's prices; on a reconstitution day the two can differ, because the book keeps a name inside the tolerance at its drifted unit count.` : ''} Rule: a name whose vault weight is within ${plan.policy.tolerancePoints} points of target is not traded${plan.policy.capMaxWeight ? `; any name above the ${pct(plan.policy.capMaxWeight)} cap is always cut` : ''}${plan.policy.sleeve ? '; if any sleeve is outside the tolerance every sleeve resets to target' : ''}.`);
 lines.push('');
 lines.push(`| Name |${plan.policy.sleeve ? ' Sleeve |' : ''} Target (book) |${row ? ' Record row |' : ''} Vault | Drift | Action | Auctions aim at |`);
 lines.push(`| --- |${plan.policy.sleeve ? ' --- |' : ''} --- |${row ? ' --- |' : ''} --- | --- | --- | --- |`);
@@ -137,12 +161,12 @@ lines.push('"Auctions aim at" is what the trades can reach while the held names 
 lines.push('');
 lines.push('## The seven-day lag');
 lines.push('');
-lines.push(`The paper index reconstituted on ${plan.date}; the record row of that day carries the new membership and weights. The vault cannot: \`announceRegistryChange\` fixes the tuple (adds, removes, this document's sha256) and \`executeRegistryChange\` accepts exactly that tuple only after ${days} days — from ${eta}. Between the two the vault holds the old shape, \`navPerShare\` keeps tracking the index, and redemptions pay the old shape. Only one change can be pending per vault and announcing again restarts the clock, so the tuple above is not to be amended by a second announcement. The tracking difference over the lag week is published, not hidden.`);
+lines.push(`${INDEX === 'qx20' ? `The qX20 book reconstituted on ${RECON_DATE}; the keeper book carries the new membership and weights from that day` : `The paper index reconstituted on ${RECON_DATE}; the record row of that day carries the new membership and weights`}. The vault cannot: \`announceRegistryChange\` fixes the tuple (adds, removes, this document's sha256) and \`executeRegistryChange\` accepts exactly that tuple only after ${days} days — from ${eta}. Between the two the vault holds the old shape, \`navPerShare\` keeps tracking the index, and redemptions pay the old shape. Only one change can be pending per vault and announcing again restarts the clock, so the tuple above is not to be amended by a second announcement. Over the lag the vault's holdings are on chain and the index is in ${INDEX === 'qx20' ? 'the keeper book' : 'the record'}, so the difference between the two can be computed by anyone.`);
 lines.push('');
 lines.push('## Auction policy in force');
 lines.push('');
 lines.push(`- Every weight change goes through the vault's bounded dutch auctions (keeper opens \`openAuction(sell, buy, amount, ${plan.policy.duration} s)\`; the curve runs from +${Number(plan.vaultState.premiumBps) / 100}% to −${Number(plan.vaultState.maxFillLossBps) / 100}% of the reference over the duration; per-fill floor ${Number(plan.vaultState.maxFillLossBps)} bp and daily budget ${Number(plan.vaultState.dailyLossBudgetBps)} bp are the contract's and are not changed).`);
-lines.push(`- Fills by our own bidder are taken at the curve's fair point (\`fill\` policy \`${plan.policy.fill}\`: factor 10,000 to 10,010 bp, \`lossAtRef\` 0), so share value at reference prices is unchanged by the session and the record shows no gift either way. The one exception is a remainder under $1 of a leaving asset, filled at the start of the curve (at most 2% above reference) so that the removal can be finalized at once.${bidder ? ` Bidder: \`${bidder}\`.` : ''}`);
+lines.push(`- Fills by our own bidder are taken at the curve's fair point (\`fill\` policy \`${plan.policy.fill}\`: factor 10,000 to 10,010 bp, \`lossAtRef\` 0), so share value at reference prices is unchanged by the session and the record shows no gift either way.${plan.removes.length ? ' The one exception is a remainder under $1 of a leaving asset, filled at the start of the curve (at most 2% above reference) so that the removal can be finalized at once.' : ''}${bidder ? ` Bidder: \`${bidder}\`.` : ''}`);
 lines.push(`- During a session a reference price is re-posted only at the value already on chain (to refresh the v3.1 staleness clock, \`maxRefAge\` ${Number(plan.vaultState.maxRefAge)} s); a session never moves a reference, and it refuses to start while any reference is more than ${pct(plan.policy.refDriftTolBps / 10_000)} away from the day's mark.`);
 lines.push(`- Roles as deployed: owner \`${owner}\`, keeper \`${keeper}\`${rolesCollapsed ? ' — the same key, which is also whitelisted to create and to bid. This is the testnet shape and not the mainnet one; the contract cannot bound a keeper that both marks and fills, so every safety of this reconstitution rests on the script guards stated here.' : '.'} Fills are signed by a whitelisted bidder; \`setBidder\` emits no event, so each whitelisting transaction is listed in \`keeper/bidder-log.jsonl\`.`);
 lines.push('');
@@ -171,8 +195,8 @@ lines.push(`| Plan file | \`${path.relative(ROOT, planFile)}\` sha256 \`${sha256
 lines.push(`| Rulebook | \`${plan.sources.rulebook.path}\` sha256 \`${plan.sources.rulebook.sha256}\` |`);
 lines.push(`| Book | \`${plan.sources.book}\` |`);
 lines.push(`| Prices | A: ${plan.sources.priceA}; B: ${plan.sources.priceB} |`);
-if (row) lines.push(`| Record row | seq ${row.seq}, \`${row.hash}\` |`);
-if (plan.keeperRun) lines.push(`| Keeper run | ${plan.keeperRun.workflow ?? ''} ${plan.keeperRun.id} |`);
+if (row) lines.push(`| Record row | ${row.date} seq ${row.seq}, \`${row.hash}\` |`);
+if (plan.keeperRun) lines.push(`| Plan run | ${plan.keeperRun.workflow ?? ''} ${plan.keeperRun.id} |`);
 lines.push(`| Chain read | block ${plan.block.number} (${new Date(Number(plan.block.timestamp) * 1000).toISOString()}) |`);
 lines.push('');
 
