@@ -643,6 +643,18 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
       await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [sell, pSell], gas: GAS.post, what: `re-post ${t.sell} (same value)` });
       await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [buy, pBuy], gas: GAS.post, what: `re-post ${t.buy} (same value)` });
     }
+    // K-3: the fill takes what the vault holds NOW, at most the auction's
+    // amount — a redemption since the balance was read would otherwise make
+    // the fill revert; anything that arrived since stays and is re-drained.
+    // Read before the factor, so that the factor check stays the last read
+    // before the fill.
+    await runHook(ctx, 'before-fill', { seq: t.seq, symbol: t.sell, asset: sell, auctionId: id, amount, drain: !!t.drain, residual: !!t.residual });
+    const liveBal = await ctx.pc.readContract({ address: sell, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] });
+    const take = liveBal < amount ? liveBal : amount;
+    if (take === 0n) {
+      await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id} (nothing left to sell)` });
+      return null;
+    }
     const factorNow = Number(await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'curveFactorBps', args: [id] }));
     const late = policy !== 'natural' && factorNow < 10_000;
     const early = policy === 'fair' && factorNow > 10_000 + o.fairWindowBps;
@@ -658,17 +670,7 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
       if (attemptNo >= MAX_WINDOW_ATTEMPTS) throw new Error(`#${t.seq}: missed the fair window ${attemptNo} times (window [${win.eMin}, ${win.eMax}] s of a ${t.duration} s auction = duration/30 wide; three mined transactions must land inside it) — widen the planner's --duration (1800 s gives a 60 s window on the public chain) or run when blocks are quick`);
       return runTrade(ctx, v, t, round, attemptNo + 1);
     }
-    // K-3: the fill takes what the vault holds NOW, at most the auction's
-    // amount — a redemption since the balance was read would otherwise make
-    // the fill revert; anything that arrived since stays and is re-drained.
-    await runHook(ctx, 'before-fill', { seq: t.seq, symbol: t.sell, asset: sell, auctionId: id, amount, drain: !!t.drain, residual: !!t.residual });
-    const liveBal = await ctx.pc.readContract({ address: sell, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] });
-    const take = liveBal < amount ? liveBal : amount;
     if (take !== amount) log(`  live balance ${liveBal} ${t.sell} is below the auction's ${amount} (a redemption in the window) — filling ${take}`);
-    if (take === 0n) {
-      await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id} (nothing left to sell)` });
-      return null;
-    }
     const filled = await call(ctx, { who: 'bidder', to: plan.vault, functionName: 'fill', args: [id, take], gas: GAS.fill(v.assetCount), what: `fill #${t.seq} (auction ${id})` });
     const ev = parseEventLogs({ abi: VAULT_ABI, logs: filled.receipt.logs, eventName: 'AuctionFilled' })[0]?.args;
     if (!ev) throw new Error(`no AuctionFilled event in ${filled.hash}`);
