@@ -1,5 +1,13 @@
 # Quadrix track record
 
+> [Quadrix](https://quadrix.finance) is an onchain asset-management platform
+> built as its own stack. Each product runs as a vault: a smart-contract
+> account that holds the assets and records every creation, redemption and
+> fee on a public chain. The terms are in the code, not in a prospectus. Own
+> capital only; no third-party deposits are open, and the basket vaults run on
+> the GIWA Sepolia testnet with test assets. How it works:
+> [quadrix.finance/docs](https://quadrix.finance/docs).
+
 The daily operating record of the Quadrix vaults, published so it can be checked
 without trusting us.
 
