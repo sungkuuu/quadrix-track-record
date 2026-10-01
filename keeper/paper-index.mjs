@@ -1857,6 +1857,23 @@ function renormaliseBook(units, priceNow, value) {
   return k;
 }
 
+/** sum(units x price) over the names with a price today. */
+function bookValueAt(units, priceNow) {
+  let value = 0;
+  for (const [sym, u] of Object.entries(units ?? {})) if (priceNow[sym]) value += u * priceNow[sym];
+  return value;
+}
+
+/** The weight a record line shows for one name: units x price over the book
+ *  value, to four decimals; 0 for a name with no units or no price, null when
+ *  the book has no value. Every line writes this, a reconstitution day
+ *  included, so the weight column is always the book the level is computed
+ *  from. */
+function bookWeight(units, priceNow, sym, bookValue) {
+  if (!bookValue) return null;
+  return Math.round((((units?.[sym] ?? 0) * (priceNow[sym] ?? 0)) / bookValue) * 10000) / 10000;
+}
+
 // =========================================================================
 //  Main
 // =========================================================================
@@ -2719,9 +2736,20 @@ async function main() {
       if (Math.abs(k - 1) > 0.005) console.log(`  book normalised by ×${k.toFixed(6)} after the per-name tolerance (residual spread pro rata, no value in or out)`);
     }
 
+    // `weight` is the book after the trades and the M9 normalisation, valued at
+    // today's prices — the same computation a mark-to-market line makes.
+    // `targetWeight` is the rule's weight before the tolerance step; it is
+    // written on a reconstitution line only.
+    const bookValue = bookValueAt(units, priceNow);
     members = weights.map((w) => {
       const row = memberRows.find((m) => m.symbol === w.symbol) || {};
-      const out = { symbol: w.symbol, weight: Math.round(w.weight * 10000) / 10000, price: priceNow[w.symbol] ?? null, marketCap: row.marketCap ?? null };
+      const out = {
+        symbol: w.symbol,
+        weight: bookWeight(units, priceNow, w.symbol, bookValue),
+        targetWeight: Math.round(w.weight * 10000) / 10000,
+        price: priceNow[w.symbol] ?? null,
+        marketCap: row.marketCap ?? null,
+      };
       if (INDEX === 'qai' && w.symbol !== CASH_SYM) {
         out.volume24h = row.volume24h ?? null;
         out.marketCapCmc = row.marketCapCmc ?? null;
@@ -2763,7 +2791,7 @@ async function main() {
     members = Object.entries(units).map(([sym, u]) => {
       const out = {
         symbol: sym,
-        weight: level ? Math.round(((u * (priceNow[sym] ?? 0)) / level) * 10000) / 10000 : null,
+        weight: bookWeight(units, priceNow, sym, level),
         price: priceNow[sym] ?? null,
         marketCap: marketsBySym.get(sym)?.marketCap ?? null,
       };
@@ -2803,6 +2831,7 @@ async function main() {
       eligibleCount: qaiCounts?.eligibleCount ?? null,
       emptySeats: qaiCounts?.emptySeats ?? null,
       cashWeight: cashRow ? cashRow.weight : 0,
+      ...(reconstituted ? { cashTargetWeight: cashRow?.targetWeight ?? 0 } : {}),
     };
   }
 
