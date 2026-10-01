@@ -344,6 +344,23 @@ export const mockSymbolMismatch = (planSymbol, onchainSymbol) => onchainSymbol !
 const tupleHash = ({ adds, removes, sha }) =>
   keccak256(encodeAbiParameters([{ type: 'address[]' }, { type: 'address[]' }, { type: 'bytes32' }], [adds, removes, sha]));
 
+/** The plan sized every amount at the references it read on chain (planner
+ *  spec 2026-10-01 §1.3) — the prices the contract fills at. A reference
+ *  that moved since (a daily mark between the plan and this run) makes the
+ *  planned amounts miss the book by that move: regenerate the plan. Checked
+ *  by the auctions stage, and by day7 before it sends execute (after
+ *  execute a regenerated plan no longer sees the adds). */
+function requireRefsAsPlanned(ctx, v) {
+  if (ctx.plan.trades.length === 0) return;
+  const moved = [];
+  for (const r of ctx.plan.registry) {
+    if (r.chainRefAtPlan == null) continue;
+    const on = v.assets.find((a) => a.address === getAddress(r.address));
+    if (on && on.refPrice !== big(r.chainRefAtPlan)) moved.push(`${r.symbol} ${r.chainRefAtPlan}→${on.refPrice}`);
+  }
+  if (moved.length) throw new Refused(`reference(s) moved since the plan sized its auctions (${moved.join(', ')}) — regenerate the plan (keeper/basket-plan.mjs) after the mark, then run this stage`);
+}
+
 function requirePlanFresh(ctx) {
   if (ctx.plan.date === todayUTC() || ctx.o.allowPlanDate) return;
   throw new Refused(`plan ${ctx.plan.date} was not generated today (${todayUTC()}) — prices and balances have moved; regenerate it (or pass --allow-plan-date for a rehearsal)`);
@@ -886,19 +903,7 @@ async function stageAuctions(ctx) {
     const d = Math.abs(Number(a.refPrice) - Number(planRef)) / Number(planRef);
     if (d > o.refDriftTol) throw new Refused(`${sym}: chain reference ${a.refPrice} is ${pct(d)} from the plan's ${planRef} (> ${pct(o.refDriftTol)}) — re-mark with the daily keeper (paper-index.mjs) first; this script does not move references`);
   }
-  // The plan sized every amount at the references it read on chain (planner
-  // spec 2026-10-01 §1.3) — the prices the contract fills at. A reference
-  // that moved since (a daily or NAV mark between the plan and this run)
-  // makes the planned amounts miss the book by that move: regenerate.
-  if (plan.trades.length > 0) {
-    const moved = [];
-    for (const r of plan.registry) {
-      if (r.chainRefAtPlan == null) continue;
-      const on = v.assets.find((a) => a.address === getAddress(r.address));
-      if (on && on.refPrice !== big(r.chainRefAtPlan)) moved.push(`${r.symbol} ${r.chainRefAtPlan}→${on.refPrice}`);
-    }
-    if (moved.length) throw new Refused(`reference(s) moved since the plan sized its auctions (${moved.join(', ')}) — regenerate the plan (keeper/basket-plan.mjs) after the mark, then run this stage`);
-  }
+  requireRefsAsPlanned(ctx, v);
   log(`${plan.trades.length} planned auction(s); ${plan.fills.length} already filled; fill policy ${o.fill}; every reference within ${pct(o.refDriftTol)} of the plan${plan.trades.length ? ' and equal to the one the plan sized at' : ''}`);
   if (plan.trades.length === 0) {
     // A plan made on a later day has no auction for a remnant under the
@@ -1030,6 +1035,7 @@ async function main() {
       // first-prices and auctions refuse a plan not generated today; check it
       // BEFORE execute is sent, or a stale plan executes and then stops.
       requirePlanFresh(ctx);
+      requireRefsAsPlanned(ctx, await readVault(ctx.reader, ctx.plan.vault));
       await run('execute', stageExecute);
       await run('first-prices', stageFirstPrices);
       await run('auctions', stageAuctions);
