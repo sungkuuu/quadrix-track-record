@@ -15,7 +15,7 @@ import path from 'node:path';
 import { getAddress } from 'viem';
 import { savePlan, loadPlan, toRefPrice, readVault } from '../basket-plan.mjs';
 import { READ_TIMING } from '../readback.mjs';
-import { stageAnnounce, stageExecute, stageFirstPrices, stageAuctions, settleSent, reconcileSession, runTrade, call } from '../basket-recon.mjs';
+import { stageAnnounce, stageExecute, stageFirstPrices, stageAuctions, stageFinalize, stageVerify, settleSent, reconcileSession, runTrade, call } from '../basket-recon.mjs';
 import { FakeChain, ZERO32 } from './fake-chain.mjs';
 
 READ_TIMING.stepMs = 2; // the bound stays 30 s of fake waits; each wait is 2 ms here
@@ -485,6 +485,34 @@ test('runTrade on a lagging node: the same sent calls and the same plan records 
   assert.equal(clean.plan.fills.length, 2);
   assert.equal(clean.plan.finalize[0].symbol, 'CRV');
   assert.deepEqual(clean.plan.finalize[0].order, [AAA, BBB, ASTER]);
+  assert.ok(lag.chain.reads > clean.chain.reads);
+});
+
+test('day 7 end to end on a lagging node (execute → first prices → auctions → finalize → verify): the same calls sent and the same plan records as on a clean node', async () => {
+  const runOn = async (lagReads) => {
+    const chain = newChain();
+    chain.head.state.shares = {}; // the fake has no redeem: verify skips its simulation
+    await announced(chain);
+    const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: chain.head.state.pending, tuple: p.announceTuple }, trades: [T1, T2] }));
+    chain.lagReads = lagReads;
+    const n0 = chain.sent.length;
+    const ctx = ctxFor(chain, f);
+    for (const stage of [stageExecute, stageFirstPrices, stageAuctions, stageFinalize, stageVerify]) await stage(ctx);
+    const scrub = (x) => JSON.parse(JSON.stringify(x, (k, val) => (['txHash', 'openTx', 'fillTx', 'hash', 'sentAt'].includes(k) ? undefined : val)));
+    const p = loadPlan(f);
+    return {
+      chain, ctx,
+      sent: chain.sent.slice(n0).map((x) => `${x.functionName}(${x.args.map(String).join(',')})`),
+      records: scrub({ execute: p.execute, firstPrices: p.firstPrices, fills: p.fills, finalize: p.finalize, verify: { ...p.verify, at: undefined }, sent: p.sent }),
+    };
+  };
+  const clean = await runOn(0);
+  const lag = await runOn(3);
+  assert.deepEqual(lag.sent, clean.sent);
+  assert.deepEqual(lag.records, clean.records);
+  assert.deepEqual(clean.sent.map((x) => x.split('(')[0]), ['executeRegistryChange', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'finalizeRemoval']);
+  assert.deepEqual(clean.records.verify.fails, []);
+  assert.ok(lag.ctx.lines.filter((l) => /answered at read [2-9]/.test(l)).length >= 5, 'reads after writes were answered late and repeated');
   assert.ok(lag.chain.reads > clean.chain.reads);
 });
 
