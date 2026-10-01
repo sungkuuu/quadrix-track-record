@@ -46,6 +46,9 @@
  *   --fork-block n      pin the fork block
  *   --duration s        auction duration for the planner (default 1800, as on the public chain)
  *   --foundry-bin DIR   default ~/.foundry/bin
+ *   --keeper-bids       no separate bidder: the keeper key fills its own auctions, as on
+ *                       the chain while no BIDDER_PK secret is set (set-bidder then has
+ *                       nothing to send, and the new mocks' inventory goes to the keeper)
  *   --keep-anvil
  */
 import fs from 'node:fs';
@@ -73,6 +76,8 @@ const EXTRA_ABI = parseAbi([
 ]).concat(VAULT_ABI.filter((x) => x.type === 'error'));
 const AUCTION_FILLED = VAULT_ABI.find((x) => x.type === 'event' && x.name === 'AuctionFilled');
 const BAND_BPS = 1_500n;
+/** Who fills: anvil #1, or (--keeper-bids) the vault's own keeper. */
+let BIDDER = DEV.bidder;
 
 // ------------------------------------------------------------------ CLI
 const argv = process.argv.slice(2);
@@ -88,6 +93,7 @@ const O = {
   duration: Number(opt('--duration', 1800)), // the setting for the public chain (a 60 s fair window)
   foundry: opt('--foundry-bin', process.env.FOUNDRY_BIN ?? path.join(os.homedir(), '.foundry', 'bin')),
   keepAnvil: flag('--keep-anvil'),
+  keeperBids: flag('--keeper-bids'),
 };
 const RPC = `http://127.0.0.1:${O.port}`;
 
@@ -258,25 +264,31 @@ async function prepare(env, index, pending) {
   return { rb, vault, owner, v0 };
 }
 
+const bidderArg = () => (O.keeperBids ? [] : ['--bidder', BIDDER]);
 const recon = (index, stage, planFile, extra = []) => ['--index', index, '--stage', stage, '--rpc', RPC, '--plan', planFile, ...extra];
 
 async function flowToDay7(env, index) {
   const pending = JSON.parse(fs.readFileSync(path.join(env.keeper, `pending-registry-${index}.json`), 'utf8'));
   const B = await prepare(env, index, pending);
   const live = ['--live', '--from', B.owner];
+  if (O.keeperBids) BIDDER = B.owner;
+  // With no separate bidder the tools are called as the workflows call them
+  // without a BIDDER_PK: no --genesis-to, no --bidder.
+  const genesisTo = O.keeperBids ? [] : ['--genesis-to', BIDDER];
   const planFile = path.join(env.keeper, 'plans', index, `${O.date}.json`);
   const mocksFile = path.join(env.keeper, 'mocks', `${O.date}.json`);
 
   // 1. bidder
-  let r = run(env, 'set-bidder.mjs', ['--bidder', DEV.bidder, '--index', index, '--rpc', RPC, ...live], 'set-bidder');
-  const isB = await pc.readContract({ address: B.vault, abi: VAULT_ABI, functionName: 'isBidder', args: [DEV.bidder] });
+  let r = run(env, 'set-bidder.mjs', ['--bidder', BIDDER, '--index', index, '--rpc', RPC, ...live], 'set-bidder');
+  const isB = await pc.readContract({ address: B.vault, abi: VAULT_ABI, functionName: 'isBidder', args: [BIDDER] });
   const logLine = fs.existsSync(path.join(env.keeper, 'bidder-log.jsonl')) ? fs.readFileSync(path.join(env.keeper, 'bidder-log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).find((l) => l.index === index) : null;
-  check('set-bidder: separate bidder whitelisted, tx logged in bidder-log.jsonl', r.status === 0 && isB && !!logLine?.txHash && logLine.isBidderAfter === true, `${DEV.bidder} isBidder ${isB}; tx ${logLine?.txHash ?? '—'}`, 'setup');
-  r = run(env, 'set-bidder.mjs', ['--bidder', DEV.bidder, '--index', index, '--rpc', RPC, ...live], 'set-bidder again (idempotent)');
+  if (O.keeperBids) check('set-bidder: the keeper is whitelisted already, nothing sent, nothing logged', r.status === 0 && isB && /already true — nothing to send/.test(r.out) && !logLine, `${BIDDER} isBidder ${isB}`, 'setup');
+  else check('set-bidder: separate bidder whitelisted, tx logged in bidder-log.jsonl', r.status === 0 && isB && !!logLine?.txHash && logLine.isBidderAfter === true, `${BIDDER} isBidder ${isB}; tx ${logLine?.txHash ?? '—'}`, 'setup');
+  r = run(env, 'set-bidder.mjs', ['--bidder', BIDDER, '--index', index, '--rpc', RPC, ...live], 'set-bidder again (idempotent)');
   check('set-bidder again: nothing sent', r.status === 0 && /already true — nothing to send/.test(r.out), '', 'setup');
 
   // 2. mocks
-  r = run(env, 'deploy-mocks.mjs', ['--date', O.date, '--index', index, '--rpc', RPC, '--genesis-to', DEV.bidder, '--no-fetch', ...live], 'deploy-mocks');
+  r = run(env, 'deploy-mocks.mjs', ['--date', O.date, '--index', index, '--rpc', RPC, ...genesisTo, '--no-fetch', ...live], 'deploy-mocks');
   must('deploy-mocks exits 0', r.status === 0);
   const mocks = JSON.parse(fs.readFileSync(mocksFile, 'utf8'))[index];
   const addSyms = pending.adds.map((a) => a.symbol);
@@ -287,12 +299,12 @@ async function flowToDay7(env, index) {
     const [sym, dec, bal] = await reader.batch([
       { address: m.address, abi: ERC20_ABI, functionName: 'symbol' },
       { address: m.address, abi: ERC20_ABI, functionName: 'decimals' },
-      { address: m.address, abi: ERC20_ABI, functionName: 'balanceOf', args: [DEV.bidder] },
+      { address: m.address, abi: ERC20_ABI, functionName: 'balanceOf', args: [BIDDER] },
     ]);
     shapes.push(`${s} ${sym} ${dec}dec bidder ${bal}${sym === `m${s}` && Number(dec) === m.decimals && bal === BigInt(m.genesisAmount) ? '' : ' MISMATCH'}`);
   }
   check('deploy-mocks: one m{SYMBOL} mock per add, decimals as recorded, inventory with the bidder', shapes.length === addSyms.length && shapes.every((x) => !/MISMATCH|missing/.test(x)), shapes.join('; '), 'setup');
-  r = run(env, 'deploy-mocks.mjs', ['--date', O.date, '--index', index, '--rpc', RPC, '--genesis-to', DEV.bidder, '--no-fetch', ...live], 'deploy-mocks again (idempotent)');
+  r = run(env, 'deploy-mocks.mjs', ['--date', O.date, '--index', index, '--rpc', RPC, ...genesisTo, '--no-fetch', ...live], 'deploy-mocks again (idempotent)');
   check('deploy-mocks again: every add skipped', r.status === 0 && (r.out.match(/already deployed/g) ?? []).length === addSyms.length, '', 'setup');
 
   // 3. plan → draft → ledger → plan with the decision
@@ -361,7 +373,7 @@ async function day7(env, F, { label, hook = null, script = 'basket-recon.mjs', b
   // Straight from the node: viem caches the block number for seconds, and a
   // revert just moved it back.
   const fromBlock = BigInt(await rpc('eth_blockNumber')) + 1n;
-  const extra = [...F.live, '--bidder', DEV.bidder, '--warp', '--fill', 'fair', ...(hook ? ['--hook', env.hook] : [])];
+  const extra = [...F.live, ...bidderArg(), '--warp', '--fill', 'fair', ...(hook ? ['--hook', env.hook] : [])];
   const hookLog = path.join(O.work, `${F.index}-${label.replace(/\W+/g, '-')}-hook.jsonl`);
   fs.rmSync(hookLog, { force: true });
   const r = run(env, script, recon(F.index, 'day7', F.planFile, extra), `day7 — ${label}`, hook ? { REHEARSAL_HOOK_CONFIG: JSON.stringify(hook.map((h) => ({ ...h, log: hookLog }))) } : {});
@@ -377,7 +389,7 @@ function baseChecks(F, res, label, { expectPending = [] } = {}) {
   const { r, plan, fills, v } = res;
   const pendSet = new Set(expectPending);
   check(`${label}: day7 exits 0, verify passed`, r.status === 0 && /verify: all checks passed/.test(r.out), (r.out.match(/verify: [^\n]*/) ?? ['no verify line'])[0]);
-  check(`${label}: every fill by the separate bidder, lossAtRef 0`, fills.every((f) => f.bidder === getAddress(DEV.bidder) && f.lossAtRef === 0n), `${fills.length} fill(s)`);
+  check(`${label}: every fill by the ${O.keeperBids ? 'keeper key (no separate bidder)' : 'separate bidder'}, lossAtRef 0`, fills.every((f) => f.bidder === getAddress(BIDDER) && f.lossAtRef === 0n), `${fills.length} fill(s)`);
   const planned = plan.fills.filter((f) => typeof f.seq === 'number');
   const residualFills = plan.fills.filter((f) => typeof f.seq !== 'number');
   check(`${label}: planned fills inside the fair window, remnant fills at the open (≤ 10,200 bp)`, planned.every((f) => f.factorBps >= 10_000 && f.factorBps <= 10_010) && residualFills.every((f) => f.policy === 'fair' ? f.factorBps >= 10_000 && f.factorBps <= 10_010 : f.factorBps <= 10_200 && f.factorBps >= 10_000), `planned ${planned.map((f) => f.factorBps).join(',') || '—'}; remnants ${residualFills.map((f) => `${f.seq}:${f.policy}:${f.factorBps}`).join(',') || '—'}`);
@@ -466,7 +478,7 @@ async function rehearseBasket(env, index) {
       let r = run(env, 'basket-plan.mjs', planArgs, 'a later plan (executed, remnant pending)');
       const later = r.status === 0 ? loadPlan(F.planFile) : null;
       check(`a later plan lists ${X} as in removal and plans no auction for a remnant under $1`, r.status === 0 && later.trades.length === 0 && later.removes.some((x) => x.symbol === X && x.inRemoval), later ? `removes ${later.removes.map((x) => `${x.symbol} balance ${x.balance} inRemoval ${x.inRemoval}`).join(', ')}; trades ${later.trades.length}` : `plan exit ${r.status}`, 'K-4');
-      r = run(env, 'basket-recon.mjs', recon(index, 'auctions', F.planFile, [...F.live, '--bidder', DEV.bidder, '--warp']), 'auctions with the later plan (no planned auction)');
+      r = run(env, 'basket-recon.mjs', recon(index, 'auctions', F.planFile, [...F.live, ...bidderArg(), '--warp']), 'auctions with the later plan (no planned auction)');
       const v2 = await readVault(reader, F.vault);
       const after = loadPlan(F.planFile);
       check(`${X}: the auctions stage of a later plan drains and finalizes the PENDING remnant`, r.status === 0 && !v2.assets.some((a) => a.address === Xaddr) && after.finalize.some((f) => f.symbol === X) && !(after.finalizePending ?? []).length, `exit ${r.status}; in registry ${v2.assets.some((a) => a.address === Xaddr)}; finalize ${after.finalize.map((f) => f.symbol).join(',') || '—'}`, 'K-4');
@@ -501,7 +513,7 @@ async function rehearseBasket(env, index) {
     const onY = res.v.assets.find((a) => a.address === F.removes.find((x) => x.symbol === Y).address);
     check(`${Y}: a donation at every attempt → PENDING after five re-drains, verify passes with PENDING, exit 0`, res.r.status === 0 && p?.attempts === 5 && /PENDING/.test(res.r.out) && new RegExp(`verify: all checks passed \\(PENDING: [^)]*\\b${Y}\\b`).test(res.r.out) && onY?.inRemoval === true && onY.balance > 0n, `finalizePending ${JSON.stringify(p ?? null)}; on chain inRemoval ${onY?.inRemoval} balance ${onY?.balance}`, '③');
     // …and the PENDING one is drained by a later auctions run without interference.
-    const r2 = run(env, 'basket-recon.mjs', recon(index, 'auctions', F.planFile, [...F.live, '--bidder', DEV.bidder, '--warp']), 'auctions re-run (no interference) after PENDING');
+    const r2 = run(env, 'basket-recon.mjs', recon(index, 'auctions', F.planFile, [...F.live, ...bidderArg(), '--warp']), 'auctions re-run (no interference) after PENDING');
     const v2 = await readVault(reader, F.vault);
     const after = loadPlan(F.planFile);
     check(`${Y}: a later auctions run drains and finalizes the PENDING remnant`, r2.status === 0 && !v2.assets.some((a) => a.address === F.removes.find((x) => x.symbol === Y).address) && !(after.finalizePending ?? []).length, `exit ${r2.status}; finalize ${after.finalize.map((f) => f.symbol).join(',')}`, '③');
