@@ -23,22 +23,24 @@
  *
  *   node verify.mjs --dir ./trackrecord
  *
- * Two series are published and both are verified by default: the DRY_RUN
- * rehearsal (record.jsonl / anchors.jsonl, 2026-08-13 → 08-30, closed) and the
- * LIVE series (record-live.jsonl / anchors-live.jsonl, genesis 2026-09-01, the
- * one with real capital behind it). They are separate chains on purpose —
- * spec §8 — so each is walked from its own genesis.
+ * By default every published series is verified, each walked from its own
+ * genesis (separate chains on purpose — spec §8): the DRY_RUN rehearsal
+ * (record.jsonl, 2026-08-13 → 08-30, closed), the LIVE series (record-live.jsonl,
+ * genesis 2026-09-01), the five paper-index series (record-{qrev,qdefi,qai,
+ * barbell,triens}.jsonl, anchor prefix `qxpi-<index>:`), and qX20's daily
+ * closes (qx20-daily.jsonl). qX20 is not hash-chained: each close names the
+ * keeper's setNav transaction, and the check is that the transaction exists,
+ * succeeded, went to a qX20 vault, carries the stated level, and sits in the
+ * stated block at the stated time. It does not prove the close was the day's
+ * last mark — the vault's full transaction list on the explorer shows that.
  *
  * Options:
  *   --base <url>     fetch <base>/trackrecord/… (the site's mirror)
  *   --dir <path>     read the files from a local directory
- *   --series <name>  dry | live | qrev | qdefi | all   (default: all)
- *                    "all" verifies dry+live only, unchanged from before
- *                    qrev/qdefi existed — request them explicitly by name.
- *                    qrev/qdefi are keeper/paper-index.mjs's rules-only
- *                    index levels (trackrecord/record-{qrev,qdefi}.jsonl,
- *                    anchor prefix `qxpi-<index>:`); same hash-chain shape,
- *                    no `decisions` field.
+ *   --series <name>  dry | live | qrev | qdefi | qai | barbell | triens | qx20 | all
+ *                    (default: all). The paper indexes are keeper/paper-index.mjs's
+ *                    rules-only levels: same hash-chain shape, anchor prefix
+ *                    `qxpi-<index>:`, no `decisions` field.
  *   --rpc <url>      JSON-RPC endpoint (default: https://sepolia-rpc.giwa.io)
  *
  * The point of this file is that you can read all of it. If you don't trust
@@ -58,10 +60,6 @@ const BASE = opt('--base', null);
 const DIR = opt('--dir', BASE ? null : './trackrecord');
 const RPC = opt('--rpc', 'https://sepolia-rpc.giwa.io');
 const SERIES = opt('--series', 'all');
-if (!['dry', 'live', 'qrev', 'qdefi', 'all'].includes(SERIES)) {
-  console.error(`--series must be dry, live, qrev, qdefi or all (got ${SERIES})`);
-  process.exit(2);
-}
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
@@ -105,8 +103,10 @@ async function rpc(method, params, attempt = 0) {
     if (j.error) throw new Error(j.error.message);
     return j.result;
   } catch (e) {
-    if (attempt < 3) {
-      await new Promise((res) => setTimeout(res, 500 * (attempt + 1)));
+    // HTTP 429 is the public endpoint rate-limiting a full run: back off longer.
+    if (attempt < 5) {
+      const wait = /429/.test(e.message) ? 2000 * 2 ** attempt : 500 * (attempt + 1);
+      await new Promise((res) => setTimeout(res, wait));
       return rpc(method, params, attempt + 1);
     }
     throw new Error(`${method}: ${e.message} (after ${attempt + 1} attempts)`);
@@ -139,7 +139,15 @@ const SERIES_FILES = {
   // so the generic per-record checks below need no series-specific code.
   qrev: { label: 'QREV', records: 'record-qrev.jsonl', anchors: 'anchors-qrev.jsonl', anchorPrefix: 'qxpi-qrev:', checkDecisions: false },
   qdefi: { label: 'QDEFI', records: 'record-qdefi.jsonl', anchors: 'anchors-qdefi.jsonl', anchorPrefix: 'qxpi-qdefi:', checkDecisions: false },
+  qai: { label: 'QAI', records: 'record-qai.jsonl', anchors: 'anchors-qai.jsonl', anchorPrefix: 'qxpi-qai:', checkDecisions: false },
+  barbell: { label: 'QDUO (barbell)', records: 'record-barbell.jsonl', anchors: 'anchors-barbell.jsonl', anchorPrefix: 'qxpi-barbell:', checkDecisions: false },
+  triens: { label: 'QTRI (triens)', records: 'record-triens.jsonl', anchors: 'anchors-triens.jsonl', anchorPrefix: 'qxpi-triens:', checkDecisions: false },
 };
+const ALL = [...Object.keys(SERIES_FILES), 'qx20'];
+if (SERIES !== 'all' && !ALL.includes(SERIES)) {
+  console.error(`--series must be one of ${ALL.join(', ')} or all (got ${SERIES})`);
+  process.exit(2);
+}
 const totals = { records: 0, anchors: 0, series: [] };
 
 async function verifySeries(key) {
@@ -238,7 +246,60 @@ async function verifySeries(key) {
   }
 }
 
-for (const key of SERIES === 'all' ? ['dry', 'live'] : [SERIES]) await verifySeries(key);
+// qX20: the keeper's setNav(uint256 navPerShare, uint256 indexLevel) marks,
+// one close per UTC day. The two vaults are the published qX20 contracts
+// (docs §10); a close that points anywhere else fails.
+const QX20_VAULTS = ['0x1d1115b961832dd921be78cf1362a531b69bcaa0', '0x2a165501dda6e430ff98e82682f53ca8465bb21f'];
+const SETNAV = '0xec75710f';
+async function verifyQx20() {
+  let closes;
+  try {
+    // The site serves it under /trackrecord/; the repo keeps it under keeper/.
+    closes = BASE || fs.existsSync(path.join(DIR, 'qx20-daily.jsonl'))
+      ? await loadLines('qx20-daily.jsonl')
+      : (await fs.promises.readFile(path.join(DIR, '..', 'keeper', 'qx20-daily.jsonl'), 'utf8'))
+          .split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+  } catch (e) {
+    fail(`QX20: qx20-daily.jsonl unreadable (${e.message})`);
+    return;
+  }
+  totals.marks = closes.length;
+  totals.series.push(`QX20 ${closes.length} daily closes ${closes[0]?.date ?? '—'} → ${closes[closes.length - 1]?.date ?? '—'}`);
+  console.log(`\n[QX20] daily closes — ${closes.length}, each a setNav transaction on GIWA Sepolia`);
+  let prevDate = '';
+  for (const c of closes) {
+    if (c.date <= prevDate) fail(`QX20 ${c.date}: out of order or repeated after ${prevDate}`);
+    prevDate = c.date;
+    let tx, receipt, block;
+    try {
+      tx = await rpc('eth_getTransactionByHash', [c.tx]);
+      receipt = tx ? await rpc('eth_getTransactionReceipt', [c.tx]) : null;
+      block = receipt ? await rpc('eth_getBlockByNumber', [receipt.blockNumber, false]) : null;
+    } catch (e) {
+      fail(`QX20 ${c.date}: rpc unavailable — ${e.message}`);
+      continue;
+    }
+    if (!tx || !receipt || receipt.status !== '0x1' || !block) {
+      fail(`QX20 ${c.date}: tx ${c.tx} missing or not confirmed`);
+      continue;
+    }
+    const to = (tx.to || '').toLowerCase();
+    const input = (tx.input || '').toLowerCase();
+    const nav = Number(BigInt('0x' + input.slice(10, 74))) / 1e6;
+    const level = Number(BigInt('0x' + input.slice(74, 138))) / 1e6;
+    const at = new Date(parseInt(block.timestamp, 16) * 1000).toISOString();
+    if (!QX20_VAULTS.includes(to) || to !== String(c.vault).toLowerCase()) fail(`QX20 ${c.date}: tx goes to ${to}, not the qX20 vault named`);
+    else if (!input.startsWith(SETNAV)) fail(`QX20 ${c.date}: tx is not a setNav call`);
+    else if (nav !== c.nav || level !== c.level) fail(`QX20 ${c.date}: chain says nav ${nav} level ${level}, file says ${c.nav} / ${c.level}`);
+    else if (parseInt(receipt.blockNumber, 16) !== c.block || at !== c.at || at.slice(0, 10) !== c.date) fail(`QX20 ${c.date}: block/time on chain (${parseInt(receipt.blockNumber, 16)}, ${at}) differ from the file`);
+    else ok(`${c.date} level ${c.level} — setNav in ${c.tx.slice(0, 14)}… (block ${c.block}, ${at})`);
+  }
+}
+
+for (const key of SERIES === 'all' ? ALL : [SERIES]) {
+  if (key === 'qx20') await verifyQx20();
+  else await verifySeries(key);
+}
 
 if (decisions.length) {
   console.log(`\ndecisions — ${decisions.length} anchored document(s)`);
@@ -256,8 +317,15 @@ if (decisions.length) {
       continue;
     }
     const expected = '0x' + Buffer.from('qxdec:' + d.sha256, 'utf8').toString('hex');
-    const tx = await rpc('eth_getTransactionByHash', [d.txHash]);
-    const receipt = tx ? await rpc('eth_getTransactionReceipt', [d.txHash]) : null;
+    let tx, receipt, block;
+    try {
+      tx = await rpc('eth_getTransactionByHash', [d.txHash]);
+      receipt = tx ? await rpc('eth_getTransactionReceipt', [d.txHash]) : null;
+      block = receipt ? await rpc('eth_getBlockByNumber', [receipt.blockNumber, false]) : null;
+    } catch (e) {
+      fail(`decision ${d.id}: rpc unavailable — ${e.message}`);
+      continue;
+    }
     if (!tx || !receipt || receipt.status !== '0x1') {
       fail(`decision ${d.id}: anchor tx ${d.txHash} missing or unconfirmed`);
       continue;
@@ -266,7 +334,6 @@ if (decisions.length) {
       fail(`decision ${d.id}: anchor calldata does not carry qxdec:${d.sha256.slice(0, 12)}…`);
       continue;
     }
-    const block = await rpc('eth_getBlockByNumber', [receipt.blockNumber, false]);
     const stamped = block ? new Date(parseInt(block.timestamp, 16) * 1000).toISOString() : 'unknown time';
     ok(`${d.id} anchored ${stamped} in ${d.txHash.slice(0, 14)}… (effective ${d.effectiveFrom})`);
   }
@@ -274,7 +341,7 @@ if (decisions.length) {
 
 console.log(
   failures === 0
-    ? `\nVERIFIED — ${totals.records} records, ${totals.anchors} anchors, ${decisions.length} decisions, 0 failures\n   ${totals.series.join('\n   ')}\n`
+    ? `\nVERIFIED — ${totals.records} records, ${totals.anchors} anchors, ${totals.marks ?? 0} qX20 closes, ${decisions.length} decisions, 0 failures\n   ${totals.series.join('\n   ')}\n`
     : `\nFAILED — ${failures} check(s) failed\n`
 );
 process.exit(failures === 0 ? 0 : 1);

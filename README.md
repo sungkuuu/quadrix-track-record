@@ -29,12 +29,16 @@ No dependencies, Node 18+:
 node scripts/verify.mjs --dir ./trackrecord
 ```
 
-It walks **both** published series from their own genesis — the closed DRY_RUN
-rehearsal (`record.jsonl`, 2026-08-13 → 08-30) and the LIVE series with real
-capital behind it (`record-live.jsonl`, from 2026-09-01) — recomputing every
-record hash, checking each anchor transaction on GIWA Sepolia, and re-hashing
-every decision document against the hash committed on chain. Exit code 0 means
-every check passed. `--series live` or `--series dry` restricts it to one.
+It walks every hash-chained record from its own genesis — the closed DRY_RUN
+rehearsal (`record.jsonl`, 2026-08-13 → 08-30), the LIVE series with real
+capital behind it (`record-live.jsonl`, from 2026-09-01) and the five index
+records (qREV, qDEFI, qAI, qDUO, qTRI) — recomputing every record hash and
+checking each anchor transaction on GIWA Sepolia (`qxtr:` for the operating
+record, `qxpi-<index>:` for the index records), and re-hashes every decision
+document against the hash committed on chain. qX20 is not a hash chain: each
+daily close is checked against the keeper's own `setNav` transaction instead.
+Exit code 0 means every check passed. `--series <name>` restricts it to one
+(`dry`, `live`, `qrev`, `qdefi`, `qai`, `barbell`, `triens`, `qx20`).
 
 To check the copy served by the site instead of this one:
 
