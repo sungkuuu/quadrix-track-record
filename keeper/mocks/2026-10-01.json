@@ -1,0 +1,26 @@
+{
+  "_doc": "Mock constituents deployed for a basket reconstitution, by keeper/deploy-mocks.mjs: {index: {SYMBOL: {address, decimals, …}}}. One mock per basket and name (the deployed convention). Read by keeper/basket-plan.mjs --mocks.",
+  "date": "2026-10-01",
+  "chainId": 91342,
+  "qx20": {
+    "ZEC": {
+      "address": "0x1fA38B14335e3052B5C27D59D0C4b0597483a99D",
+      "decimals": 12,
+      "mockSymbol": "mZEC",
+      "name": "Mock Zcash",
+      "faucetAmount": "8884370000",
+      "genesisTo": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "genesisAmount": "20444792760291",
+      "deskTo": null,
+      "deskAmount": "0",
+      "priceUsd": 1390.24,
+      "weight": 0.012351406667414109,
+      "priceSource": "book keeper/state.json at coingecko (fetched, cached as keeper/cache/cg-markets-top500-2026-10-01.json)",
+      "vault": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "txHash": "0xd0e8adefd80dba1a84e6cb54883174a4f52cfe324bd4bbd2ea9fdd6cee7b58bc",
+      "block": "37515992",
+      "gasUsed": "598480",
+      "deployer": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902"
+    }
+  }
+}
