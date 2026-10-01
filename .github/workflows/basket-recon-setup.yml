@@ -1,0 +1,132 @@
+name: basket-recon-setup
+
+# The owner-key preparations of a basket reconstitution, by hand from the
+# Actions tab. Never scheduled.
+#
+#   deploy-mocks  keeper/deploy-mocks.mjs — one MockConstituent per entering
+#                 name and basket, from the pending-registry files of `date`;
+#                 writes keeper/mocks/{date}.json, the plan stage's `mocks`.
+#                 The bidder (BIDDER_PK's address, else the keeper) receives
+#                 the inventory the auctions sell into the vault.
+#
+# DRY RUN BY DEFAULT: nothing is sent unless `live` is ticked AND `confirm`
+# is the word EXECUTE. The keeper key (KEEPER_PK) is the owner and deployer
+# of the six testnet vaults. Same `keeper-key` concurrency group as every
+# other workflow that signs with it. Inputs reach the shell through `env:`
+# and are quoted — never interpolated into a `run:` line.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'deploy-mocks'
+        required: true
+        type: choice
+        options: [deploy-mocks]
+      live:
+        description: 'Send transactions (otherwise dry run). Also needs confirm = EXECUTE.'
+        type: boolean
+        default: false
+      confirm:
+        description: 'Type EXECUTE to allow a live run'
+        required: false
+        default: ''
+      date:
+        description: 'deploy-mocks: the pending-registry date, YYYY-MM-DD (empty = today, UTC)'
+        required: false
+        default: ''
+      indexes:
+        description: 'Comma-separated subset, e.g. qrev,qai (empty = every index with a work order that day)'
+        required: false
+        default: ''
+      desk:
+        description: 'deploy-mocks: optional desk address to seed with 100,000 shares of the new mocks (empty = none; the desk tops up from the open faucet)'
+        required: false
+        default: ''
+      rpc:
+        description: 'JSON-RPC endpoint'
+        required: false
+        default: 'https://sepolia-rpc.giwa.io'
+
+permissions:
+  contents: write # commits keeper/mocks/** to main
+
+concurrency:
+  group: keeper-key
+  cancel-in-progress: false
+
+env:
+  TASK: ${{ inputs.task }}
+  DATE_IN: ${{ inputs.date }}
+  INDEXES_IN: ${{ inputs.indexes }}
+  DESK_IN: ${{ inputs.desk }}
+  RPC: ${{ inputs.rpc }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Decide dry run or live
+        id: mode
+        env:
+          LIVE: ${{ inputs.live }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$LIVE" = "true" ] && [ "$CONFIRM" = "EXECUTE" ]; then
+            echo "flag=--live" >> "$GITHUB_OUTPUT"
+            echo "::notice::LIVE — transactions will be sent from the keeper key"
+          elif [ "$LIVE" = "true" ]; then
+            echo "::error::live was ticked but confirm is not EXECUTE — refusing rather than running live by accident"
+            exit 1
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "::notice::DRY RUN — nothing is sent"
+          fi
+
+      - name: ${{ inputs.task }}
+        env:
+          MODE_FLAG: ${{ steps.mode.outputs.flag }}
+          # Present in every run so a dry run simulates from the address a
+          # live run would sign with; the scripts never print a key.
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+          BIDDER_PK: ${{ secrets.BIDDER_PK }}
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
+        run: |
+          set -o pipefail
+          args=(--rpc "$RPC")
+          [ -n "$INDEXES_IN" ] && args+=(--index "$INDEXES_IN")
+          d="${DATE_IN:-$(date -u +%Y-%m-%d)}"
+          args+=(--date "$d")
+          [ -n "$DESK_IN" ] && args+=(--desk "$DESK_IN")
+          node keeper/deploy-mocks.mjs "${args[@]}" $MODE_FLAG 2>&1 | tee setup.log
+
+      - name: Commit the mocks file
+        # Runs even after a failed step: a deployment that was mined must
+        # reach main (the script writes after every transaction).
+        if: ${{ !cancelled() }}
+        run: |
+          git config user.name "qx-basket-recon"
+          git config user.email "keeper@quadrix.finance"
+          [ -e keeper/mocks ] && git add keeper/mocks
+          git diff --cached --quiet || git commit -m "basket-recon-setup: $TASK $(date -u +%Y-%m-%d)"
+          git pull --rebase origin main
+          git push
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        env:
+          MODE_LABEL: ${{ steps.mode.outputs.flag == '--live' && 'LIVE' || 'dry run' }}
+        run: |
+          {
+            echo "## basket-recon-setup — $TASK · $MODE_LABEL"
+            echo
+            echo '```'
+            tail -n 60 setup.log 2>/dev/null || echo '(no log)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
