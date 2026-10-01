@@ -266,7 +266,7 @@ function sessionAt(fx, factor) {
   const fills = res.trades.map((t) => {
     const num = t.sellAmount * ref[t.sell] * factor;
     const den = ref[t.buy] * 10_000n;
-    return { seq: t.seq, buy: t.buy, buyPaid: ((num + den - 1n) / den).toString() };
+    return { seq: t.seq, buy: t.buy, buyPaid: ((num + den - 1n) / den).toString(), factorBps: Number(factor) };
   });
   const ctx = { plan: { policy: fx.policy, targets: res.targets, fills }, o: { fairWindowBps: 10 } };
   const live = after.map((r) => ({ symbol: r.symbol, balance: r.balance, ref: r.ref, targetWeight: res.targets.find((t) => t.symbol === r.symbol).tradeTargetWeight, isRemove: r.isRemove }));
@@ -282,7 +282,7 @@ test('bound: with no fill it is (traded names × $1) / V', () => {
   near(b(live[0]), 4 / 1_000_000, 1e-15);
 });
 
-test('bound: every planned fill at the fair point or at the window edge (10,010 bp) is inside it; at 10,200 bp it is not', () => {
+test('bound: every planned fill at the fair point or at the window edge (10,010 bp) is inside it; fills at 10,200 bp recorded as fair are not', () => {
   for (const ix of ['qx20', 'qrev', 'qdefi', 'qai', 'triens']) {
     for (const f of [10_000n, 10_005n, 10_010n]) {
       const { ctx, live } = sessionAt(SAVED[ix], f);
@@ -290,8 +290,20 @@ test('bound: every planned fill at the fair point or at the window edge (10,010 
       const bad = res.filter((r) => !r.ok);
       assert.deepEqual(bad.map((r) => `${r.symbol} ${r.drift} > ${r.bound}`), [], `${ix} at ${f} bp`);
     }
+    // fills at the curve's open recorded as if they were fair must not pass
     const { ctx, live } = sessionAt(SAVED[ix], 10_200n);
-    assert.ok(residual(ctx, live).some((r) => !r.ok), `${ix}: fills at the curve's open must not pass`);
+    ctx.plan.fills = ctx.plan.fills.map((f) => ({ ...f, factorBps: 10_005 }));
+    assert.ok(residual(ctx, live).some((r) => !r.ok), `${ix}: open fills recorded as fair must not pass`);
+  }
+});
+
+test('bound: a session filled at the open (--fill open, 10,200 bp) or below fair (natural, 9,900 bp) is bounded by its own factors', () => {
+  for (const ix of ['qx20', 'qrev', 'qdefi', 'qai', 'triens']) {
+    for (const f of [10_200n, 9_900n]) {
+      const { ctx, live } = sessionAt(SAVED[ix], f);
+      const bad = residual(ctx, live).filter((r) => !r.ok);
+      assert.deepEqual(bad.map((r) => `${r.symbol} ${r.drift} > ${r.bound}`), [], `${ix} at ${f} bp`);
+    }
   }
 });
 
