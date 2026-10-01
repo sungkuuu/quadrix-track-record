@@ -268,6 +268,20 @@ Every tool is a dry run unless `live` is ticked and `confirm` is `EXECUTE`.
 - **Fill size.** A fill takes the smaller of the auction amount and the
   vault's balance at that moment; a redemption in the window shrinks the fill
   instead of reverting it, and the unfilled rest is cancelled.
+- **Announce checks.** The announce stage refuses a tuple with the same
+  address twice (in adds, in removes, or in both — the contract accepts it at
+  announce and refuses it at execute forever) and any add or remove whose
+  chain `symbol()` is not `m{SYMBOL}` of the plan; the dry-run log ends with a
+  `checks:` line saying both held. Read it before the live dispatch.
+- **Someone else executed.** `executeRegistryChange` is open to anyone once
+  the seven days have run. If the execute stage (or `day7`) finds nothing
+  pending and every add already in the registry and every remove in removal,
+  it says who executed (the tx, searched in the last 100,000 blocks), records
+  it in the plan and goes on with first-prices; `day7` completes. With
+  nothing pending and the registry NOT changed, it still refuses ("announce
+  first"). The desk must read the chain registry by then (`staging/basket-recon`
+  in the site repository): the creation vector changes length at execute,
+  whoever calls it.
 
 ## Sleeve indexes — Barbell and Triens (added 2026-09-22, not running)
 

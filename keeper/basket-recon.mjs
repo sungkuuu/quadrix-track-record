@@ -318,6 +318,26 @@ function decisionEntry(ctx, sha) {
   return entry;
 }
 
+/** Review §6-1: the contract accepts a duplicate address at announce and
+ *  refuses the same tuple at execute forever (the second push of an add, or
+ *  a remove already in removal, reverts) — the announcement would then block
+ *  every change on the vault until a re-announce restarts the seven days. */
+export function tupleProblems({ adds, removes }) {
+  const low = (xs) => xs.map((x) => String(x).toLowerCase());
+  const dups = (xs) => [...new Set(low(xs).filter((x, i, a) => a.indexOf(x) !== i))];
+  const out = [];
+  const da = dups(adds);
+  const dr = dups(removes);
+  const both = low(adds).filter((x) => low(removes).includes(x));
+  if (da.length) out.push(`duplicate address in adds: ${da.join(', ')}`);
+  if (dr.length) out.push(`duplicate address in removes: ${dr.join(', ')}`);
+  if (both.length) out.push(`address in both adds and removes: ${[...new Set(both)].join(', ')}`);
+  return out;
+}
+
+/** The deployed convention: mock symbol = "m" + the plan's symbol. */
+export const mockSymbolMismatch = (planSymbol, onchainSymbol) => onchainSymbol !== `m${planSymbol}`;
+
 const tupleHash = ({ adds, removes, sha }) =>
   keccak256(encodeAbiParameters([{ type: 'address[]' }, { type: 'address[]' }, { type: 'bytes32' }], [adds, removes, sha]));
 
@@ -343,6 +363,10 @@ async function stageAnnounce(ctx) {
   // vault's auctions for REGISTRY_DELAY. A weight-only plan trades, it does
   // not announce.
   if (t.adds.length + t.removes.length === 0) throw new Refused("empty change — a weight-only plan needs no announcement; announcing it would block this vault's auctions for 7 days (run the auctions stage instead)");
+  const problems = tupleProblems(t);
+  if (problems.length) throw new Refused(`${problems.join('; ')} — the contract would accept this announcement and refuse it at execute forever`);
+  for (const a of t.adds) if (!plan.adds.some((x) => x.address && getAddress(x.address) === a)) throw new Refused(`tuple add ${a} is not one of the plan's adds`);
+  for (const a of t.removes) if (!plan.removes.some((x) => getAddress(x.address) === a)) throw new Refused(`tuple remove ${a} is not one of the plan's removes`);
   // The decision hash must be an anchored one, of THIS basket. The ledger is
   // the truth; a file on disk that no longer hashes to it is a second signal
   // something moved.
@@ -364,22 +388,26 @@ async function stageAnnounce(ctx) {
     ...t.removes.flatMap((a) => [
       { address: plan.vault, abi: VAULT_ABI, functionName: 'isRegistryAsset', args: [a] },
       { address: plan.vault, abi: VAULT_ABI, functionName: 'inRemoval', args: [a] },
+      { address: a, abi: ERC20_ABI, functionName: 'symbol' },
     ]),
   ]);
   t.adds.forEach((a, i) => {
-    const add = plan.adds.find((x) => x.address === a);
+    const add = plan.adds.find((x) => x.address && getAddress(x.address) === a);
     const [isReg, dec, sym] = reads.slice(i * 3, i * 3 + 3);
     if (isReg) throw new Refused(`${add?.symbol ?? a} is already a registry asset`);
     if (Number(dec) !== add.decimals) throw new Refused(`${add.symbol}: ${a} has ${dec} decimals on chain, the plan says ${add.decimals} — a first price sized to the wrong decimals is off by 10× per decimal`);
+    if (mockSymbolMismatch(add.symbol, sym)) throw new Refused(`${add.symbol}: ${a} is ${sym} on chain, not m${add.symbol} — wrong mock address in the plan`);
     log(`  add ${add.symbol.padEnd(7)} ${a} ${sym} ${dec} dec — first ref ${add.firstRefPrice} (A ${add.priceA} / B ${add.priceB ?? '—'}, ${add.disagreementBps ?? '—'} bp apart)`);
   });
   t.removes.forEach((a, i) => {
-    const rem = plan.removes.find((x) => x.address === a);
-    const [isReg, inRem] = reads.slice(t.adds.length * 3 + i * 2, t.adds.length * 3 + i * 2 + 2);
+    const rem = plan.removes.find((x) => getAddress(x.address) === a);
+    const [isReg, inRem, sym] = reads.slice(t.adds.length * 3 + i * 3, t.adds.length * 3 + i * 3 + 3);
     if (!isReg) throw new Refused(`${rem?.symbol ?? a} is not a registry asset`);
     if (inRem) throw new Refused(`${rem?.symbol ?? a} is already in removal`);
-    log(`  remove ${rem?.symbol ?? '?'} ${a} (balance ${rem?.balance})`);
+    if (mockSymbolMismatch(rem.symbol, sym)) throw new Refused(`${rem.symbol}: ${a} is ${sym} on chain, not m${rem.symbol} — wrong removal address in the plan`);
+    log(`  remove ${rem.symbol.padEnd(7)} ${a} ${sym} (balance ${rem.balance})`);
   });
+  log(`checks: no duplicate address in adds or removes, none in both; every chain symbol is m{SYMBOL} (${t.adds.length} add, ${t.removes.length} remove)`);
   const expectedHash = tupleHash(t);
   log(`tuple keccak ${expectedHash}; eta would be now + ${Number(v.registryDelay) / 86400} days`);
   const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'announceRegistryChange', args: [t.adds, t.removes, t.sha], gas: GAS.announce(t.adds.length + t.removes.length), what: 'announce' });
@@ -396,11 +424,48 @@ async function stageAnnounce(ctx) {
 }
 
 // ================================================================= execute
+/** K-6: executeRegistryChange is permissionless. With nothing pending, the
+ *  change was executed when every add of the tuple is in the registry and
+ *  every remove is in removal (or already finalized). */
+function executedAlready(v, t) {
+  if (t.adds.length + t.removes.length === 0) return false;
+  const on = (a) => v.assets.find((x) => x.address === a);
+  return t.adds.every((a) => !!on(a)) && t.removes.every((a) => !on(a) || on(a).inRemoval);
+}
+
+const EXECUTED_EVENT = VAULT_ABI.find((x) => x.type === 'event' && x.name === 'RegistryChangeExecuted');
+
+async function findExecution(ctx, t) {
+  const latest = await ctx.pc.getBlockNumber();
+  const floor = latest > 100_000n ? latest - 100_000n : 0n; // ≈ 28 h of 1-s blocks, 10 reads at most
+  const lo = ctx.plan.announce?.block && BigInt(ctx.plan.announce.block) > floor ? BigInt(ctx.plan.announce.block) : floor;
+  for (let to = latest; to >= lo; to -= 10_000n) {
+    const from = to - 9_999n > lo ? to - 9_999n : lo;
+    const logs = await ctx.pc.getLogs({ address: ctx.plan.vault, event: EXECUTED_EVENT, fromBlock: from, toBlock: to });
+    const hit = logs.reverse().find((l) => tupleHash({ adds: l.args.adds.map((a) => getAddress(a)), removes: l.args.removes.map((a) => getAddress(a)), sha: l.args.decisionSha256 }).toLowerCase() === tupleHash(t).toLowerCase());
+    if (hit) return hit;
+    if (from === lo) break;
+  }
+  return null;
+}
+
 async function stageExecute(ctx) {
   const { plan, log } = ctx;
   const t = tuple(plan);
   const v = await readVault(ctx.reader, plan.vault);
-  if (v.pendingRegistryChange === ZERO32) throw new Refused('nothing is pending on chain — announce first');
+  if (v.pendingRegistryChange === ZERO32) {
+    if (!executedAlready(v, t)) throw new Refused('nothing is pending on chain — announce first');
+    if (plan.execute?.txHash) { log(`already executed (tx ${plan.execute.txHash}); continuing`); return; }
+    let ev = null;
+    try { ev = await findExecution(ctx, t); } catch (e) { log(`  could not search for the RegistryChangeExecuted log (${fmtErr(e)})`); }
+    const tx = ev ? await ctx.pc.getTransaction({ hash: ev.transactionHash }).catch(() => null) : null;
+    const blk = ev ? await ctx.pc.getBlock({ blockNumber: ev.blockNumber }) : null;
+    log(`nothing pending, and the registry already holds this change — executeRegistryChange is permissionless and was called ${tx ? `by ${tx.from} in tx ${ev.transactionHash} (block ${ev.blockNumber})` : 'by someone else (tx not found in the last 100,000 blocks)'}; continuing with first-prices`);
+    if (!ctx.live) return;
+    plan.execute = { txHash: ev?.transactionHash ?? null, block: ev?.blockNumber ?? null, at: blk ? iso(blk.timestamp) : null, assetCount: v.assetCount, order: v.assets.map((x) => x.address), signer: tx?.from ?? null, byThirdParty: true };
+    savePlan(ctx.planFile, plan);
+    return;
+  }
   const h = tupleHash(t);
   if (h.toLowerCase() !== v.pendingRegistryChange.toLowerCase()) throw new Refused(`the plan's tuple hashes to ${h} but the pending change is ${v.pendingRegistryChange} — this plan is not what was announced`);
   if (v.block.timestamp < v.pendingRegistryEta) throw new Refused(`timelock not elapsed: eta ${iso(v.pendingRegistryEta)}, chain time ${iso(v.block.timestamp)} (${Number(v.pendingRegistryEta - v.block.timestamp)} s to go)`);
