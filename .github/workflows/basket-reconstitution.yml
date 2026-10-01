@@ -64,7 +64,7 @@ on:
         required: false
         default: ''
       mocks:
-        description: 'plan stage only: repo path of a {SYMBOL: {address, decimals}} file for the deployed mocks'
+        description: 'plan stage only: repo path of the deployed mocks — keeper/mocks/{date}.json from basket-recon-setup (keyed by index), or a flat {SYMBOL: {address, decimals}} file'
         required: false
         default: ''
       duration:
@@ -128,6 +128,10 @@ jobs:
           [ -n "$DECISION" ] && args+=(--decision "$DECISION")
           [ -n "$MOCKS" ] && args+=(--mocks "$MOCKS")
           node keeper/basket-plan.mjs "${args[@]}" 2>&1 | tee recon.log
+        env:
+          # Source A of the plan; the keyless endpoint answers 403 from the
+          # runners (2026-09-29). Sent as a header only, never printed.
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       - name: Check the plan is today's (day7)
         # day7 must follow a plan of the same UTC day; the script checks this

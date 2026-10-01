@@ -315,18 +315,26 @@ function priceMap(rows, pick) {
   return m;
 }
 
+/** CoinGecko key, as in paper-index.mjs: from 2026-09-29 the keyless
+ *  endpoint answers 403 from GitHub's runners, so the plan sends
+ *  COINGECKO_API_KEY when set (header only, never in a URL or a log line). */
+const CG_KEY = (process.env.COINGECKO_API_KEY || '').trim();
+const CG_PRO = (process.env.COINGECKO_API_PLAN || '').trim().toLowerCase() === 'pro';
+const CG_BASE = CG_KEY && CG_PRO ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
+const CG_OPTS = CG_KEY ? { headers: { [CG_PRO ? 'x-cg-pro-api-key' : 'x-cg-demo-api-key']: CG_KEY } } : undefined;
+
 /** Source A: the day's CoinGecko top-500 snapshot — the same file and the
  *  same URL paper-index.mjs uses, so the plan prices what the record priced. */
-async function loadSourceA(date, allowFetch) {
+export async function loadSourceA(date, allowFetch) {
   const key = `cg-markets-top500-${date}.json`;
   const cached = readCache(key);
   if (cached) return { prices: priceMap(cached, (c) => c.price), label: `coingecko (keeper/cache/${key})` };
   if (!allowFetch) return { prices: {}, label: 'coingecko (no cache, fetch disabled)' };
   const rows = [];
   for (const page of [1, 2]) {
-    const url = 'https://api.coingecko.com/api/v3/coins/markets' +
+    const url = `${CG_BASE}/coins/markets` +
       `?vs_currency=usd&order=market_cap_desc&per_page=250&page=${page}&sparkline=false`;
-    const r = await fetch(url);
+    const r = await fetch(url, CG_OPTS);
     if (!r.ok) return { prices: priceMap(rows, (c) => c.price), label: `coingecko (HTTP ${r.status} on page ${page}; partial)` };
     const raw = await r.json();
     if (!Array.isArray(raw)) break;
@@ -339,7 +347,7 @@ async function loadSourceA(date, allowFetch) {
 
 /** Source B: CoinPaprika tickers (update-nav.mjs's fallback source), or a
  *  file — {SYMBOL: price} or the raw tickers array — for an offline run. */
-async function loadSourceB(date, fileArg, allowFetch) {
+export async function loadSourceB(date, fileArg, allowFetch) {
   if (fileArg) {
     const raw = JSON.parse(fs.readFileSync(fileArg, 'utf8'));
     const prices = Array.isArray(raw) ? priceMap(raw, (c) => c.quotes?.USD?.price ?? c.price) : raw;
@@ -618,7 +626,11 @@ export async function buildPlan(o) {
   log(`prices A: ${A.label}; B: ${B.label}${row ? `; record row ${date} seq ${row.seq} as fallback for A` : ''}`);
 
   // ---- mocks for the adds (deployed addresses), decimals, first prices
-  const mocks = o.mocks ? JSON.parse(fs.readFileSync(o.mocks, 'utf8')) : {};
+  // keeper/deploy-mocks.mjs writes one file per date keyed by index
+  // ({qrev: {SYRUP: {address, decimals}}, …}) — every basket has its own mock
+  // per name; a flat {SYMBOL: {address, decimals}} file is read as it is.
+  const mocksRaw = o.mocks ? JSON.parse(fs.readFileSync(o.mocks, 'utf8')) : {};
+  const mocks = mocksRaw[index] && typeof mocksRaw[index] === 'object' && !mocksRaw[index].address ? mocksRaw[index] : mocksRaw;
   const adds = [];
   for (const sym of addsSym) {
     const a = priceA(sym);
