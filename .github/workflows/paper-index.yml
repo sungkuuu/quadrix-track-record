@@ -27,8 +27,15 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - id: deps
+        run: npm ci
 
+      # Each leg below writes its own record line, state and anchor, and only
+      # then marks its basket vault (keeper/paper-index.mjs markAfterRecord). A
+      # leg that exits 1 — a failed basket mark included — does not skip the
+      # legs after it: they are independent records, so every later leg runs
+      # on `!cancelled()` as long as the dependencies installed. The job is
+      # still marked failed and "Alert on failure" still opens the issue.
       - name: qREV — compute and append today's record
         run: |
           set -o pipefail
@@ -44,6 +51,7 @@ jobs:
           COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       - name: qDEFI — compute and append today's record
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           set -o pipefail
           node keeper/paper-index.mjs --index qdefi --anchor 2>&1 | tee pi-qdefi.log
@@ -62,6 +70,7 @@ jobs:
       # group and would reintroduce exactly that race.
       # ------------------------------------------------------------------
       - name: Barbell — compute and append today's record
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           set -o pipefail
           node keeper/paper-index.mjs --index barbell --anchor 2>&1 | tee pi-barbell.log
@@ -70,6 +79,7 @@ jobs:
           COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       - name: Triens — compute and append today's record
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           set -o pipefail
           node keeper/paper-index.mjs --index triens --anchor 2>&1 | tee pi-triens.log
@@ -83,6 +93,7 @@ jobs:
       # KEEPER_PK, same `keeper-key` concurrency group.
       # ------------------------------------------------------------------
       - name: qAI — compute and append today's record
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           set -o pipefail
           node keeper/paper-index.mjs --index qai --anchor 2>&1 | tee pi-qai.log
@@ -91,6 +102,7 @@ jobs:
           COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       - name: qX20 — mark the basket vault from keeper/state.json (no record append)
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           set -o pipefail
           node keeper/paper-index.mjs --index qx20 2>&1 | tee pi-qx20.log
@@ -164,6 +176,10 @@ jobs:
             tail -n 40 pi-barbell.log 2>/dev/null || echo '(no output — failed before the Barbell step ran)'
             echo '--- Triens ---'
             tail -n 40 pi-triens.log 2>/dev/null || echo '(no output — failed before the Triens step ran)'
+            echo '--- qAI ---'
+            tail -n 40 pi-qai.log 2>/dev/null || echo '(no output — failed before the qAI step ran)'
+            echo '--- qX20 basket mark ---'
+            tail -n 40 pi-qx20.log 2>/dev/null || echo '(no output — failed before the qX20 step ran)'
             echo '```'
           } > alert.md
           existing=$(gh issue list --label paper-index-failure --state open \

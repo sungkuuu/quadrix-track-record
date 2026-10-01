@@ -187,6 +187,51 @@ the book. To rehearse the path on real data:
 (dry run only; without `--dry-run` the variable is ignored, with a line saying
 so).
 
+### 7. Basket mark failed after the record — `basket marks FAILED after record #N was written and anchored`
+
+Every record-writing leg of `keeper/paper-index.mjs` (qREV, qDEFI, qAI,
+Barbell, Triens) runs in this order since 2026-10-01: record line → state →
+anchor → basket marks (`markAfterRecord`). A basket mark that throws — a
+reverted `setNav` / `setRefPrice` (`… reverted on chain (tx …)`), a failed
+GIWA RPC read inside `keeper/basket-mark.mjs`, a NAV the band steps cannot
+reach — therefore comes after the line and its anchor are on disk. The leg
+logs
+
+    qREV basket marks FAILED after record #15 was written and anchored: …
+    markFailed {"markFailed":true,"index":"qrev","date":"…","seq":15,"recordWritten":true,"anchored":true,"error":"…"}
+
+plus a workflow error annotation and a line in the job summary, and **exits
+1**. In `.github/workflows/paper-index.yml`:
+
+- the later legs still run (`!cancelled()`), each with its own line, anchor
+  and marks;
+- "Commit records" commits every line, state and anchor entry written;
+- the job fails and the `paper-index-failure` issue opens.
+
+What is lost is that run's marks only. Steps that landed before the failure
+stay on chain — a band-stepped `setNav` can stop part-way — and the vault
+keeps them. To re-post, re-run the workflow the same UTC day: a run on a day
+that already has a record re-posts the marks only, with no second line and no
+second anchor. Do not edit or re-append the record.
+
+Before 2026-10-01 the anchor came after the marks: a mark failure left that
+day's line committed without an anchor, and the failed step skipped every
+later leg, which then had no line for that day. No line in
+`record-{qrev,qdefi,qai,barbell,triens}.jsonl` lacks an anchor (checked
+2026-10-01).
+
+Unchanged — **the anchor itself fails** (gas, a nonce race past five tries,
+RPC): the leg exits 1 with the line and state on disk and no anchor entry.
+"Commit records" still commits them, and `scripts/verify.mjs` then reports
+`no anchor for this record` for that seq. Nothing anchors it later: a
+same-day re-run takes the record-exists path, which marks and does not
+anchor. The next day's anchor commits to a head whose `prevHash` chain
+includes the line, so its content is fixed from then, but not its date. The
+anchor and the marks use the same GIWA RPC, so an RPC outage fails the anchor
+before any mark is tried. The N1Q record (`scripts/track-record.mjs`,
+`track-record.yml`) has no basket mark; there a failed anchor also skips the
+commit step, so that day's line is not committed at all.
+
 ---
 
 ## Index baskets — marking the basket vaults (prepared 2026-09-16, no vault deployed yet)

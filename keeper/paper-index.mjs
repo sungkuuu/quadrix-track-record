@@ -73,14 +73,16 @@
  *
  * Basket marking (2026-09-16, keeper/basket-mark.mjs): a rulebook whose
  * `basket` block names a deployed QuadrixBasketVault makes the run, after the
- * record is written, post navPerShare and every constituent's reference price
- * to that vault (band-stepped) and, on a reconstitution day, write
+ * record is written and anchored, post navPerShare and every constituent's
+ * reference price to that vault (band-stepped) and, on a reconstitution day, write
  * keeper/pending-registry-{index}.json with the registry change it would
  * announce. `--index qx20` runs ONLY that leg for qX20: its book is
  * keeper/state.json (written by update-nav.mjs, which keeps marking the
  * NAV-tracker vault and is not changed); no record line, no anchor. A book
  * name with no usable price defers that run's marks (deferBasketMarks,
- * 2026-09-30) rather than marking the vault without it.
+ * 2026-09-30) rather than marking the vault without it. A mark that fails
+ * after the record and anchor (markAfterRecord, 2026-10-01) exits 1 without
+ * taking either of them with it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -1945,6 +1947,50 @@ function deferBasketMarks(dateStr, missing) {
   return deferred;
 }
 
+/** Basket marks on a record-writing leg run LAST: record line → state →
+ *  anchor → marks (2026-10-01). The basket vault is a testnet contract the
+ *  record does not depend on, so a mark that throws — a reverted post, a
+ *  failed RPC read inside basket-mark, a NAV the band steps cannot reach —
+ *  must not cost the day its line or its anchor. It is reported here
+ *  (`markFailed` line, workflow error, step summary) and the process exits 1,
+ *  so the run is still marked failed and the paper-index-failure issue opens;
+ *  the line, the state and the anchor entry are already on disk for the
+ *  workflow's "Commit records" step. A same-day re-run re-posts the marks
+ *  only (the record-exists path). */
+async function markAfterRecord(record, dateStr, mark) {
+  try {
+    await mark();
+  } catch (e) {
+    // One line for the log, the annotation and the summary: viem's short
+    // message plus its details (the revert reason or the RPC error).
+    const msg = String(e?.shortMessage ? `${e.shortMessage} ${e.details ?? ''}` : e?.message ?? e)
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 300);
+    const anchored = fs.existsSync(ANCHORS_PATH) && fs.readFileSync(ANCHORS_PATH, 'utf8').includes(`"headHash":"${record.hash}"`);
+    const failed = { markFailed: true, index: INDEX, date: dateStr, seq: record.seq, recordWritten: true, anchored, error: msg };
+    const line =
+      `${RULEBOOK.ticker} basket marks FAILED after record #${record.seq} was written` +
+      `${anchored ? ' and anchored' : ' (not anchored this run)'}: ${msg}`;
+    console.error(e);
+    console.error(line);
+    console.error(`markFailed ${JSON.stringify(failed)}`);
+    if (process.env.GITHUB_ACTIONS === 'true') console.log(`::error title=${RULEBOOK.ticker} basket marks failed::${line}`);
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      try {
+        fs.appendFileSync(
+          process.env.GITHUB_STEP_SUMMARY,
+          `- **${RULEBOOK.ticker}** basket marks failed after record #${record.seq} ` +
+            `(${anchored ? 'written and anchored' : 'written, not anchored'}): ${msg}\n`
+        );
+      } catch (err) {
+        console.warn(`  could not write the step summary: ${err.message}`);
+      }
+    }
+    process.exitCode = 1;
+  }
+}
+
 /**
  * qX20 is not a paper index: its book lives in keeper/state.json, written by
  * update-nav.mjs (which keeps posting the NAV-tracker vault and is not
@@ -2430,23 +2476,26 @@ async function runSleeveIndex() {
     );
   }
 
-  // Basket marks (testnet baskets from 2026-09-22; a no-op while
-  // basket.vault is null). The working-capital sleeve is one registry asset,
-  // symbol WC, whose reference price is the sleeve's unit value.
-  await markBasket({
-    index: INDEX,
-    basket: RULEBOOK.basket,
-    level,
-    navBase: RULEBOOK.basket?.navBase ?? RULEBOOK.genesisLevel,
-    prices: { ...priceAll, WC: wcUnitValue },
-    members: members.map((m) => m.symbol),
-    reconstituted,
-    dryRun: DRY_RUN,
-    keeperDir: HERE,
-    date: dateStr,
-  });
-
   await maybeAnchor(record, dateStr);
+
+  // Basket marks (testnet baskets from 2026-09-22; a no-op while
+  // basket.vault is null), after the anchor (markAfterRecord). The
+  // working-capital sleeve is one registry asset, symbol WC, whose reference
+  // price is the sleeve's unit value.
+  await markAfterRecord(record, dateStr, () =>
+    markBasket({
+      index: INDEX,
+      basket: RULEBOOK.basket,
+      level,
+      navBase: RULEBOOK.basket?.navBase ?? RULEBOOK.genesisLevel,
+      prices: { ...priceAll, WC: wcUnitValue },
+      members: members.map((m) => m.symbol),
+      reconstituted,
+      dryRun: DRY_RUN,
+      keeperDir: HERE,
+      date: dateStr,
+    })
+  );
 }
 
 /** The anchor step, identical for every record-writing leg: calldata-as-
@@ -2904,10 +2953,16 @@ async function main() {
     );
   }
 
+  // The anchor goes before the basket marks (markAfterRecord): a mark that
+  // fails must not leave the day's line without its anchor.
+  await maybeAnchor(record, dateStr);
+
   // ------------------------------------------------- basket marks (on-chain)
-  // After the record, never before: the record is the product; the vault
-  // follows it. Skips with a log line when the rulebook has no vault, the
-  // key is absent, or this is a dry run (keeper/basket-mark.mjs).
+  // After the record and its anchor, never before: the record is the
+  // product; the vault follows it. Skips with a log line when the rulebook
+  // has no vault, the key is absent, or this is a dry run
+  // (keeper/basket-mark.mjs). A mark that throws is reported and exits 1
+  // without touching the line or the anchor (markAfterRecord).
   //
   // Fail-closed (deferBasketMarks): if any name of the book marked today —
   // the book as it stood this morning and the one the day left, which differ
@@ -2915,27 +2970,27 @@ async function main() {
   // marked. The record line above is written either way and is not changed
   // by this: how a record values a name with no price is the rulebook's
   // (qX20 §9, cited by qrev/qdefi/qai.json), not the marking leg's. The
-  // anchor below still runs.
+  // anchor above has already run.
   const bookNames = [...new Set([...Object.keys(state?.units ?? {}), ...Object.keys(units ?? {})])];
   const unpriced = unpricedMembers(bookNames, priceNow);
   if (unpriced.length) {
     deferBasketMarks(dateStr, unpriced);
   } else {
-    await markBasket({
-      index: INDEX,
-      basket: RULEBOOK.basket,
-      level,
-      navBase: RULEBOOK.basket?.navBase ?? RULEBOOK.genesisLevel,
-      prices: priceNow,
-      members: members.map((m) => m.symbol),
-      reconstituted,
-      dryRun: DRY_RUN,
-      keeperDir: HERE,
-      date: dateStr,
-    });
+    await markAfterRecord(record, dateStr, () =>
+      markBasket({
+        index: INDEX,
+        basket: RULEBOOK.basket,
+        level,
+        navBase: RULEBOOK.basket?.navBase ?? RULEBOOK.genesisLevel,
+        prices: priceNow,
+        members: members.map((m) => m.symbol),
+        reconstituted,
+        dryRun: DRY_RUN,
+        keeperDir: HERE,
+        date: dateStr,
+      })
+    );
   }
-
-  await maybeAnchor(record, dateStr);
 }
 
 main().catch((e) => {
