@@ -16,11 +16,14 @@
  *   daily mark, emulated → day7 (--warp --fill fair; the keeper fills its
  *   own auctions, as on the chain while no BIDDER_PK is set)
  *
- * with the tool talking to the anvil directly ("clean") or through
- * keeper/test/lag-proxy.mjs ("lagging": after every receipt the next --lag
- * reads of each read method come from a node one block behind — stale,
- * empty, not found, in turn). Block times are made deterministic (anvil_setBlockTimestampInterval
- * 1: every block is one second after the last, whatever the wall clock), so
+ * with the tool talking to the anvil through keeper/test/lag-proxy.mjs,
+ * either with no lag ("clean": the proxy passes everything through and only
+ * makes the --warp exact, see below) or "lagging" (after every receipt the
+ * next --lag reads of each read method come from a node one block behind —
+ * stale, empty, not found, in turn). Block times are made deterministic (anvil_setBlockTimestampInterval
+ * 1: every block is one second after the last, whatever the wall clock; a
+ * warp is evm_setNextBlockTimestamp, since anvil then ignores
+ * evm_increaseTime — the proxy translates the tool's --warp), so
  * the two runs must leave the SAME plan-file records and the SAME chain:
  * the transactions mined (from, to, input, gas), the vault's registry,
  * balances and references. --main-recon adds the tool as on main through the
@@ -31,9 +34,16 @@
  * it are written to. No key is read; KEEPER_PK and BIDDER_PK are blanked for
  * every child. It refuses to run under Actions.
  *
+ * --stop-variant adds a re-run after a stop: day7 through a proxy that goes
+ * dark for 40 s right after the FILL's receipt (the tool records the fill,
+ * then stops at its 30 s bound), then day7 again on the clean node — the
+ * re-run must not trade the recorded fill again, and must leave the same
+ * mined transactions and vault state as the clean run.
+ *
  * Options: --date (today, UTC) --index (qdefi) --stages announce|day7 (day7)
  *          --lag n (4) --port n (8571) --proxy-port n (8581) --work DIR
  *          --fork-block n --duration s (1800) --main-recon FILE --foundry-bin DIR
+ *          --stop-variant
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -41,7 +51,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createPublicClient, createWalletClient, http, getAddress } from 'viem';
+import { createWalletClient, http, getAddress, toFunctionSelector } from 'viem';
 import { GIWA_RPC, GIWA_CHAIN_ID, VAULT_ABI, chainFor, makeReader, readVault, sha256, loadPlan, savePlan } from '../basket-plan.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -64,6 +74,7 @@ const O = {
   duration: Number(opt('--duration', 1800)),
   mainRecon: opt('--main-recon', null),
   foundry: opt('--foundry-bin', process.env.FOUNDRY_BIN ?? path.join(os.homedir(), '.foundry', 'bin')),
+  stopVariant: argv.includes('--stop-variant'),
 };
 const ANVIL = `http://127.0.0.1:${O.port}`;
 const PROXY = `http://127.0.0.1:${O.proxyPort}`;
@@ -104,13 +115,13 @@ async function startAnvil() {
   return child;
 }
 let proxyChild = null;
-async function startProxy(tag) {
+async function startProxy(tag, extra = [], lag = O.lag) {
   await stopProxy();
   const sends = path.join(O.work, `${tag}-proxy-sends.jsonl`);
   const events = path.join(O.work, `${tag}-proxy-lag.jsonl`);
   for (const f of [sends, events]) fs.rmSync(f, { force: true });
   const fd = fs.openSync(path.join(O.work, `${tag}-proxy.log`), 'w');
-  proxyChild = spawn(process.execPath, [path.join(HERE, 'lag-proxy.mjs'), '--port', String(O.proxyPort), '--upstream', ANVIL, '--lag', String(O.lag), '--log', sends, '--events', events], { stdio: ['ignore', fd, fd] });
+  proxyChild = spawn(process.execPath, [path.join(HERE, 'lag-proxy.mjs'), '--port', String(O.proxyPort), '--upstream', ANVIL, '--lag', String(lag), '--exact-warp', '--log', sends, '--events', events, ...extra], { stdio: ['ignore', fd, fd] });
   await waitUp(PROXY, 20_000);
   return { sends, events };
 }
@@ -191,6 +202,13 @@ async function markToPlan(keeper, vault, plan) {
   }
   return posts;
 }
+/** `seconds` later, exactly — under the timestamp interval anvil ignores evm_increaseTime. */
+async function warpExact(seconds) {
+  const head = await rpc('eth_getBlockByNumber', ['latest', false]);
+  await rpc('evm_setNextBlockTimestamp', [Number(BigInt(head.timestamp) + BigInt(seconds))]);
+  await rpc('evm_mine', []);
+}
+
 /** Every transaction mined after `fromBlock`: from, to, input, gas, status. */
 async function minedSince(fromBlock) {
   const head = BigInt(await rpc('eth_blockNumber'));
@@ -215,38 +233,72 @@ function planRecords(p) {
 }
 
 // --------------------------------------------------------------- one variant
-async function variant(env, B, tag, { script, rpcUrl }) {
+async function variant(env, B, tag, { script, lag }) {
   await rpc('evm_revert', [B.snap]);
   B.snap = await rpc('evm_snapshot');
   await rpc('anvil_setBlockTimestampInterval', [1]);
   savePlan(B.planFile, loadPlan(B.savedPlan));
   const from = BigInt(await rpc('eth_blockNumber')) + 1n;
-  const proxied = rpcUrl === PROXY;
-  const px = proxied ? await startProxy(tag) : null;
+  await startProxy(tag, [], lag);
   const live = ['--live', '--from', B.owner];
-  const recon = (stage, extra = []) => ['--index', O.index, '--stage', stage, '--rpc', rpcUrl, '--plan', B.planFile, ...live, ...extra];
-  const res = { tag, script, rpc: proxied ? `lag-proxy (${O.lag} lagging reads after each receipt)` : 'anvil direct' };
+  const recon = (stage, extra = []) => ['--index', O.index, '--stage', stage, '--rpc', PROXY, '--plan', B.planFile, ...live, ...extra];
+  const res = { tag, script, rpc: lag ? `lag-proxy, ${lag} lagging read(s) of each read method after each receipt` : 'lag-proxy with no lag (pass-through, exact warp)' };
   let r = run(env, script, recon('announce'), `${tag}-announce`);
   res.announceExit = r.status;
   res.announceOut = r.out;
   res.afterAnnounce = { plan: planRecords(loadPlan(B.planFile)), chain: await vaultState(B.vault) };
   if (O.stages === 'day7' && r.status === 0) {
     await stopProxy();
-    await rpc('evm_increaseTime', [Number(B.registryDelay) + 60]);
-    await rpc('evm_mine', []);
+    await warpExact(Number(B.registryDelay) + 60);
     r = run(env, 'basket-plan.mjs', B.planArgs, `${tag}-replan`);
     res.replanExit = r.status;
     const day7Plan = loadPlan(B.planFile);
     res.posts = await markToPlan(B.owner, B.vault, day7Plan);
-    if (proxied) await startProxy(`${tag}-day7`);
+    await startProxy(`${tag}-day7`, [], lag);
     r = run(env, script, recon('day7', ['--warp', '--fill', 'fair']), `${tag}-day7`);
     res.day7Exit = r.status;
     res.day7Out = r.out;
   }
-  if (proxied) {
-    res.lagStats = await rpc('lagproxy_stats', [], PROXY).catch(() => null);
-    await stopProxy();
-  }
+  res.lagStats = await rpc('lagproxy_stats', [], PROXY).catch(() => null);
+  await stopProxy();
+  res.plan = planRecords(loadPlan(B.planFile));
+  res.mined = await minedSince(from);
+  res.chain = await vaultState(B.vault);
+  fs.copyFileSync(B.planFile, path.join(O.work, `${tag}-plan.json`));
+  fs.writeFileSync(path.join(O.work, `${tag}-result.json`), JSON.stringify(res, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
+  return res;
+}
+
+/** Day 7 through a node that goes dark right after the fill's receipt, then
+ *  day 7 again on the clean node (announce, re-plan and mark as in variant()). */
+async function variantStop(env, B, tag) {
+  await rpc('evm_revert', [B.snap]);
+  B.snap = await rpc('evm_snapshot');
+  await rpc('anvil_setBlockTimestampInterval', [1]);
+  savePlan(B.planFile, loadPlan(B.savedPlan));
+  const from = BigInt(await rpc('eth_blockNumber')) + 1n;
+  const live = ['--live', '--from', B.owner];
+  const recon = (rpcUrl, stage, extra = []) => ['--index', O.index, '--stage', stage, '--rpc', rpcUrl, '--plan', B.planFile, ...live, ...extra];
+  const res = { tag };
+  await startProxy(`${tag}-clean`, [], 0);
+  let r = run(env, 'basket-recon.mjs', recon(PROXY, 'announce'), `${tag}-announce`);
+  await stopProxy();
+  res.announceExit = r.status;
+  await warpExact(Number(B.registryDelay) + 60);
+  r = run(env, 'basket-plan.mjs', B.planArgs, `${tag}-replan`);
+  res.posts = await markToPlan(B.owner, B.vault, loadPlan(B.planFile));
+  await startProxy(`${tag}-dark`, ['--dark-after-selector', toFunctionSelector('fill(uint256,uint256)'), '--dark-ms', '40000'], O.lag);
+  r = run(env, 'basket-recon.mjs', recon(PROXY, 'day7', ['--warp', '--fill', 'fair']), `${tag}-day7-stopped`);
+  res.stoppedExit = r.status;
+  res.stoppedOut = r.out;
+  res.lagStats = await rpc('lagproxy_stats', [], PROXY).catch(() => null);
+  await stopProxy();
+  res.afterStop = planRecords(loadPlan(B.planFile));
+  await startProxy(`${tag}-rerun`, [], 0);
+  r = run(env, 'basket-recon.mjs', recon(PROXY, 'day7', ['--warp', '--fill', 'fair']), `${tag}-day7-rerun`);
+  await stopProxy();
+  res.rerunExit = r.status;
+  res.rerunOut = r.out;
   res.plan = planRecords(loadPlan(B.planFile));
   res.mined = await minedSince(from);
   res.chain = await vaultState(B.vault);
@@ -304,11 +356,12 @@ async function main() {
 
     // ---- the variants
     const out = {};
-    out.clean = await variant(env, B, 'new-clean', { script: 'basket-recon.mjs', rpcUrl: ANVIL });
-    out.lag = await variant(env, B, 'new-lagging', { script: 'basket-recon.mjs', rpcUrl: PROXY });
+    out.clean = await variant(env, B, 'new-clean', { script: 'basket-recon.mjs', lag: 0 });
+    out.lag = await variant(env, B, 'new-lagging', { script: 'basket-recon.mjs', lag: O.lag });
+    if (O.stopVariant && O.stages === 'day7') out.stop = await variantStop(env, B, 'new-stop-rerun');
     if (O.mainRecon) {
-      out.mainLag = await variant(env, B, 'main-lagging', { script: 'basket-recon-main.mjs', rpcUrl: PROXY });
-      out.mainClean = await variant(env, B, 'main-clean', { script: 'basket-recon-main.mjs', rpcUrl: ANVIL });
+      out.mainLag = await variant(env, B, 'main-lagging', { script: 'basket-recon-main.mjs', lag: O.lag });
+      out.mainClean = await variant(env, B, 'main-clean', { script: 'basket-recon-main.mjs', lag: 0 });
     }
 
     // ---- checks
@@ -331,7 +384,18 @@ async function main() {
       const mc = out.mainClean;
       check('the tool on main, lagging node: the announcement is mined but NOT recorded (the failure being fixed)', ml.afterAnnounce.chain.pending !== ZERO32 && !ml.afterAnnounce.plan.announce && ml.announceExit !== 0, (ml.announceOut.split('\n').filter(Boolean).at(-1) ?? '').slice(0, 200));
       const strip = (m) => m.map(({ from, to, input, gas }) => ({ from, to, input, gas }));
-      check('what is sent: the tool on main and this tool send the same transactions (from, to, input, gas) on a clean node', same(strip(mc.mined), strip(c.mined)), firstDiff(strip(mc.mined), strip(c.mined)) ?? `${c.mined.length} transaction(s)`);
+      check('what is sent: the tool on main and this tool send the same transactions (from, to, input, gas; block and time too) on a clean node', same(strip(mc.mined), strip(c.mined)) && same(mc.mined, c.mined), firstDiff(mc.mined, c.mined) ?? `${c.mined.length} transaction(s)`);
+    }
+    if (out.stop) {
+      const s = out.stop;
+      const fillsAfterStop = s.afterStop.fills.length;
+      check('stop: the run through the dark node stops after the fill is mined, with the fill recorded', s.stoppedExit !== 0 && fillsAfterStop >= 1 && !!s.afterStop.fills[0].fillTx, `exit ${s.stoppedExit}; ${fillsAfterStop} fill(s) recorded; last line: ${(s.stoppedOut.split('\n').filter(Boolean).at(-1) ?? '').slice(0, 160)}`);
+      check('stop → re-run on the clean node: day7 exits 0 and verify passes', s.rerunExit === 0 && /verify: all checks passed/.test(s.rerunOut), (s.rerunOut.match(/verify: [^\n]*/) ?? ['no verify line'])[0]);
+      check('stop → re-run: the recorded fill is not traded again (no second open, no second fill)', !/open auction #1\b/.test(s.rerunOut) && s.plan.fills.length === c.plan.fills.length, `fills ${s.plan.fills.map((f) => f.seq).join(',')} vs clean ${c.plan.fills.map((f) => f.seq).join(',')}`);
+      check('stop → re-run: the same transactions mined (from, to, input, gas, block, time) as the clean run', same(s.mined, c.mined), firstDiff(s.mined, c.mined) ?? `${s.mined.length} transaction(s)`);
+      check('stop → re-run: the same vault state as the clean run', same(s.chain, c.chain), firstDiff(s.chain, c.chain) ?? `${s.chain.assetCount} assets`);
+      const blank = (p) => ({ ...p, fills: p.fills.map(({ at, factorBps, elapsed, ...x }) => x), sent: p.sent.map(({ at, settledLater, ...x }) => x), verify: p.verify });
+      check('stop → re-run: the same plan records as the clean run, but for the fill\'s block time and factor (unread while the node was dark)', same(blank(s.plan), blank(c.plan)), firstDiff(blank(s.plan), blank(c.plan)) ?? 'identical otherwise');
     }
     fails = CHECKS.filter((x) => !x.ok).length;
     console.log(`\n[readback] ${CHECKS.length - fails} PASS / ${fails} FAIL`);

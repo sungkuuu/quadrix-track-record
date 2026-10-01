@@ -22,7 +22,16 @@
  * Reads are eth_call, eth_getCode, eth_getBalance, eth_getStorageAt,
  * eth_getBlockByNumber, eth_blockNumber and eth_getLogs. Everything else
  * (sending, receipts, transactions, nonces, gas, the anvil and evm
- * methods) passes through untouched. --log appends every eth_sendTransaction and
+ * methods) passes through untouched. --dark-after-selector 0x…: after the
+ * receipt of the first transaction it forwards whose calldata starts with
+ * that selector, every read errors "header not found" for --dark-ms (40 s) —
+ * a node that does not catch up inside the tool's 30 s bound, so the tool
+ * stops (with its record on disk). --exact-warp turns evm_increaseTime(d)
+ * into evm_setNextBlockTimestamp(the latest block's time + d): under
+ * anvil_setBlockTimestampInterval (block times independent of the wall
+ * clock, so two runs compare block for block) anvil ignores
+ * evm_increaseTime, which the tool's --warp uses. --log appends every
+ * eth_sendTransaction and
  * eth_sendRawTransaction it forwards (JSON lines) and --events the lag it
  * played. Listens on 127.0.0.1 only; refuses a non-local upstream.
  */
@@ -37,6 +46,12 @@ const LAG = Number(opt('--lag', 4));
 const SEND_LOG = opt('--log', null);
 const EVENT_LOG = opt('--events', null);
 const MODES = (opt('--modes', 'stale,empty,notfound')).split(',');
+const EXACT_WARP = argv.includes('--exact-warp');
+const DARK_SELECTOR = (opt('--dark-after-selector', '') || '').toLowerCase();
+const DARK_MS = Number(opt('--dark-ms', 40_000));
+const darkHashes = new Set();
+let darkUntil = 0;
+let darkDone = false;
 if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(UPSTREAM)) { console.error(`lag-proxy: upstream ${UPSTREAM} is not local — refusing`); process.exit(2); }
 
 const READS = new Set(['eth_call', 'eth_getCode', 'eth_getBalance', 'eth_getStorageAt', 'eth_getBlockByNumber', 'eth_blockNumber', 'eth_getLogs']);
@@ -93,7 +108,19 @@ async function lagged(req, mode) {
 
 async function handle(req) {
   if (req.method === 'lagproxy_stats') return ok(req.id, stats);
+  if (EXACT_WARP && req.method === 'evm_increaseTime') {
+    const head = (await up({ jsonrpc: '2.0', id: 1, method: 'eth_getBlockByNumber', params: ['latest', false] })).result;
+    const d = BigInt(req.params[0]);
+    const r = await up({ jsonrpc: '2.0', id: req.id, method: 'evm_setNextBlockTimestamp', params: [Number(BigInt(head.timestamp) + d)] });
+    note({ warp: d.toString(), to: (BigInt(head.timestamp) + d).toString() });
+    return r.error ? r : ok(req.id, hex(d));
+  }
   if (SEND_LOG && (req.method === 'eth_sendTransaction' || req.method === 'eth_sendRawTransaction')) fs.appendFileSync(SEND_LOG, JSON.stringify({ method: req.method, params: req.params }) + '\n');
+  if (READS.has(req.method) && Date.now() < darkUntil) {
+    stats.dark = (stats.dark ?? 0) + 1;
+    note({ dark: true, method: req.method });
+    return req.method === 'eth_getBlockByNumber' && req.params?.[0] !== 'latest' ? ok(req.id, null) : err(req.id, 'header not found');
+  }
   if (READS.has(req.method) && (lagLeft.get(req.method) ?? 0) > 0 && lagBlock != null) {
     lagLeft.set(req.method, lagLeft.get(req.method) - 1);
     const mode = MODES[cycle++ % MODES.length];
@@ -105,12 +132,14 @@ async function handle(req) {
     return out;
   }
   const out = await up(req);
+  if (DARK_SELECTOR && req.method === 'eth_sendTransaction' && out.result && String(req.params?.[0]?.data ?? req.params?.[0]?.input ?? '').toLowerCase().startsWith(DARK_SELECTOR)) darkHashes.add(out.result);
   if (req.method === 'eth_getTransactionReceipt' && out.result && !seen.has(out.result.transactionHash)) {
     seen.add(out.result.transactionHash);
     lagBlock = BigInt(out.result.blockNumber);
     lagLeft = new Map([...READS].map((m) => [m, LAG]));
     stats.receipts++;
     note({ receipt: out.result.transactionHash, block: lagBlock.toString(), lagReads: LAG });
+    if (!darkDone && darkHashes.has(out.result.transactionHash)) { darkDone = true; darkUntil = Date.now() + DARK_MS; note({ darkFrom: Date.now(), ms: DARK_MS, after: out.result.transactionHash }); }
   }
   return out;
 }
