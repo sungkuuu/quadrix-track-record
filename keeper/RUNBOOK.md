@@ -379,6 +379,82 @@ Every tool is a dry run unless `live` is ticked and `confirm` is `EXECUTE`.
   Local only — it refuses to run under Actions. It needs the day's
   `keeper/cache/` (run the planner once first).
 
+### Reads after a write, and re-runs (2026-10-01)
+
+The public endpoint (`https://sepolia-rpc.giwa.io`) is load-balanced: the
+node that returned a receipt is not always the node that answers the next
+request. On 2026-10-01 an `eth_getCode` right after a deployment receipt came
+back empty and stopped the mock deployment. A node that has not seen the
+receipt's block answers with an error ("header not found"), an empty answer
+("0x", a null block), or — at `latest` — the state from BEFORE the
+transaction. `keeper/basket-recon.mjs` and `keeper/set-bidder.mjs` follow two
+rules (`keeper/readback.mjs`):
+
+- **A read after a write names its block.** Either the receipt's own block
+  (the checks that a write did what it should: the pending tuple and eta after
+  announce, the registry after execute and after each finalize, the reference
+  after a first price, `isBidder` after setBidder), or the newest block the
+  RPC reports raised to the highest receipt block the run has seen (every
+  read that decides the next step: balances and references before and after
+  fills, the curve factor, the vault after a round, chain time — and every
+  simulation, so a lagging node cannot fake a revert). A node without that
+  block errors or answers empty; it cannot answer stale. Such a read is
+  repeated for up to 30 s, then the run stops with a message naming the
+  block. Until the run's first receipt — when the plan's `sent` list records
+  none either — reads are at `latest` as before (a dry run of a fresh plan
+  never leaves that path).
+- **What was sent is on disk before anything else is read.** `basket-recon`
+  appends each transaction hash to the plan's `sent` list and saves the plan
+  the moment the RPC returns the hash (before waiting for the receipt), then
+  completes the entry (block, status) from the receipt. After a successful
+  receipt nothing throws until the stage has saved its record: the block's
+  time is read at the receipt's block within the bound and is `null` if it
+  cannot be (announce then takes `at` = eta − 7 days, exact by construction);
+  the stage records announce / execute / first price / fill / finalize from
+  the receipt and its events, saves, and only then reads to check. A failed
+  check stops the run with the record already in the plan file, which the
+  workflow commits after a failed stage too. The auction id is the one in the
+  open's `AuctionOpened` event, not `auctionCount` read before the open.
+  `set-bidder` prints the hash when sent and writes its `bidder-log.jsonl`
+  line (with `null` for a read that never answered) before it stops.
+
+**A re-run after a stop right after a mined transaction.** Every run first
+settles the plan's `sent` entries that have no receipt: mined → completed, and
+its block raises the run's read floor; no receipt → **REFUSED** with the hash
+("look the hash up on chain …; if it was dropped, set `"status": "dropped"` on
+that entry and re-run") — nothing is done while an earlier transaction may
+still land. Then, per stage:
+
+| Stopped right after | A re-run |
+| --- | --- |
+| announce mined, not in `plan.announce` | the pending change hashes to the plan's tuple → **adopted** into `plan.announce` (`adopted: true`; tx from `sent` or the `RegistryChangeAnnounced` log since the plan's block), nothing sent, exit 0 — the day-7 planner then carries it. Another change pending → REFUSED as before. This change pending and recorded → REFUSED "already pending and recorded" (nothing to send). |
+| execute mined, not in `plan.execute` | nothing pending and the registry holds the change → recorded from `sent` or the `RegistryChangeExecuted` log (signer = keeper, `byThirdParty: false`), as for a third party's execute; first-prices follows. Recorded but without `assetCount` (the check never answered) → "already executed", continues. |
+| first price mined, not in `plan.firstPrices` | the chain reference equals the plan's first price → **recorded** (`adopted: true`, tx from `sent` or `RefPricePosted`), not posted again. |
+| openAuction mined, not filled | the auctions stage **cancels** every auction opened since the plan's block that is still open before it opens anything (a dry run prints it). |
+| same-value re-post mined | nothing to record; the trade is re-read and re-posted from the chain. |
+| fill mined, not in `plan.fills` | **recorded, never traded again**: matched to the planned round-1 trade with the same sell/buy pair (the planner never repeats a pair), so round 1 skips it; two planned trades with that pair → REFUSED (record it in `plan.fills` by hand); no planned pair → recorded as `adopted-<auction id>` (residual rounds and re-drains are computed from live balances). Under `fair`/`open` an adopted fill with `lossAtRef` ≠ 0, or a planned one outside the fair window under `fair`, → HALT after it is recorded, as a fill made now would. A drain whose finalize did not run is finalized by the sweep after round 1. |
+| cancelAuction mined | nothing to record (the trade reopens from live balances; an orphan is closed). |
+| finalizeRemoval mined, not in `plan.finalize` | **recorded** from `RemovalFinalized` by the auctions, finalize or verify stage, so verify's asset count matches. |
+| setBidder mined, not logged | the chain already says `allowed` → nothing sent. setBidder emits no event, so the line cannot be rebuilt: take the hash from the run's log (printed when sent) and add the line by hand. |
+
+Known limits: a re-run that finds a fill matching two planned trades, a
+`sent` entry with no receipt, or a HALT on an adopted fill stops and says what
+to check — none of them proceeds. A transaction nonce read from a lagging
+node can be stale; a send it refuses as "nonce too low" is retried by
+`sendNonceSafe`, and one it accepts but never mines ends as a `sent` entry
+without a receipt (REFUSED on the next run until it is looked up).
+
+**Rehearsal.** `node keeper/test/rehearse-readback.mjs --date <today> --index
+qdefi --main-recon <basket-recon.mjs as on main>` forks GIWA Sepolia, runs
+announce → 7 days → re-plan → mark → day7 (the keeper bids) once through the
+anvil and once through `keeper/test/lag-proxy.mjs` (after every receipt the
+next reads of each read method come from a node one block behind: stale,
+empty, not found, in turn), with block times fixed, and requires the same
+plan records, the same mined transactions and the same vault state; the tool
+on main through the same proxy loses the announcement, and on a clean node
+sends exactly what this tool sends. Unit tests: `node --test keeper/test/*.test.mjs`
+(`readback-helpers`, `recon-readback`, `set-bidder-readback`).
+
 ## Sleeve indexes — Barbell and Triens (added 2026-09-22, not running)
 
 Two more paper indexes exist in this repository and **neither one runs**. Their

@@ -268,8 +268,9 @@ async function sendNonceSafe(fn, tries = 5) {
 // ------------------------------------------- reads after a write (2026-10-01)
 /**
  * Every chain read of this script goes through readAt. Before the run's
- * first receipt (ctx.floor = 0) it reads at `latest`, as it always did — a
- * dry run never leaves that path. After a receipt it never reads at
+ * first receipt (ctx.floor = 0: none sent yet, none in the plan's `sent`
+ * list) it reads at `latest`, as it always did — a dry run of a fresh plan
+ * never leaves that path. After a receipt it never reads at
  * `latest` again: it reads at a NAMED block, either `at` (a receipt's own
  * block — exact: what that transaction did) or the newest block the RPC
  * reports raised to ctx.floor (the highest receipt block seen) — and repeats
