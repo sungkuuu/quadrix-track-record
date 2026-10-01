@@ -79,6 +79,7 @@ without trusting this repository.
 | `scripts/track-record.mjs` | writes and anchors one day (scheduled daily in CI; see Timing) |
 | `scripts/anchor-decision.mjs` | anchors a decision document |
 | `scripts/verify.mjs` | the verifier above |
+| `checklists/` | the vault design checklist and the robustness test checklist: the item IDs that vault pages and decision documents cite (working versions) |
 | `trackrecord/ots/*.ots` | OpenTimestamps proofs, one per record/decision hash (Bitcoin time proof) |
 | `scripts/ots-stamp.mjs` | stamps new hashes, upgrades pending proofs (runs daily in CI) |
 | `scripts/watchdog.mjs` | checks the published outputs for staleness, missing anchors and gas (scheduled every six hours in CI) |
