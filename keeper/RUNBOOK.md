@@ -210,9 +210,19 @@ plus a workflow error annotation and a line in the job summary, and **exits
 
 What is lost is that run's marks only. Steps that landed before the failure
 stay on chain — a band-stepped `setNav` can stop part-way — and the vault
-keeps them. To re-post, re-run the workflow the same UTC day: a run on a day
-that already has a record re-posts the marks only, with no second line and no
-second anchor. Do not edit or re-append the record.
+keeps them. To re-post, start a **new** run the same UTC day (Actions →
+`paper-index` → **Run workflow**, on `main`, after "Commit records" of the
+failed run has pushed): a run on a day that already has a record re-posts the
+marks only, with no second line and no second anchor. Do not edit or
+re-append the record.
+
+Do **not** use "Re-run jobs" on the failed run. A re-run checks out the commit
+the failed run started from, which does not have the day's line: the keeper
+would compute a second line for the day and send a second anchor, and the
+push would then fail on the rebase — an anchor on chain for a line that is
+not in the record. The keeper finds an existing line only by reading the last
+line of `trackrecord/record-{index}.jsonl` in its checkout; it does not read
+the chain or `anchors-{index}.jsonl`.
 
 Before 2026-10-01 the anchor came after the marks: a mark failure left that
 day's line committed without an anchor, and the failed step skipped every

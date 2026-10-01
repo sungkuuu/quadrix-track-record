@@ -1962,8 +1962,11 @@ async function markAfterRecord(record, dateStr, mark) {
     await mark();
   } catch (e) {
     // One line for the log, the annotation and the summary: viem's short
-    // message plus its details (the revert reason or the RPC error).
-    const msg = String(e?.shortMessage ? `${e.shortMessage} ${e.details ?? ''}` : e?.message ?? e)
+    // message plus its details (the revert reason or the RPC error) when the
+    // short message does not already carry them.
+    const short = e?.shortMessage ? String(e.shortMessage) : null;
+    const details = e?.details ? String(e.details) : '';
+    const msg = String(short ? (details && !short.includes(details) ? `${short} ${details}` : short) : e?.message ?? e)
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 300);

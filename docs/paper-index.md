@@ -410,8 +410,9 @@ index basket is deployed on GIWA Sepolia (site repo,
 one mock constituent per name), the block is filled — `vault`, `faucet`,
 `assets: { SYMBOL: { address, decimals } }` in the manifest's order, and
 `navBase` = the index level on the deploy day — and the daily run does three
-more things AFTER the record line is written (`keeper/basket-mark.mjs`,
-called from `paper-index.mjs`):
+more things AFTER the record line is written and anchored
+(`keeper/basket-mark.mjs`, called from `paper-index.mjs`; the order is record
+line → state → anchor → basket marks since 2026-10-01):
 
 1. **navPerShare** = `level / navBase × 1e6`, six decimals. The contract
    refuses any single post outside ±15% of the last one, so a larger move is
@@ -437,6 +438,11 @@ none of the three happens that run: the marks are deferred, not computed
 without the name (`markDeferred: missing-price`, exit 0; RUNBOOK failure
 mode 6, 2026-09-30). The record line of qREV, qDEFI and qAI is written and
 anchored as before.
+
+A mark that fails — a reverted post, a failed RPC read, a NAV the band steps
+cannot reach — is reported as `markFailed` and the leg exits 1 with the day's
+line, state and anchor entry already written; the later legs of the workflow
+still run (RUNBOOK failure mode 7).
 
 `--index qx20` runs only this leg for qX20: its book is `keeper/state.json`,
 written by `keeper/update-nav.mjs`, which keeps marking the NAV-tracker vault
