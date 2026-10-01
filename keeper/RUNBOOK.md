@@ -282,6 +282,16 @@ Every tool is a dry run unless `live` is ticked and `confirm` is `EXECUTE`.
   first"). The desk must read the chain registry by then (`staging/basket-recon`
   in the site repository): the creation vector changes length at execute,
   whoever calls it.
+- **Rehearsal.** `node keeper/rehearse-day7.mjs --date <today>` forks GIWA
+  Sepolia on a local anvil and runs the day's real work orders through every
+  tool above (set-bidder, deploy-mocks, plan, draft, announce with its
+  guards, seven days, day7 with a separate bidder), then the option-K cases
+  from a snapshot: a donation or a creation or a redemption inside the drain
+  window, donations between the drain and the finalize (three times; every
+  time → PENDING), a third party executing first, and a run with no
+  interference against the tool as it was before K (`--main-recon <file>`).
+  Local only — it refuses to run under Actions. It needs the day's
+  `keeper/cache/` (run the planner once first).
 
 ## Sleeve indexes — Barbell and Triens (added 2026-09-22, not running)
 
