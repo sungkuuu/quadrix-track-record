@@ -28,6 +28,14 @@ NAV keeper) — model book, marked daily, reconstituted on a fixed cadence —
 but with no on-chain vault to post a NAV to: the record IS the product at
 this stage.
 
+**Weights on a record line (qREV, qDEFI, qAI).** A member's `weight` is its
+book weight: units x price over the book's value at the line's prices, to four
+decimals. A reconstitution line also carries `targetWeight`, the weighting
+rule's output before the tolerance step; for qAI, `cashTargetWeight` sits
+beside `cashWeight` in the same way. Mark-to-market lines carry no target. The
+reconstitution lines of 2026-10-01 were written before `targetWeight` existed
+and carry the target in `weight`.
+
 ## Files
 
 | File | What it is |

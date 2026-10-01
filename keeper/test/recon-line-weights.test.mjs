@@ -4,9 +4,9 @@
  * day. The rule's weight before the tolerance step is written beside it as
  * `targetWeight`, on a reconstitution line only.
  *
- * Before 2026-10-02 a reconstitution line wrote the target weight into
- * `weight` while its level was computed from the book, so the next line (a
- * mark of the same book) appeared to change the weights overnight.
+ * The reconstitution lines of 2026-10-01 carry the target weight in `weight`
+ * while their level is computed from the book, so the next line (a mark of
+ * the same book) shows different weights with no trade in between.
  *
  * paper-index.mjs runs main() on import, so the helpers are lifted out of its
  * source text, as keeper/test/recon-renormalise.test.mjs does.
