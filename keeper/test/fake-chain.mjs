@@ -230,6 +230,11 @@ export class FakeChain {
         const loss = pay * pB >= take * pS ? 0n : take * pS - pay * pB;
         return [this.log('AuctionFilled', { id, bidder: f, sellTaken: take, buyPaid: pay, lossAtRef: loss })];
       }
+      case 'setBidder': {
+        if (f !== st.owner) throw revert('OwnableUnauthorizedAccount');
+        st.bidders[lc(args[0])] = !!args[1];
+        return []; // v3.1's owner setters emit no event (RT24)
+      }
       case 'finalizeRemoval': {
         const [x] = args;
         if (!st.inRemoval[lc(x)]) throw revert('NotInRemoval');

@@ -20,6 +20,17 @@
  * must be mined without revert and `isBidder` is read back before the next
  * vault. Keys are never printed.
  *
+ * Reads after the write (2026-10-01; keeper/readback.mjs): the hash is printed
+ * the moment it is sent; after the receipt, `isBidder` and the block's time
+ * are read AT the receipt's block, repeated for up to 30 s while the node
+ * that answers lacks it — a load-balanced node one block behind can no longer
+ * answer with the old mapping value. Nothing between the receipt and the log
+ * line throws: a read that still fails is logged as null and the run stops
+ * AFTER the line is written. A re-run where the chain already says `allowed`
+ * sends nothing; if a run was killed between the receipt and the line, the
+ * line is missing for good (setBidder emits no event) — the hash is in that
+ * run's log.
+ *
  * Usage:
  *   BIDDER_PK=0x… node keeper/set-bidder.mjs                          # dry run, all six vaults
  *   KEEPER_PK=0x… BIDDER_PK=0x… node keeper/set-bidder.mjs --live
@@ -40,6 +51,7 @@ import { fileURLToPath } from 'node:url';
 import { createWalletClient, http, getAddress, isAddress, parseAbi } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { INDEXES, TICKER, GIWA_RPC, GIWA_CHAIN_ID, VAULT_ABI, chainFor, isLocalRpc, sleep, makeReader, loadRulebook } from './basket-plan.mjs';
+import { retryRead, pinnedReader } from './readback.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -75,6 +87,27 @@ async function sendNonceSafe(fn, tries = 5) {
     }
   }
   throw last;
+}
+
+/** Receipt waits per transaction (each viem's default 180 s). */
+const RECEIPT_WAITS = 3;
+
+/**
+ * After a mined setBidder: `isBidder(bidder)` and the block's time, both read
+ * at the receipt's block and repeated within the bound. Never throws — a read
+ * that still fails comes back null with the reason, so the caller can write
+ * the log line before it stops.
+ */
+export async function readBackAfterReceipt(reader, { vault, bidder, receipt, opts = {} }) {
+  const out = { isBidderAfter: null, at: null, problems: [] };
+  try {
+    out.isBidderAfter = (await retryRead(() => pinnedReader(reader, receipt.blockNumber).read({ address: vault, abi: VAULT_ABI, functionName: 'isBidder', args: [bidder] }), { what: `isBidder at block ${receipt.blockNumber}`, ...opts })).value;
+  } catch (e) { out.problems.push(e.message); }
+  try {
+    const blk = (await retryRead(() => reader.publicClient.getBlock({ blockNumber: receipt.blockNumber }), { what: `block ${receipt.blockNumber}`, ...opts })).value;
+    out.at = new Date(Number(blk.timestamp) * 1000).toISOString();
+  } catch (e) { out.problems.push(e.message); }
+  return out;
 }
 
 async function main() {
@@ -140,21 +173,40 @@ async function main() {
     }
     if (!o.live) { log(`  ${T}: would setBidder(${bidder}, ${o.allowed}) as ${from} (simulated ok; biddingOpen ${open})`); continue; }
     const hash = await sendNonceSafe(() => wallet.writeContract({ ...request, gas: GAS }));
-    const rc = await pc.waitForTransactionReceipt({ hash });
+    log(`  ${T}: setBidder(${bidder}, ${o.allowed}) sent tx=${hash}`);
+    let rc = null;
+    let lastErr = null;
+    for (let i = 1; i <= RECEIPT_WAITS && !rc; i++) {
+      try { rc = await pc.waitForTransactionReceipt({ hash }); } catch (e) { lastErr = e; log(`  ${T}: no receipt yet for ${hash} (${e.shortMessage ?? e.message})`); }
+    }
+    if (!rc) throw new Error(`${T}: setBidder tx ${hash} was sent but no receipt came back after ${RECEIPT_WAITS} waits (${lastErr?.shortMessage ?? lastErr?.message}) — check isBidder(${bidder}) on ${vault} and add the line to ${path.relative(ROOT, o.log)} by hand before re-running`);
     if (rc.status !== 'success') throw new Error(`${T}: setBidder reverted on chain (tx ${hash}, block ${rc.blockNumber})`);
-    const back = await pc.readContract({ address: vault, abi: VAULT_ABI, functionName: 'isBidder', args: [bidder] });
-    const blk = await pc.getBlock({ blockNumber: rc.blockNumber });
-    const line = { at: new Date(Number(blk.timestamp) * 1000).toISOString(), index, ticker: T, vault, chainId: reader.chainId, bidder, allowed: o.allowed, txHash: hash, block: rc.blockNumber.toString(), signer: from, isBidderAfter: back };
+    // From the receipt to the log line nothing throws (readBackAfterReceipt).
+    const rb = await readBackAfterReceipt(reader, { vault, bidder, receipt: rc });
+    const back = rb.isBidderAfter;
+    const line = { at: rb.at, index, ticker: T, vault, chainId: reader.chainId, bidder, allowed: o.allowed, txHash: hash, block: rc.blockNumber.toString(), signer: from, isBidderAfter: back };
     fs.appendFileSync(o.log, JSON.stringify(line) + '\n');
     sent++;
-    if (back !== o.allowed) throw new Error(`${T}: isBidder(${bidder}) reads ${back} after setBidder(${o.allowed}) tx ${hash}`);
+    if (back == null) throw new Error(`${T}: setBidder tx ${hash} is mined (block ${rc.blockNumber}) and logged, but isBidder could not be read at that block (${rb.problems.join('; ')}) — read isBidder(${bidder}) on ${vault} by hand before the next run`);
+    if (back !== o.allowed) throw new Error(`${T}: isBidder(${bidder}) reads ${back} at block ${rc.blockNumber} after setBidder(${o.allowed}) tx ${hash}`);
     log(`  ${T}: setBidder(${bidder}, ${o.allowed}) tx=${hash} block=${rc.blockNumber}; isBidder now ${back}; logged`);
   }
   log(o.live ? `${sent} transaction(s); ${path.relative(ROOT, o.log)} appended` : 'dry run: nothing sent, nothing logged');
 }
 
-main().catch((e) => {
-  if (e instanceof Refused) { console.error(`REFUSED: ${e.message}`); process.exit(1); }
-  console.error(e.shortMessage ?? e.message ?? e);
-  process.exit(1);
-});
+/** Run as a script (the real path too: a symlinked work directory, e.g. macOS /var or /tmp, must not skip main). */
+function isMain() {
+  if (!process.argv[1]) return false;
+  const me = fileURLToPath(import.meta.url);
+  const arg = path.resolve(process.argv[1]);
+  if (arg === me) return true;
+  try { return fs.realpathSync(arg) === fs.realpathSync(me); } catch { return false; }
+}
+
+if (isMain()) {
+  main().catch((e) => {
+    if (e instanceof Refused) { console.error(`REFUSED: ${e.message}`); process.exit(1); }
+    console.error(e.shortMessage ?? e.message ?? e);
+    process.exit(1);
+  });
+}
