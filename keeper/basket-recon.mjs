@@ -6,8 +6,9 @@
  *   execute       anyone: executeRegistryChange(same tuple) once the 7 days ran
  *   first-prices  keeper: the first setRefPrice for every added asset
  *   auctions      keeper opens, the bidder fills, until every traded name is
- *                 inside the rulebook tolerance and every removal is drained
- *                 — and finalized at once (below)
+ *                 within the bound fair fills allow of its trade target
+ *                 (residualBound) and every removal is drained — and
+ *                 finalized at once (below)
  *   finalize      anyone: finalizeRemoval for each drained removal still in
  *                 the registry; a remnant under $1 is reported PENDING
  *   verify        read-only: registry, order, prices, weights, a redeem simulation
@@ -39,9 +40,11 @@
  *     value already on chain (a same-value post refreshes the v3.1
  *     staleness clock, nothing else) and re-reads both legs right before
  *     each re-post, stopping if another run moved one in between; refuses
- *     any post that would step outside the ±15% band; and refuses to trade
+ *     any post that would step outside the ±15% band; refuses to trade
  *     while a chain reference is more than --ref-drift-tol (5%) away from
- *     the plan's price — re-mark with the daily keeper first.
+ *     the day's market price — re-mark with the daily keeper first; and
+ *     refuses to trade when a chain reference is no longer the one the plan
+ *     sized its amounts at (chainRefAtPlan) — regenerate the plan.
  * Fills are taken at the curve's fair point by default (--fill fair: factor
  * 10,000 ≤ f ≤ 10,010, so lossAtRef is 0 and share value is unchanged);
  * --fill open takes the +2% start (a gift to holders); --fill natural fills
@@ -801,18 +804,64 @@ async function liveRows(ctx, v) {
   });
 }
 
+/**
+ * Owner choice 4 of the planner spec of 2026-10-01 (§5, still open): what a
+ * traded name may differ from its trade target after the session. null —
+ * option ①, the spec's §4 rule: the bound the fills themselves allow
+ * (residualBound below, computed from settings that exist already: the fair
+ * window and the $1 trade minimum). A number — option ②: a fixed width in
+ * points, whose value is the owner's to set. Before this change the width
+ * was the rulebook's 5-point tolerance, which hid a whole entering name.
+ */
+export const VERIFY_FIXED_POINTS = null;
+
+/**
+ * How far a traded name can sit from its trade target after fills inside
+ * the fair window, as a weight (planner spec §4):
+ *   window × (bought_i + aim_i × bought) / V  +  (n × $1 + k × maxRef) / V
+ * window — the fill policy's fair window (--fair-window-bps, 10 bp): a fill
+ * at factor f pays (f − 10,000)/10,000 more of the buy asset than fair, so
+ * the name bought gains and every name's share of the larger vault shrinks;
+ * bought_i / bought — value the plan's fills put into the name / into all
+ * names, at today's references; n — traded names (each matching step of the
+ * planner leaves at most the $1 trade minimum unmatched on a name, and there
+ * are fewer steps than traded names); k × maxRef — one base unit per fill
+ * from rounding; V — the vault's value now.
+ */
+export function residualBound(ctx, rows) {
+  const total = rows.reduce((t, r) => t + Number(r.balance * r.ref), 0);
+  const traded = new Set(ctx.plan.targets.filter((t) => t.traded).map((t) => t.symbol));
+  const windowFrac = (ctx.o?.fairWindowBps ?? 10) / 10_000;
+  const refOf = Object.fromEntries(rows.map((r) => [r.symbol, r.ref]));
+  const bought = {};
+  let boughtAll = 0;
+  const fills = ctx.plan.fills ?? [];
+  for (const f of fills) {
+    const ref = refOf[f.buy];
+    if (ref == null) continue;
+    const v = Number(big(f.buyPaid) * ref);
+    bought[f.buy] = (bought[f.buy] ?? 0) + v;
+    boughtAll += v;
+  }
+  const n = rows.filter((r) => traded.has(r.symbol) || r.isRemove).length;
+  const maxRef = rows.reduce((m, r) => (r.ref > m ? r.ref : m), 0n);
+  const slack = total > 0 ? (n * Number(minTradeValue(ctx.plan)) + fills.length * Number(maxRef)) / total : 0;
+  return (r) => (total > 0 ? (windowFrac * ((bought[r.symbol] ?? 0) + Math.max(0, r.targetWeight) * boughtAll)) / total : 0) + slack;
+}
+
 export function residual(ctx, rows) {
-  const tol = ctx.plan.policy.tolerancePoints / 100;
   const total = rows.reduce((t, r) => t + Number(r.balance * r.ref), 0);
   const traded = new Set(ctx.plan.targets.filter((t) => t.traded).map((t) => t.symbol));
   const minValue = minTradeValue(ctx.plan);
+  const boundOf = VERIFY_FIXED_POINTS != null ? () => VERIFY_FIXED_POINTS / 100 : residualBound(ctx, rows);
   const out = [];
   for (const r of rows) {
     const w = total > 0 ? Number(r.balance * r.ref) / total : 0;
     const drift = w - r.targetWeight;
+    const bound = boundOf(r);
     // K-4: a removal remnant under the trade minimum is PENDING, not a failure.
     const pending = r.isRemove && r.balance > 0n && r.balance * r.ref < minValue;
-    out.push({ symbol: r.symbol, weight: w, targetWeight: r.targetWeight, drift, ok: r.isRemove ? r.balance === 0n : !traded.has(r.symbol) || Math.abs(drift) < tol, pending });
+    out.push({ symbol: r.symbol, weight: w, targetWeight: r.targetWeight, drift, bound, ok: r.isRemove ? r.balance === 0n : !traded.has(r.symbol) || Math.abs(drift) <= bound, pending });
   }
   return out;
 }
@@ -837,7 +886,20 @@ async function stageAuctions(ctx) {
     const d = Math.abs(Number(a.refPrice) - Number(planRef)) / Number(planRef);
     if (d > o.refDriftTol) throw new Refused(`${sym}: chain reference ${a.refPrice} is ${pct(d)} from the plan's ${planRef} (> ${pct(o.refDriftTol)}) — re-mark with the daily keeper (paper-index.mjs) first; this script does not move references`);
   }
-  log(`${plan.trades.length} planned auction(s); ${plan.fills.length} already filled; fill policy ${o.fill}; every reference within ${pct(o.refDriftTol)} of the plan`);
+  // The plan sized every amount at the references it read on chain (planner
+  // spec 2026-10-01 §1.3) — the prices the contract fills at. A reference
+  // that moved since (a daily or NAV mark between the plan and this run)
+  // makes the planned amounts miss the book by that move: regenerate.
+  if (plan.trades.length > 0) {
+    const moved = [];
+    for (const r of plan.registry) {
+      if (r.chainRefAtPlan == null) continue;
+      const on = v.assets.find((a) => a.address === getAddress(r.address));
+      if (on && on.refPrice !== big(r.chainRefAtPlan)) moved.push(`${r.symbol} ${r.chainRefAtPlan}→${on.refPrice}`);
+    }
+    if (moved.length) throw new Refused(`reference(s) moved since the plan sized its auctions (${moved.join(', ')}) — regenerate the plan (keeper/basket-plan.mjs) after the mark, then run this stage`);
+  }
+  log(`${plan.trades.length} planned auction(s); ${plan.fills.length} already filled; fill policy ${o.fill}; every reference within ${pct(o.refDriftTol)} of the plan${plan.trades.length ? ' and equal to the one the plan sized at' : ''}`);
   if (plan.trades.length === 0) {
     // A plan made on a later day has no auction for a remnant under the
     // trade minimum (computeTrades skips it), and none for a removal when
@@ -869,10 +931,10 @@ async function stageAuctions(ctx) {
     await sweepRemovals(ctx, round);
     v = await readVault(ctx.reader, plan.vault);
     const res = residual(ctx, await liveRows(ctx, v));
-    for (const r of res) log(`  ${r.symbol.padEnd(7)} ${pct(r.weight).padStart(7)} vs trade target ${pct(r.targetWeight).padStart(7)} (${(r.drift * 100).toFixed(2)} pt) ${r.ok ? 'ok' : r.pending ? 'PENDING (remnant under $1, finalize waiting)' : 'OUTSIDE'}`);
-    if (res.every((r) => r.ok || r.pending)) { log(`inside tolerance after round ${round}${res.some((r) => r.pending) ? `; PENDING: ${res.filter((r) => r.pending).map((r) => r.symbol).join(', ')}` : ''}`); return; }
+    for (const r of res) log(`  ${r.symbol.padEnd(7)} ${pct(r.weight).padStart(7)} vs trade target ${pct(r.targetWeight).padStart(7)} (${(r.drift * 100).toFixed(4)} pt, bound ${(r.bound * 100).toFixed(4)} pt) ${r.ok ? 'ok' : r.pending ? 'PENDING (remnant under $1, finalize waiting)' : 'OUTSIDE'}`);
+    if (res.every((r) => r.ok || r.pending)) { log(`inside the bound after round ${round}${res.some((r) => r.pending) ? `; PENDING: ${res.filter((r) => r.pending).map((r) => r.symbol).join(', ')}` : ''}`); return; }
   }
-  throw new Error(`still outside tolerance after ${o.maxRounds} round(s)`);
+  throw new Error(`still outside the bound after ${o.maxRounds} round(s)`);
 }
 
 // ================================================================ finalize
@@ -930,7 +992,7 @@ async function stageVerify(ctx) {
   const res = residual(ctx, await liveRows(ctx, v));
   for (const r of res) {
     const book = plan.targets.find((t) => t.symbol === r.symbol)?.targetWeight;
-    const line = `${r.symbol.padEnd(7)} weight ${pct(r.weight).padStart(7)} trade target ${pct(r.targetWeight).padStart(7)} (book ${book != null ? pct(book) : '—'}) drift ${(r.drift * 100).toFixed(2)} pt`;
+    const line = `${r.symbol.padEnd(7)} weight ${pct(r.weight).padStart(7)} trade target ${pct(r.targetWeight).padStart(7)} (book ${book != null ? pct(book) : '—'}) drift ${(r.drift * 100).toFixed(4)} pt (bound ${(r.bound * 100).toFixed(4)} pt)`;
     if (!r.ok && r.pending) log(`  PEND ${line} — PENDING: in removal, remnant under $1, finalize waiting (not a failure)`);
     else check(r.ok, line);
   }

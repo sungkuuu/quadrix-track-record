@@ -16,15 +16,20 @@
  *     is anchored — one naming THIS index — and always null for a weight-only
  *     change, which has nothing to announce; while a change is pending the
  *     announced tuple is carried verbatim, order included);
- *   - target weights (the book), current vault weights, and which names the
- *     rulebook says to trade: registry changes always; a weight-only drift
- *     beyond the tolerance (5 points), a name above the cap, and for the
- *     sleeve indexes (Barbell, Triens) a sleeve reset when any sleeve has
- *     drifted beyond the tolerance;
+ *   - target weights (the book), current vault weights, and which names to
+ *     trade: a registry change, a weight-only drift beyond the tolerance (5
+ *     points), a name above the cap, and for the sleeve indexes (Barbell,
+ *     Triens) a sleeve reset when any sleeve has drifted beyond the
+ *     tolerance each mark a name — and a marked name trades its whole block
+ *     (the basket; the Quality sleeve of Triens without a reset) to the
+ *     book's weights, because the book re-weights every name of the block
+ *     (computeTrades, planner spec of 2026-10-01);
  *   - an ordered auction list (sell, buy, sellAmount, duration) that moves
  *     value from the overweight traded names to the underweight ones, drains
- *     each removal to zero, and the weights expected after those fills at
- *     the plan's own prices.
+ *     each removal to zero, and the weights expected after those fills. All
+ *     of it is sized at the references on chain — the prices the contract
+ *     fills at — and the book is valued at the same prices; the day's market
+ *     price is kept beside them for the executor's 5% guard.
  *
  * Inputs: keeper/pending-registry-{index}.json when the daily run wrote one,
  * the keeper state (state-{index}.json; keeper/state.json for qX20), the
@@ -55,6 +60,9 @@
  *   --duration   auction duration in seconds (default 900)
  *   --out        plan path (default keeper/plans/{index}/{date}.json)
  *   --no-fetch   never call CoinGecko/CoinPaprika (cache or --prices-b only)
+ *   --reweight-block  trade every block to the book although nothing in it is
+ *                marked — only to resume a session whose registry change was
+ *                executed but whose auctions did not finish (written to notes)
  *
  * The executor (keeper/basket-recon.mjs) imports the chain helpers exported
  * below; running this file directly writes the plan.
@@ -395,31 +403,72 @@ export function readBook(index, bookPath, rulebook) {
 
 // ------------------------------------------------------------ trade planning
 /**
+ * Owner choice 3 of the planner spec of 2026-10-01 (§5, still open). true —
+ * the spec's rule (§1.3 step 2, unit test 10): a name that the rulebook's own
+ * tests mark (the tolerance, the cap, a sleeve's drift) makes its whole block
+ * trade, as a registry change does. false — option ②: only a registry change
+ * (an add, a removal not yet flagged on chain) or --reweight-block makes a
+ * block trade, and a name marked by a rule test alone trades as before
+ * (only against the other marked names). The plan records the value in
+ * force as policy.blockOnRuleMarks.
+ */
+export const BLOCK_ON_RULE_MARKS = true;
+/** The reason written on a name that is traded only because its block is. */
+export const BLOCK_REASON = 'block: the book re-weighted every name of this block';
+
+/**
  * Which names the rulebook says to trade, and the auctions that do it.
  * Pure over the rows given; exported so the executor can recompute residual
  * trades from live balances with the same rule.
  *
+ * The vault follows the book. On a reconstitution the book does not trade
+ * one name at a time: it sets the names its rule trades to their targets and
+ * then scales EVERY unit of the block by one factor (paper-index.mjs
+ * renormaliseBook, M9 2026-09-29; the Triens Quality sleeve by its own k;
+ * qX20 re-weights every name when membership changes). So once any name of a
+ * block is marked — an add, a removal not yet in removal on chain, a rule
+ * test — every name of that block is traded to its book weight, and the
+ * block's own value pays for it (planner spec 2026-10-01 §1.3). A block is
+ * the whole basket for the ranked indexes; for the sleeve indexes it is the
+ * Quality sleeve unless the sleeves reset, when it is every name.
+ *
  * rows: [{symbol, address, decimals, balance (bigint), ref (bigint, USD×1e18 per
- *        base unit), targetWeight (0..1), isAdd, isRemove, sleeve}]
- * policy: {tolerancePoints, capMaxWeight, sleeve (bool), qualityCap, duration}
- * forceTraded: symbols to trade regardless; onlyForced: apply no drift/cap
- * rule beyond them (the executor's residual rounds stay inside the plan's set).
+ *        base unit), targetWeight (0..1), isAdd, isRemove, inRemoval, sleeve,
+ *        bookUnits}]
+ * policy: {tolerancePoints, capMaxWeight, sleeve (bool), qualityCap, duration,
+ *          minTradeUsd, blockOnRuleMarks}
+ * forceTraded: symbols to trade regardless (they also open their block,
+ * unless onlyForced); onlyForced: apply no rule and no block beyond them (the
+ * executor's residual rounds stay inside the plan's set); reweightBlock: open
+ * every block although nothing in it is marked (--reweight-block: resuming a
+ * session whose registry change has already been executed).
  */
-export function computeTrades(rows, policy, { forceTraded = null, onlyForced = false } = {}) {
+export function computeTrades(rows, policy, { forceTraded = null, onlyForced = false, reweightBlock = false } = {}) {
   const value = (r) => r.balance * r.ref; // USD × 1e18 (bigint)
   const total = rows.reduce((t, r) => t + value(r), 0n);
   const totalF = Number(total);
   const cur = (r) => (totalF > 0 ? Number(value(r)) / totalF : 0);
   const tol = policy.tolerancePoints / 100;
+  const ruleOpens = policy.blockOnRuleMarks ?? BLOCK_ON_RULE_MARKS;
 
   const traded = new Set(forceTraded ?? []);
   const reasons = {};
-  const mark = (r, why) => { traded.add(r.symbol); reasons[r.symbol] = [...(reasons[r.symbol] ?? []), why]; };
+  // Names whose mark says the book re-weighted their block.
+  const opens = new Set(onlyForced ? [] : (forceTraded ?? []));
+  const mark = (r, why, opensBlock = true) => {
+    traded.add(r.symbol);
+    reasons[r.symbol] = [...(reasons[r.symbol] ?? []), why];
+    if (opensBlock) opens.add(r.symbol);
+  };
   for (const r of rows) {
     if (r.isAdd) mark(r, 'add');
-    if (r.isRemove) mark(r, 'remove');
+    // A removal already flagged on chain is the remnant of an earlier session
+    // (option K drains it); it does not re-open its block — that would
+    // re-trade the earlier session's rounding.
+    if (r.isRemove) mark(r, 'remove', !r.inRemoval);
   }
   const capNote = [];
+  let sleeveReset = false;
   if (onlyForced) {
     // residual round: the set is fixed, only the amounts are recomputed
   } else if (policy.sleeve) {
@@ -435,8 +484,8 @@ export function computeTrades(rows, policy, { forceTraded = null, onlyForced = f
       sleeves[s].cur += cur(r);
       sleeves[s].tgt += r.targetWeight;
     }
-    const reset = Object.values(sleeves).some((s) => Math.abs(s.cur - s.tgt) >= tol);
-    if (reset) {
+    sleeveReset = Object.values(sleeves).some((s) => Math.abs(s.cur - s.tgt) >= tol);
+    if (sleeveReset) {
       for (const r of rows) mark(r, 'sleeve reset');
       capNote.push(`sleeve reset: ${Object.entries(sleeves).map(([k, v]) => `${k} ${(v.cur * 100).toFixed(1)}%→${(v.tgt * 100).toFixed(1)}%`).join(', ')}`);
     } else {
@@ -445,8 +494,12 @@ export function computeTrades(rows, policy, { forceTraded = null, onlyForced = f
         for (const r of rows.filter((x) => x.sleeve === 'quality')) {
           const ci = cur(r) / q.cur;
           const ti = r.targetWeight / q.tgt;
-          if (Math.abs(ci - ti) >= tol) mark(r, `quality drift ${((ci - ti) * 100).toFixed(1)}pt`);
-          if (policy.qualityCap && ci > policy.qualityCap + 1e-9) mark(r, `above quality cap ${(ci * 100).toFixed(1)}%`);
+          if (Math.abs(ci - ti) >= tol) mark(r, `quality drift ${((ci - ti) * 100).toFixed(1)}pt`, ruleOpens);
+          // Above the cap opens the block only where the book is not itself
+          // above it: a vault that matches a book drifted over the cap is the
+          // vault following the book, and the book trades no cap between
+          // reconstitutions.
+          if (policy.qualityCap && ci > policy.qualityCap + 1e-9) mark(r, `above quality cap ${(ci * 100).toFixed(1)}%`, ruleOpens && ti <= policy.qualityCap + 1e-9);
         }
       }
     }
@@ -454,13 +507,29 @@ export function computeTrades(rows, policy, { forceTraded = null, onlyForced = f
     for (const r of rows) {
       const c = cur(r);
       const d = c - r.targetWeight;
-      if (!r.isAdd && !r.isRemove && Math.abs(d) >= tol) mark(r, `drift ${(d * 100).toFixed(1)}pt`);
-      if (policy.capMaxWeight && c > policy.capMaxWeight + 1e-9) mark(r, `above cap ${(c * 100).toFixed(1)}%`);
+      if (!r.isAdd && !r.isRemove && Math.abs(d) >= tol) mark(r, `drift ${(d * 100).toFixed(1)}pt`, ruleOpens);
+      if (policy.capMaxWeight && c > policy.capMaxWeight + 1e-9) mark(r, `above cap ${(c * 100).toFixed(1)}%`, ruleOpens && r.targetWeight <= policy.capMaxWeight + 1e-9);
+    }
+  }
+
+  // Blocks: a marked name trades its whole block to the book (see above).
+  if (!onlyForced) {
+    const blocks = !policy.sleeve || sleeveReset
+      ? [{ name: 'basket', rows }]
+      : [{ name: 'quality sleeve', rows: rows.filter((r) => (r.sleeve ?? 'quality') === 'quality') }];
+    for (const b of blocks) {
+      const by = b.rows.filter((r) => opens.has(r.symbol)).map((r) => r.symbol);
+      if (!reweightBlock && by.length === 0) continue;
+      const added = b.rows.filter((r) => !traded.has(r.symbol));
+      for (const r of added) mark(r, BLOCK_REASON, false);
+      if (added.length) capNote.push(`block rule: every name of the ${b.name} is traded to its book weight (opened by ${by.length ? by.join(', ') : '--reweight-block'}; ${added.length} name(s) added: ${added.map((r) => r.symbol).join(', ')})`);
     }
   }
 
   // The untouched names keep their value; the traded names share what the
   // traded set holds today in proportion to their book targets (removes → 0).
+  // With the block rule the traded set is a whole block, so its targets are
+  // the book's weights rescaled to the block's share of the vault.
   const T = rows.filter((r) => traded.has(r.symbol));
   const tradedValue = T.reduce((t, r) => t + value(r), 0n);
   const tradedTargetW = T.reduce((t, r) => t + (r.isRemove ? 0 : r.targetWeight), 0);
@@ -535,13 +604,16 @@ export function computeTrades(rows, policy, { forceTraded = null, onlyForced = f
     targetWeight: r.targetWeight,
   }));
 
-  // What the auctions can actually reach: the held names keep their weight,
-  // so the traded set shares only its own value — its book targets scaled by
-  // Σcurrent/Σtarget over the set. The executor verifies against THIS, and
-  // the gap between it and the book target is the tolerance rule at work.
+  // What the auctions can actually reach: the untraded names keep their
+  // weight, so the traded set shares only its own value — its book targets
+  // scaled by Σcurrent/Σtarget over the set. The executor verifies against
+  // THIS. With a whole block traded it is the book weight itself (ranked
+  // indexes) or the book's weight inside the sleeve times the sleeve's
+  // share (Triens without a sleeve reset).
   const targets = rows.map((r) => ({
     symbol: r.symbol,
     ...(r.sleeve ? { sleeve: r.sleeve } : {}),
+    ...(r.bookUnits != null ? { bookUnits: r.bookUnits } : {}),
     targetWeight: r.targetWeight,
     tradeTargetWeight: totalF > 0 ? Number(value(r) + (deltas.get(r.symbol) ?? 0n)) / totalF : 0,
     currentWeight: cur(r),
@@ -736,34 +808,50 @@ export async function buildPlan(o) {
   const tolerancePoints = rulebook.reconstitution?.tolerance?.thresholdPoints ?? rulebook.reconstitution?.driftBand?.points ?? 5;
   const capMaxWeight = isSleeve ? null : rulebook.weighting?.cap?.maxWeight ?? null;
   const qualityCap = isSleeve ? rulebook.weighting?.cap?.maxWeight ?? null : null;
-  const policy = { tolerancePoints, capMaxWeight, qualityCap, sleeve: isSleeve, duration: o.duration, minTradeUsd: 1, fill: 'fair', firstPriceTolBps: 200, refDriftTolBps: 500 };
+  // minTradeUsd ($1) carries no cited test (planner spec 2026-10-01, appendix
+  // A; owner choice 2 keeps it until a value is tested or priced).
+  // blockOnRuleMarks: owner choice 3, see BLOCK_ON_RULE_MARKS.
+  // priceBasis: the auctions are sized at the references the contract fills
+  // at (spec §1.3); priceA stays the market check of the 5% guard.
+  const policy = { tolerancePoints, capMaxWeight, qualityCap, sleeve: isSleeve, duration: o.duration, minTradeUsd: 1, fill: 'fair', firstPriceTolBps: 200, refDriftTolBps: 500, blockOnRuleMarks: BLOCK_ON_RULE_MARKS, priceBasis: 'chain refPrice; an add at its first reference (source A)' };
 
-  let bookValue = 0;
-  const bookValueOf = {};
-  for (const [s, u] of Object.entries(book.units)) {
-    const p = priceA(s);
-    if (!(p > 0)) throw new Error(`${s}: no price from source A for a book member`);
-    bookValueOf[s] = u * p;
-    bookValue += u * p;
-  }
+  // Every row is valued at the price the contract will fill at: a registry
+  // name at its reference on chain (a name with no reference yet at source A,
+  // then its last mark), an add at the first reference the session posts.
+  // The book is valued at the SAME prices, so a block traded to these
+  // targets ends with balances exactly proportional to the book's units,
+  // whatever the price level (spec §1.3).
   const rows = [];
+  const marketRef = {};
   for (const r of registry) {
     const p = priceA(r.symbol);
+    marketRef[r.symbol] = p > 0 ? toRefPrice(p, r.decimals) : r.refPrice; // a name without a price today is valued at its last mark
     rows.push({
       symbol: r.symbol, address: r.address, decimals: r.decimals, balance: r.balance,
-      ref: p > 0 ? toRefPrice(p, r.decimals) : r.refPrice, // a name without a price today is valued at its last mark
-      targetWeight: (bookValueOf[r.symbol] ?? 0) / bookValue,
-      isAdd: false, isRemove: !book.units[r.symbol], sleeve: book.sleeveOf[r.symbol] ?? (isSleeve ? 'quality' : undefined),
+      ref: r.refPrice > 0n ? r.refPrice : marketRef[r.symbol],
+      chainRef: r.refPrice > 0n ? r.refPrice : null,
+      targetWeight: 0,
+      isAdd: false, isRemove: !book.units[r.symbol], inRemoval: r.inRemoval, sleeve: book.sleeveOf[r.symbol] ?? (isSleeve ? 'quality' : undefined),
+      bookUnits: book.units[r.symbol] ?? 0,
     });
   }
   for (const a of adds) {
     rows.push({
-      symbol: a.symbol, address: a.address, decimals: a.decimals, balance: 0n, ref: a.firstRefPrice,
-      targetWeight: bookValueOf[a.symbol] / bookValue, isAdd: true, isRemove: false, sleeve: book.sleeveOf[a.symbol] ?? (isSleeve ? 'quality' : undefined),
+      symbol: a.symbol, address: a.address, decimals: a.decimals, balance: 0n, ref: a.firstRefPrice, chainRef: null,
+      targetWeight: 0, isAdd: true, isRemove: false, inRemoval: false, sleeve: book.sleeveOf[a.symbol] ?? (isSleeve ? 'quality' : undefined),
+      bookUnits: book.units[a.symbol],
     });
   }
-  const plan0 = computeTrades(rows, policy);
-  log(`tolerance ${tolerancePoints} pt, cap ${capMaxWeight ?? qualityCap ?? '—'}${isSleeve ? ' (quality sleeve)' : ''}, duration ${o.duration} s; vault value at plan prices $${plan0.totalValueUsd.toFixed(0)}`);
+  const usdPerToken = (r) => (Number(r.ref) * 10 ** r.decimals) / 1e18;
+  let bookValue = 0;
+  for (const r of rows) {
+    if (!r.bookUnits) continue;
+    if (!(r.ref > 0n)) throw new Error(`${r.symbol}: no reference on chain and no price from source A for a book member`);
+    bookValue += r.bookUnits * usdPerToken(r);
+  }
+  for (const r of rows) r.targetWeight = r.bookUnits ? (r.bookUnits * usdPerToken(r)) / bookValue : 0;
+  const plan0 = computeTrades(rows, policy, { reweightBlock: !!o.reweightBlock });
+  log(`tolerance ${tolerancePoints} pt, cap ${capMaxWeight ?? qualityCap ?? '—'}${isSleeve ? ' (quality sleeve)' : ''}, duration ${o.duration} s; block rule on rule marks ${policy.blockOnRuleMarks ? 'yes' : 'no'}${o.reweightBlock ? '; --reweight-block' : ''}; vault value at the chain references $${plan0.totalValueUsd.toFixed(0)}`);
   for (const t of plan0.targets) {
     log(`  ${t.symbol.padEnd(7)} book ${(t.targetWeight * 100).toFixed(2).padStart(6)}%  vault ${(t.currentWeight * 100).toFixed(2).padStart(6)}%  drift ${String(t.driftPoints).padStart(6)} pt  ${t.traded ? `TRADE → ${(t.tradeTargetWeight * 100).toFixed(2)}% (${t.reason})` : 'hold'}`);
   }
@@ -796,7 +884,11 @@ export async function buildPlan(o) {
     registry: registry.map((r) => ({
       i: r.i, symbol: r.symbol, symbolSource: r.symbolSource, address: r.address, decimals: r.decimals, balance: r.balance,
       refPrice: r.refPrice, refPriceUpdatedAt: r.refPriceUpdatedAt, inRemoval: r.inRemoval,
-      planRefPrice: rows.find((x) => x.symbol === r.symbol)?.ref ?? null,
+      // the day's market price as a reference — what the executor's 5% guard compares the chain with
+      planRefPrice: marketRef[r.symbol] ?? null,
+      // the reference every amount of this plan is sized at; the executor
+      // refuses to trade if the chain no longer shows it
+      chainRefAtPlan: rows.find((x) => x.symbol === r.symbol)?.chainRef ?? null,
       priceA: priceA(r.symbol), priceB: priceB(r.symbol), disagreementBps: bpsDiff(priceA(r.symbol), priceB(r.symbol)),
     })),
     adds, removes,
@@ -810,6 +902,7 @@ export async function buildPlan(o) {
     expectedPostTradeWeights: plan0.expectedPostTradeWeights,
     notes: [
       ...book.notes,
+      ...(o.reweightBlock ? ['--reweight-block: every block traded to the book although no registry change is pending in this plan (a session resumed after its registry change was executed)'] : []),
       ...plan0.notes,
       'The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference.',
       ...(weightOnly ? ['nothing to announce (weight-only change): the registry is unchanged, so no announcement is made — auctions only'] : []),
@@ -832,7 +925,7 @@ async function main() {
   const { flag, opt } = argParse(process.argv.slice(2));
   const index = opt('--index', null);
   if (!INDEXES.includes(index)) {
-    console.error(`usage: node keeper/basket-plan.mjs --index ${INDEXES.join('|')} [--date YYYY-MM-DD] [--rpc URL] [--pending p] [--book p] [--mocks p] [--prices-b p] [--decisions p] [--decision id] [--duration s] [--out p] [--no-fetch]`);
+    console.error(`usage: node keeper/basket-plan.mjs --index ${INDEXES.join('|')} [--date YYYY-MM-DD] [--rpc URL] [--pending p] [--book p] [--mocks p] [--prices-b p] [--decisions p] [--decision id] [--duration s] [--out p] [--no-fetch] [--reweight-block]`);
     process.exit(2);
   }
   await buildPlan({
@@ -849,6 +942,7 @@ async function main() {
     duration: Number(opt('--duration', 900)),
     out: opt('--out', null),
     noFetch: flag('--no-fetch'),
+    reweightBlock: flag('--reweight-block'),
   });
 }
 
