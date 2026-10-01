@@ -42,6 +42,15 @@ const body = fs.readFileSync(abs);
 const sha256 = crypto.createHash('sha256').update(body).digest('hex');
 const id = path.basename(abs, '.md');
 
+// An anchor cannot be undone. A generated draft (keeper/gen-recon-decision.mjs)
+// carries a DRAFT marker, a TO FILL comment and, before the mocks exist,
+// "_to be deployed_" in place of addresses; none of them may be anchored.
+const text = body.toString('utf8');
+const unfinished = [/<!--\s*DRAFT/i, /<!--\s*TO FILL/i, /_to be deployed_/].filter((re) => re.test(text));
+if (unfinished.length) {
+  throw new Error(`${rel} is not final (${unfinished.map(String).join(', ')}) — remove the draft lines and fill what they list before anchoring`);
+}
+
 const existing = fs.existsSync(LEDGER)
   ? fs
       .readFileSync(LEDGER, 'utf8')
@@ -61,6 +70,24 @@ if (prior) {
   throw new Error(
     `${id} is already anchored with a different hash (${prior.sha256.slice(0, 12)}…). ` +
       'Publish a new dated decision instead of editing an anchored one.'
+  );
+}
+
+// effectiveFrom is the date in the file name (below). The live record line of
+// a day carries every decision effective on or before that day
+// (scripts/track-record.mjs), and both the record and this ledger are
+// append-only: a document anchored AFTER its file-name date would belong in a
+// record line that may already be written without it, and verify.mjs would
+// fail that line for good. Every anchor so far was made on or before its
+// file-name date; a back-dated file is refused.
+const todayUTC = new Date().toISOString().slice(0, 10);
+if (!/^\d{4}-\d{2}-\d{2}-/.test(id)) {
+  throw new Error(`${rel}: a decision file is named YYYY-MM-DD-<slug>.md — the date in the name becomes effectiveFrom in the ledger, and the ledger is append-only`);
+}
+if (id.slice(0, 10) < todayUTC) {
+  throw new Error(
+    `${rel} is dated ${id.slice(0, 10)} but today is ${todayUTC} (UTC) — a decision is anchored on or before the date in its file name. ` +
+      'Rename it to today (a generated draft: regenerate the plan and the draft today) and anchor that.'
   );
 }
 

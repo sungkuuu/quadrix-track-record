@@ -64,13 +64,13 @@ on:
         required: false
         default: ''
       mocks:
-        description: 'plan stage only: repo path of a {SYMBOL: {address, decimals}} file for the deployed mocks'
+        description: 'plan stage only: repo path of the deployed mocks — keeper/mocks/{date}.json from basket-recon-setup (keyed by index), or a flat {SYMBOL: {address, decimals}} file'
         required: false
         default: ''
       duration:
-        description: 'plan stage only: auction duration in seconds. The fair-fill window is duration/30 s wide (900 → 30 s; 1800 → 60 s, safer on the public chain where three transactions must be mined inside it); the runner gives up after 3 missed windows.'
+        description: 'plan stage only: auction duration in seconds. The fair-fill window is duration/30 s wide (1800 → 60 s, the setting for the public chain, where three transactions must be mined inside it; 900 → 30 s); the runner gives up after 3 missed windows. Keep the value the anchored decision document states.'
         required: false
-        default: '900'
+        default: '1800'
       rpc:
         description: 'JSON-RPC endpoint'
         required: false
@@ -124,10 +124,14 @@ jobs:
         if: ${{ inputs.stage == 'plan' }}
         run: |
           set -o pipefail
-          args=(--index "$INDEX" --rpc "$RPC" --duration "${DURATION:-900}")
+          args=(--index "$INDEX" --rpc "$RPC" --duration "${DURATION:-1800}")
           [ -n "$DECISION" ] && args+=(--decision "$DECISION")
           [ -n "$MOCKS" ] && args+=(--mocks "$MOCKS")
           node keeper/basket-plan.mjs "${args[@]}" 2>&1 | tee recon.log
+        env:
+          # Source A of the plan; the keyless endpoint answers 403 from the
+          # runners (2026-09-29). Sent as a header only, never printed.
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       - name: Check the plan is today's (day7)
         # day7 must follow a plan of the same UTC day; the script checks this
@@ -176,6 +180,15 @@ jobs:
           {
             echo "## basket-reconstitution — $INDEX · $STAGE · $MODE_LABEL"
             echo
+            # A removal left waiting for finalizeRemoval (option K) ends the
+            # stage with exit 0, so it must be visible here.
+            if grep -q 'PENDING' recon.log 2>/dev/null; then
+              echo "**PENDING — a removal is not finalized yet (remnant under \$1; re-run the auctions stage):**"
+              echo '```'
+              grep 'PENDING' recon.log | head -n 10
+              echo '```'
+              echo
+            fi
             echo '```'
             tail -n 80 recon.log 2>/dev/null || echo '(no log)'
             echo '```'

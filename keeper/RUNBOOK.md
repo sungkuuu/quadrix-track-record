@@ -278,16 +278,106 @@ auction is open:
    its balance is zero (`finalizeRemoval`), post a first `setRefPrice` for the
    entering asset, and buy it from the overweight members. Redemption pays the
    old shape until `finalizeRemoval` and the new shape after; nothing about it
-   is paused at any point.
+   is paused at any point. The tools and the dispatch order are in
+   "Basket reconstitution — tools" below.
 4. **Daily loss budget.** Fills below reference draw on `dailyLossBudgetBps`;
    when it trips (`DailyBudgetExceeded`) the auction waits for the next UTC
    day. That is the policy working; do not loosen it mid-rebalance.
 5. **Log every override** in the table below, as for the NAV keeper.
 
-Auction execution is not automated in this repository yet — the calls above
-are made by hand from the keeper key. The paper record does not wait for
-any of this: the level moves on day 0, the vault follows over the week, and
-the gap is a stated tracking difference.
+The paper record does not wait for any of this: the level moves on day 0,
+the vault follows over the week, and the gap is a stated tracking difference.
+
+### Basket reconstitution — tools
+
+| Step | Tool (workflow) | Signs with |
+| --- | --- | --- |
+| whitelist a separate bidder | `keeper/set-bidder.mjs` (`basket-recon-setup`, task `set-bidder`) | owner (`KEEPER_PK`); bidder = `BIDDER_PK`'s address |
+| deploy the entering mocks | `keeper/deploy-mocks.mjs` (`basket-recon-setup`, task `deploy-mocks`) | `KEEPER_PK`; inventory to the bidder |
+| plan | `keeper/basket-plan.mjs` (`basket-reconstitution`, stage `plan`) | reads only |
+| decision draft | `node keeper/gen-recon-decision.mjs --index <x> --date <d>` (local) | — |
+| announce … verify | `keeper/basket-recon.mjs` (`basket-reconstitution`, stages) | owner/keeper; fills by the bidder |
+
+Every tool is a dry run unless `live` is ticked and `confirm` is `EXECUTE`.
+
+- **Mocks.** One mock per entering name *and basket* — the deployed convention
+  (no two vaults share a mock; NEAR entering three baskets gets three). The
+  output `keeper/mocks/{date}.json` is keyed by index and is what the plan
+  stage's `mocks` input takes. The bidder receives twice the vault's target
+  holding of each new mock, because the auctions sell it into the vault.
+- **Bidder log.** `setBidder` emits no event; every transaction is appended to
+  `keeper/bidder-log.jsonl` with its block and the `isBidder` read-back.
+- **Removals (option K).** A drain fill is followed at once by a balance read
+  and `finalizeRemoval`, not by the remaining auctions. If anything reached the
+  vault in between — a one-unit transfer from anyone, or a creation, which
+  pays in a pro-rata slice of the leaving asset — the remnant is re-drained at
+  once from the live balance (under $1: filled at the curve's open without
+  waiting, at most 2% over reference on less than $1, `lossAtRef` 0), up to
+  five times, then the asset is written to the plan's `finalizePending` and the
+  run continues. The auctions stage, `finalize` and `verify` print it as
+  **PENDING** and exit 0; the workflow summary shows the PENDING lines.
+  Nothing is lost while it waits — redemptions pay the remnant pro rata and
+  the record is unaffected — and re-running the `auctions` stage drains and
+  finalizes it: the same UTC day with the same plan, or on a later day after
+  a new `plan` (a later plan has no auction for a remnant under $1; the
+  stage drains whatever is still in removal even with nothing planned). A
+  remnant of $1 or more is not PENDING: it is drained like any other, and if
+  it cannot be the stage fails as before. One case still stops the run with
+  an error instead of PENDING: a transfer that lands after the zero balance
+  was read and before `finalizeRemoval` is mined (the simulation or the
+  receipt reports `RemovalNotDrained`). Re-run the `auctions` stage; it
+  resumes after the fills already recorded and drains the remnant.
+- **Fill size.** A fill takes the smaller of the auction amount and the
+  vault's balance at that moment; a redemption in the window shrinks the fill
+  instead of reverting it, and the unfilled rest is cancelled.
+- **Announce checks.** The announce stage refuses a tuple with the same
+  address twice (in adds, in removes, or in both — the contract accepts it at
+  announce and refuses it at execute forever) and any add or remove whose
+  chain `symbol()` is not `m{SYMBOL}` of the plan; the dry-run log ends with a
+  `checks:` line saying both held. Read it before the live dispatch.
+- **Someone else executed.** `executeRegistryChange` is open to anyone once
+  the seven days have run. If the execute stage (or `day7`) finds nothing
+  pending and every add already in the registry and every remove in removal,
+  it says who executed (the tx, searched in the last 100,000 blocks), records
+  it in the plan and goes on with first-prices; `day7` completes. With
+  nothing pending and the registry NOT changed, it still refuses ("announce
+  first"). The desk must read the chain registry by then (`staging/basket-recon`
+  in the site repository): the creation vector changes length at execute,
+  whoever calls it. This covers an execution AFTER the day's plan was made.
+  If someone executes BEFORE the day-7 plan, the planner refuses ("…says
+  adds [X] … but the book vs the registry says adds [] … resolve before
+  planning"): the work order no longer matches the registry. By hand, in
+  this order: add the new mocks to the rulebook's `basket.assets` (address
+  and decimals from `keeper/mocks/{date}.json`) so the daily mark posts
+  their first references through its two-source gate, remove
+  `keeper/pending-registry-{index}.json`, then `plan` and `auctions` →
+  `finalize` → `verify`.
+- **Decision documents.** `keeper/gen-recon-decision.mjs` names the file by
+  the plan's date and states the reconstitution date (the work order's)
+  separately. Anchor a document on the UTC day in its file name: that date
+  becomes `effectiveFrom` in `trackrecord/decisions.jsonl`, the live record
+  line of a day carries every decision effective by then, and a document
+  anchored later than its date would be missing from a line already written
+  (`verify.mjs` would fail it for good). `scripts/anchor-decision.mjs`
+  refuses a back-dated file, a file with the DRAFT or TO FILL line, and one
+  that still says `_to be deployed_`. If the day has passed, run the `plan`
+  stage again and regenerate the draft that day.
+- **After the session.** The same day, on main: add each new mock to the
+  rulebook's `basket.assets` (the daily mark prices only what the rulebook
+  names — an unlisted registry asset is "not posted" and its reference goes
+  stale), drop a finalized removal from it (keep one that is PENDING, so it
+  stays marked), and remove `keeper/pending-registry-{index}.json` (the
+  planner refuses a work order that no longer matches the registry).
+- **Rehearsal.** `node keeper/rehearse-day7.mjs --date <today>` forks GIWA
+  Sepolia on a local anvil and runs the day's real work orders through every
+  tool above (set-bidder, deploy-mocks, plan, draft, announce with its
+  guards, seven days, day7 with a separate bidder), then the option-K cases
+  from a snapshot: a donation or a creation or a redemption inside the drain
+  window, donations between the drain and the finalize (three times; every
+  time → PENDING), a third party executing first, and a run with no
+  interference against the tool as it was before K (`--main-recon <file>`).
+  Local only — it refuses to run under Actions. It needs the day's
+  `keeper/cache/` (run the planner once first).
 
 ## Sleeve indexes — Barbell and Triens (added 2026-09-22, not running)
 
