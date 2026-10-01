@@ -369,6 +369,30 @@ test('fills: two planned trades with the fill\'s pair → REFUSED (record it by 
   assert.deepEqual([r.seq, r.round], [`adopted-${id}`, null]);
 });
 
+test('fills: a fill whose receipt never came — the re-run settles it from plan.sent and records it as its planned seq', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, trades: [T1] }));
+  chain.send(OWNER, { address: V, functionName: 'openAuction', args: [AAA, ASTER, 100n * 10n ** 8n, 1800n] });
+  const id = BigInt(chain.head.state.auctions.length - 1);
+  chain.timeOffset = 1169n;
+  chain.mine();
+  chain.receiptFails = 3;
+  const ctx = ctxFor(chain, f);
+  await assert.rejects(call(ctx, { who: 'bidder', to: V, functionName: 'fill', args: [id, 100n * 10n ** 8n], gas: 1n, what: 'fill #1 (auction 0)' }), /no receipt came back/);
+  const hash = chain.sent.at(-1).hash;
+  assert.equal(loadPlan(f).sent.at(-1).hash, hash);
+  assert.equal(loadPlan(f).fills.length, 0);
+  // The re-run: settle, then the auctions stage's reconciliation.
+  const ctx2 = ctxFor(chain, f);
+  await settleSent(ctx2);
+  const seqs = await reconcileSession(ctx2, await readVault(ctx2.reader, V), { cancelOrphans: true, halt: true });
+  assert.deepEqual([...seqs], [1], 'round 1 will skip #1');
+  const r = loadPlan(f).fills[0];
+  assert.deepEqual([r.seq, r.fillTx, r.adopted, r.factorBps], [1, hash, true, 10_005]);
+  assert.equal(chain.sent.at(-1).hash, hash, 'nothing sent: the auction is closed, no orphan to cancel');
+});
+
 test('orphans: an auction an earlier run opened and never filled is cancelled before anything is opened (dry run: printed only)', async () => {
   const chain = newChain();
   const pend = await priced(chain);

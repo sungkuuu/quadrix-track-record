@@ -61,11 +61,6 @@ export function notYetReason(e) {
   return null;
 }
 
-/** Thrown by a read that answered, but not yet with what the write did (e.g. a zero that must not be zero). */
-export class NotYet extends Error {
-  constructor(message) { super(message); this.name = 'NotYet'; }
-}
-
 /** retryRead gave up: `what` never got an answer inside the bound. */
 export class ReadTimeout extends Error {
   constructor(what, reads, elapsedMs, last) {
