@@ -2,9 +2,9 @@
 
 Working versions. The names of the two documents are provisional.
 
-This folder holds the two checklists that Quadrix vault rules are built and tested against. They are here so that a
-vault page or a decision document can cite an item by its ID — `D06`, `R21`, `U03` — and a reader can look up what that
-ID means and what passing it requires.
+This folder holds the two checklists that Quadrix vault rules are to be built and tested against. They are here so that
+a vault page or a decision document can cite an item by its ID — `D06`, `R21`, `U03` — and a reader can look up what
+that ID means and what passing it requires.
 
 | File | What it is |
 | --- | --- |
@@ -40,10 +40,14 @@ No parameter value enters a rulebook without a pre-registered test result and a 
 
 What is and is not in place:
 
+- The vaults and paper indexes that exist today were built before these checklists. Steps marked "not yet" in
+  `vault-design.md` have never been run at their place in the order, and no vault has been taken through the whole order.
 - The rule applies to values introduced or changed from 2026-10-01. Values that were in force before then and were never
-  tested stay in force, are labelled "not tested", and are listed for testing. They leave that list only by being tested
-  or by being removed, each through a rule-amendment decision.
+  tested stay in force. They are to be labelled "not tested" in the rulebook and on the vault page and listed for
+  testing; that labelling is in progress and is not published yet. They leave the list only by being tested or by being
+  removed, each through a rule-amendment decision.
 - The automatic check that would refuse an uncited value (at commit, in CI and before an anchor) is designed but not
-  implemented (U25). Nothing in this folder is enforced by code today.
+  implemented (U25). Apart from the site build check on download files (`vault-design.md` §5, D12), nothing in this
+  folder is enforced by code today.
 - Pre-registration commits are kept in a private repository, so an outside reader cannot yet check that a registration
   preceded its results (U23).
