@@ -73,6 +73,21 @@ if (prior) {
   );
 }
 
+// effectiveFrom is the date in the file name (below). The live record line of
+// a day carries every decision effective on or before that day
+// (scripts/track-record.mjs), and both the record and this ledger are
+// append-only: a document anchored AFTER its file-name date would belong in a
+// record line that may already be written without it, and verify.mjs would
+// fail that line for good. Every anchor so far was made on or before its
+// file-name date; a back-dated file is refused.
+const todayUTC = new Date().toISOString().slice(0, 10);
+if (/^\d{4}-\d{2}-\d{2}-/.test(id) && id.slice(0, 10) < todayUTC) {
+  throw new Error(
+    `${rel} is dated ${id.slice(0, 10)} but today is ${todayUTC} (UTC) — a decision is anchored on or before the date in its file name. ` +
+      'Rename it to today (a generated draft: regenerate the plan and the draft today) and anchor that.'
+  );
+}
+
 const pk = process.env.KEEPER_PK;
 if (!pk) throw new Error('KEEPER_PK not set');
 const account = privateKeyToAccount(pk);
