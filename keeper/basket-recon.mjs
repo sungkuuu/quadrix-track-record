@@ -703,11 +703,13 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
 const minTradeValue = (plan) => BigInt(Math.round((plan.policy.minTradeUsd ?? 1) * 1e18)); // USD × 1e18
 const usd = (x) => (Number(x) / 1e18).toFixed(Number(x) < 1e18 ? 6 : 2);
 
-/** finalizeRemoval for one drained asset; records it and clears any PENDING. */
-async function finalizeOne(ctx, asset, sym) {
+/** finalizeRemoval for one drained asset; records it and clears any PENDING.
+ *  `assetCount` sizes the gas only — passed in, so that nothing paced (the
+ *  public endpoint's batches wait a second each) sits between a drain fill
+ *  and its finalize. */
+async function finalizeOne(ctx, asset, sym, assetCount) {
   const { plan, log } = ctx;
-  const v = await readVault(ctx.reader, plan.vault);
-  const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'finalizeRemoval', args: [asset], gas: GAS.finalize(v.assetCount), what: `finalize ${sym}` });
+  const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'finalizeRemoval', args: [asset], gas: GAS.finalize(assetCount + 2), what: `finalize ${sym}` });
   if (r.dry) return;
   const after = await readVault(ctx.reader, plan.vault);
   if (after.assets.some((x) => x.address === asset)) throw new Error(`${sym} still in the registry after finalizeRemoval`);
@@ -738,13 +740,14 @@ async function settleRemoval(ctx, v, t, round) {
   let lastTx = null;
   for (let k = 0; ; k++) {
     await runHook(ctx, 'after-fill', { seq: t.seq, symbol: t.sell, asset, attempt: k });
-    const [bal, ref] = await ctx.reader.batch([
-      { address: asset, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] },
-      { address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [asset] },
+    // Two direct reads, not a paced batch: this is the window K closes.
+    const [bal, ref] = await Promise.all([
+      ctx.pc.readContract({ address: asset, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] }),
+      ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [asset] }),
     ]);
     if (bal === 0n) {
       log(`  ${t.sell}: balance 0 — finalizing now${k ? ` (after ${k} re-drain(s))` : ''}`);
-      await finalizeOne(ctx, asset, t.sell);
+      await finalizeOne(ctx, asset, t.sell, v.assetCount);
       return 'finalized';
     }
     const value = bal * ref;
@@ -776,7 +779,7 @@ async function sweepRemovals(ctx, round) {
   for (const a of v.assets.filter((x) => x.inRemoval)) {
     if (ctx.pendingThisRun.has(a.address)) continue;
     const sym = ctx.plan.removes.find((r) => r.address === a.address)?.symbol ?? a.onchainSymbol;
-    if (a.balance === 0n) { await finalizeOne(ctx, a.address, sym); continue; }
+    if (a.balance === 0n) { await finalizeOne(ctx, a.address, sym, v.assetCount); continue; }
     const b = remnantBuy(ctx, v, sym);
     ctx.log(`  ${sym} is in removal with ${a.balance} base units left — draining it now`);
     await settleRemoval(ctx, v, { seq: `sweep-${sym}`, sell: sym, sellAddress: a.address, ...b, drain: true }, round);
@@ -878,7 +881,7 @@ async function stageFinalize(ctx) {
       blocked++;
       continue;
     }
-    await finalizeOne(ctx, a.address, sym);
+    await finalizeOne(ctx, a.address, sym, v.assetCount);
   }
   if (blocked) throw new Error(`${blocked} removal(s) not drained`);
 }
