@@ -1,29 +1,45 @@
 {
-  "updatedAt": "2026-09-30T05:45:26.512Z",
-  "level": 94.20272169432268,
+  "updatedAt": "2026-10-01T06:13:46.601Z",
+  "level": 95.70708135473524,
   "units": {
-    "TAO": 0.107871540405597,
-    "VVV": 0.5415928977706485,
-    "AKE": 257.1953007992475,
-    "RENDER": 5.858956924141398,
-    "VIRTUAL": 7.4187563849878355,
-    "FET": 26.000898774573997,
-    "UB": 27.966047087787654,
-    "GRASS": 7.634788009727696,
-    "GRT": 123.14660449743003,
-    "AKT": 3.3598139442466017
+    "NEAR": 5.308679140858859,
+    "TAO": 0.05917279543512536,
+    "ICP": 2.902474265060145,
+    "VVV": 0.25137311078493685,
+    "RENDER": 2.6997547052829747,
+    "AKE": 224.5892623150173,
+    "FET": 22.704624295865425,
+    "VIRTUAL": 6.478240537916225,
+    "GRASS": 6.6668846658853855,
+    "UB": 24.420640135317914
   },
-  "lastReconQuarter": "2026Q3",
+  "lastReconQuarter": "2026Q4",
   "onNotice": [],
   "qaiCounts": {
-    "eligibleCount": 11,
+    "eligibleCount": 12,
     "emptySeats": 0
   },
   "qaiMeta": {
+    "NEAR": {
+      "bucket": "B",
+      "bucketSource": "table",
+      "originChain": "NEAR 자체 체인",
+      "holdableOnGiwa": "no",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    },
     "TAO": {
       "bucket": "B",
       "bucketSource": "table",
       "originChain": "TAO 자체 체인",
+      "holdableOnGiwa": "no",
+      "listingSource": "cmc-date-added",
+      "capDisagreement": false
+    },
+    "ICP": {
+      "bucket": "B",
+      "bucketSource": "table",
+      "originChain": "ICP 자체 체인",
       "holdableOnGiwa": "no",
       "listingSource": "cmc-date-added",
       "capDisagreement": false
@@ -36,14 +52,6 @@
       "listingSource": "cmc-date-added",
       "capDisagreement": false
     },
-    "AKE": {
-      "bucket": "D",
-      "bucketSource": "tag-fallback",
-      "originChain": "미확인",
-      "holdableOnGiwa": "미확인",
-      "listingSource": "cmc-date-added",
-      "capDisagreement": false
-    },
     "RENDER": {
       "bucket": "A",
       "bucketSource": "table",
@@ -52,11 +60,11 @@
       "listingSource": "cmc-date-added",
       "capDisagreement": false
     },
-    "VIRTUAL": {
-      "bucket": "B",
-      "bucketSource": "table",
-      "originChain": "ethereum",
-      "holdableOnGiwa": "yes",
+    "AKE": {
+      "bucket": "D",
+      "bucketSource": "tag-fallback",
+      "originChain": "미확인",
+      "holdableOnGiwa": "미확인",
       "listingSource": "cmc-date-added",
       "capDisagreement": false
     },
@@ -68,12 +76,12 @@
       "listingSource": "cmc-date-added",
       "capDisagreement": false
     },
-    "UB": {
+    "VIRTUAL": {
       "bucket": "B",
-      "bucketSource": "tag-fallback",
-      "originChain": "미확인",
-      "holdableOnGiwa": "미확인",
-      "listingSource": "cmc-date-added",
+      "bucketSource": "table",
+      "originChain": "ethereum",
+      "holdableOnGiwa": "yes",
+      "listingSource": "ath-atl-proxy",
       "capDisagreement": false
     },
     "GRASS": {
@@ -84,19 +92,11 @@
       "listingSource": "cmc-date-added",
       "capDisagreement": true
     },
-    "GRT": {
-      "bucket": "C",
-      "bucketSource": "table",
-      "originChain": "ethereum",
-      "holdableOnGiwa": "yes",
-      "listingSource": "cmc-date-added",
-      "capDisagreement": false
-    },
-    "AKT": {
-      "bucket": "A",
-      "bucketSource": "table",
-      "originChain": "akash",
-      "holdableOnGiwa": "no",
+    "UB": {
+      "bucket": "B",
+      "bucketSource": "tag-fallback",
+      "originChain": "미확인",
+      "holdableOnGiwa": "미확인",
       "listingSource": "cmc-date-added",
       "capDisagreement": false
     }

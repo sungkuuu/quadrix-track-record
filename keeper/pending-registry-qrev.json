@@ -1,0 +1,46 @@
+{
+  "index": "qrev",
+  "date": "2026-10-01",
+  "vault": "0xBa83462fDFeDE13DC7Eb1D1fd893aE76dCaaD975",
+  "chainId": 91342,
+  "adds": [
+    {
+      "symbol": "SYRUP",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    },
+    {
+      "symbol": "TRX",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    },
+    {
+      "symbol": "LINK",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    },
+    {
+      "symbol": "NEAR",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    },
+    {
+      "symbol": "BNB",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    }
+  ],
+  "removes": [],
+  "decisionSha256": null,
+  "decisionFile": "trackrecord/decisions/2026-10-01-qrev-reconstitution.md (to be written, then anchored with scripts/anchor-decision.mjs; its sha256 replaces this null)",
+  "calls": [
+    "announceRegistryChange(adds=[<new mock address>, <new mock address>, <new mock address>, <new mock address>, <new mock address>], removes=[], decisionSha256=<sha256 of the anchored decision>)  — owner, day 0",
+    "executeRegistryChange(same adds, removes, decisionSha256)  — anyone, day 7 or later",
+    "openAuction(sell=<an overweight member>, buy=SYRUP, …) after execute and a first setRefPrice(SYRUP)  — keeper; not implemented in this keeper",
+    "openAuction(sell=<an overweight member>, buy=TRX, …) after execute and a first setRefPrice(TRX)  — keeper; not implemented in this keeper",
+    "openAuction(sell=<an overweight member>, buy=LINK, …) after execute and a first setRefPrice(LINK)  — keeper; not implemented in this keeper",
+    "openAuction(sell=<an overweight member>, buy=NEAR, …) after execute and a first setRefPrice(NEAR)  — keeper; not implemented in this keeper",
+    "openAuction(sell=<an overweight member>, buy=BNB, …) after execute and a first setRefPrice(BNB)  — keeper; not implemented in this keeper"
+  ],
+  "note": "The 7-day announcement delay means the vault lags the index by at least a week at every reconstitution; the paper record does not wait. See docs/paper-index.md \"Basket marking\"."
+}

@@ -1,0 +1,50 @@
+{
+  "index": "qx20",
+  "date": "2026-10-01",
+  "vault": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+  "chainId": 91342,
+  "adds": [
+    {
+      "symbol": "ZEC",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    },
+    {
+      "symbol": "XMR",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    },
+    {
+      "symbol": "NEAR",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    }
+  ],
+  "removes": [
+    {
+      "symbol": "GRAM",
+      "address": "0x293eE9abd3F625D8844b66eA82A57dcD40c6156B"
+    },
+    {
+      "symbol": "HBAR",
+      "address": "0x6DEeb1B63d7F4BAF8874452B80223521F6aBF895"
+    },
+    {
+      "symbol": "SHIB",
+      "address": "0x1Bf8091DB22e3C34a9F28A53F38e3822E57195a3"
+    }
+  ],
+  "decisionSha256": null,
+  "decisionFile": "trackrecord/decisions/2026-10-01-qx20-reconstitution.md (to be written, then anchored with scripts/anchor-decision.mjs; its sha256 replaces this null)",
+  "calls": [
+    "announceRegistryChange(adds=[<new mock address>, <new mock address>, <new mock address>], removes=[0x293eE9abd3F625D8844b66eA82A57dcD40c6156B, 0x6DEeb1B63d7F4BAF8874452B80223521F6aBF895, 0x1Bf8091DB22e3C34a9F28A53F38e3822E57195a3], decisionSha256=<sha256 of the anchored decision>)  — owner, day 0",
+    "executeRegistryChange(same adds, removes, decisionSha256)  — anyone, day 7 or later",
+    "openAuction(sell=GRAM, buy=<a member>, amount=<balance>, duration=<short>) … until balance is 0, then finalizeRemoval(GRAM)  — keeper; not implemented in this keeper",
+    "openAuction(sell=HBAR, buy=<a member>, amount=<balance>, duration=<short>) … until balance is 0, then finalizeRemoval(HBAR)  — keeper; not implemented in this keeper",
+    "openAuction(sell=SHIB, buy=<a member>, amount=<balance>, duration=<short>) … until balance is 0, then finalizeRemoval(SHIB)  — keeper; not implemented in this keeper",
+    "openAuction(sell=<an overweight member>, buy=ZEC, …) after execute and a first setRefPrice(ZEC)  — keeper; not implemented in this keeper",
+    "openAuction(sell=<an overweight member>, buy=XMR, …) after execute and a first setRefPrice(XMR)  — keeper; not implemented in this keeper",
+    "openAuction(sell=<an overweight member>, buy=NEAR, …) after execute and a first setRefPrice(NEAR)  — keeper; not implemented in this keeper"
+  ],
+  "note": "The 7-day announcement delay means the vault lags the index by at least a week at every reconstitution; the paper record does not wait. See docs/paper-index.md \"Basket marking\"."
+}

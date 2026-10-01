@@ -1,0 +1,39 @@
+{
+  "index": "qai",
+  "date": "2026-10-01",
+  "vault": "0x75B072e674AfAd13Ff0C2b75A8937656643cBE97",
+  "chainId": 91342,
+  "adds": [
+    {
+      "symbol": "NEAR",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    },
+    {
+      "symbol": "ICP",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    }
+  ],
+  "removes": [
+    {
+      "symbol": "GRT",
+      "address": "0x8BB34857ffF580158357102fa96bB0931e07E373"
+    },
+    {
+      "symbol": "AKT",
+      "address": "0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634"
+    }
+  ],
+  "decisionSha256": null,
+  "decisionFile": "trackrecord/decisions/2026-10-01-qai-reconstitution.md (to be written, then anchored with scripts/anchor-decision.mjs; its sha256 replaces this null)",
+  "calls": [
+    "announceRegistryChange(adds=[<new mock address>, <new mock address>], removes=[0x8BB34857ffF580158357102fa96bB0931e07E373, 0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634], decisionSha256=<sha256 of the anchored decision>)  — owner, day 0",
+    "executeRegistryChange(same adds, removes, decisionSha256)  — anyone, day 7 or later",
+    "openAuction(sell=GRT, buy=<a member>, amount=<balance>, duration=<short>) … until balance is 0, then finalizeRemoval(GRT)  — keeper; not implemented in this keeper",
+    "openAuction(sell=AKT, buy=<a member>, amount=<balance>, duration=<short>) … until balance is 0, then finalizeRemoval(AKT)  — keeper; not implemented in this keeper",
+    "openAuction(sell=<an overweight member>, buy=NEAR, …) after execute and a first setRefPrice(NEAR)  — keeper; not implemented in this keeper",
+    "openAuction(sell=<an overweight member>, buy=ICP, …) after execute and a first setRefPrice(ICP)  — keeper; not implemented in this keeper"
+  ],
+  "note": "The 7-day announcement delay means the vault lags the index by at least a week at every reconstitution; the paper record does not wait. See docs/paper-index.md \"Basket marking\"."
+}

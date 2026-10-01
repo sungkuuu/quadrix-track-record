@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-09-30T05:44:32.570Z",
-  "level": 98.40516446622144,
+  "updatedAt": "2026-10-01T06:12:34.354Z",
+  "level": 99.01108313462626,
   "sleeves": {
     "monetary": {
       "units": {
@@ -9,50 +9,53 @@
     },
     "workingCapital": {
       "units": 46,
-      "unitValue": 1.0008729163913768,
-      "lastAccrual": "2026-09-30",
+      "unitValue": 1.000982315211985,
+      "lastAccrual": "2026-10-01",
       "proxy": "DTB3"
     },
     "quality": {
       "units": {
-        "HYPE": 0.0893331915346166,
-        "TRX": 23.082485699749206,
-        "SKY": 28.922920721263594,
-        "CAKE": 0.7123657613155521,
-        "UNI": 0.16886986607598115,
-        "BNB": 0.0009373587977665024,
-        "RAY": 0.41608836277967387,
-        "PENDLE": 0.29603124624640836
+        "HYPE": 0.08668703373993208,
+        "TRX": 22.398754396682342,
+        "SKY": 28.066188628780854,
+        "CAKE": 0.6912646209713044,
+        "BNB": 0.0009095930900097749,
+        "RAY": 0.4037633193603945,
+        "PENDLE": 0.2872624406516642,
+        "AERO": 0.8300026776338438,
+        "UNI": 0.16386773523605555
       }
     }
   },
   "targets": {
     "monetary": 0.3,
-    "workingCapital": 0.46,
-    "quality": 0.24
+    "workingCapital": 0.43000000000000005,
+    "quality": 0.27
   },
   "seats": {
-    "filled": 8,
+    "filled": 9,
     "target": 10,
     "eligible": 8
   },
-  "lastReconQuarter": "2026Q3",
-  "onNotice": [],
+  "lastReconQuarter": "2026Q4",
+  "onNotice": [
+    "UNI"
+  ],
   "stalePrices": {
     "BTC": {
-      "price": 83420,
+      "price": 84266,
       "runs": 0
     },
     "HYPE": {
-      "price": 85.94,
+      "price": 89.31,
       "runs": 0
     },
     "TRX": {
-      "price": 0.33727,
+      "price": 0.337389,
       "runs": 0
     },
     "SKY": {
-      "price": 0.082719,
+      "price": 0.079593,
       "runs": 0
     },
     "CAKE": {
@@ -60,19 +63,19 @@
       "runs": 0
     },
     "UNI": {
-      "price": 8.86,
+      "price": 8.96,
       "runs": 0
     },
     "BNB": {
-      "price": 763.51,
+      "price": 771.42,
       "runs": 0
     },
     "RAY": {
-      "price": 1.89,
+      "price": 1.95,
       "runs": 0
     },
     "PENDLE": {
-      "price": 2.32,
+      "price": 2.47,
       "runs": 0
     }
   }

@@ -1,0 +1,22 @@
+{
+  "index": "triens",
+  "date": "2026-10-01",
+  "vault": "0xaFd422C43e8a0aFD36a9bce01Bb20DB19e4324A5",
+  "chainId": 91342,
+  "adds": [
+    {
+      "symbol": "AERO",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    }
+  ],
+  "removes": [],
+  "decisionSha256": null,
+  "decisionFile": "trackrecord/decisions/2026-10-01-triens-reconstitution.md (to be written, then anchored with scripts/anchor-decision.mjs; its sha256 replaces this null)",
+  "calls": [
+    "announceRegistryChange(adds=[<new mock address>], removes=[], decisionSha256=<sha256 of the anchored decision>)  — owner, day 0",
+    "executeRegistryChange(same adds, removes, decisionSha256)  — anyone, day 7 or later",
+    "openAuction(sell=<an overweight member>, buy=AERO, …) after execute and a first setRefPrice(AERO)  — keeper; not implemented in this keeper"
+  ],
+  "note": "The 7-day announcement delay means the vault lags the index by at least a week at every reconstitution; the paper record does not wait. See docs/paper-index.md \"Basket marking\"."
+}

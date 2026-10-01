@@ -1,0 +1,28 @@
+{
+  "index": "qdefi",
+  "date": "2026-10-01",
+  "vault": "0x88D3b5f638fE0d331797C612a5496bD8f0491FD4",
+  "chainId": 91342,
+  "adds": [
+    {
+      "symbol": "ASTER",
+      "address": null,
+      "note": "deploy a MockConstituent for this name first (testnet) — address unknown until then"
+    }
+  ],
+  "removes": [
+    {
+      "symbol": "CRV",
+      "address": "0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6"
+    }
+  ],
+  "decisionSha256": null,
+  "decisionFile": "trackrecord/decisions/2026-10-01-qdefi-reconstitution.md (to be written, then anchored with scripts/anchor-decision.mjs; its sha256 replaces this null)",
+  "calls": [
+    "announceRegistryChange(adds=[<new mock address>], removes=[0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6], decisionSha256=<sha256 of the anchored decision>)  — owner, day 0",
+    "executeRegistryChange(same adds, removes, decisionSha256)  — anyone, day 7 or later",
+    "openAuction(sell=CRV, buy=<a member>, amount=<balance>, duration=<short>) … until balance is 0, then finalizeRemoval(CRV)  — keeper; not implemented in this keeper",
+    "openAuction(sell=<an overweight member>, buy=ASTER, …) after execute and a first setRefPrice(ASTER)  — keeper; not implemented in this keeper"
+  ],
+  "note": "The 7-day announcement delay means the vault lags the index by at least a week at every reconstitution; the paper record does not wait. See docs/paper-index.md \"Basket marking\"."
+}
