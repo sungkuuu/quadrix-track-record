@@ -1,8 +1,10 @@
 /**
  * Test helper (no network): a tiny model of one QuadrixBasketVault v3.1 and
  * its mock tokens behind a viem-shaped public client and wallet, with a node
- * that can LAG — after each mined transaction the next `lagReads` reads are
- * answered by a node one block behind, in turn:
+ * that can LAG — after each mined transaction the next `lagReads` reads OF
+ * EACH read method (getBlockNumber, getBlock, readContract, multicall,
+ * simulateContract — as keeper/test/lag-proxy.mjs) are answered by a node one
+ * block behind, in turn:
  *   'stale'    — a read at `latest` gets the state before the transaction;
  *                a read at the new block errors "header not found";
  *   'empty'    — eth_call answers "0x" (viem: returned no data);
@@ -44,8 +46,8 @@ export class FakeChain {
     this.receipts = new Map();
     this.txs = new Map();
     this.logs = [];
-    this.lagReads = 0;     // armed after each mined tx
-    this.lagLeft = 0;
+    this.lagReads = 0;     // armed after each mined tx, per read method
+    this.lagLeft = new Map();
     this.lagCycle = 0;
     this.lagModes = ['stale', 'empty', 'notfound'];
     this.neverHas = null;  // a block number this node never serves (getBlock / pinned reads)
@@ -88,11 +90,14 @@ export class FakeChain {
   }
 
   // -------------------------------------------------------------- the node
+  /** The next `n` reads of each read method lag (0: none). */
+  lagNow(n) { this.lagLeft = new Map(['getBlockNumber', 'getBlock', 'readContract', 'multicall', 'simulateContract'].map((m) => [m, n])); }
   /** Which node answers this read: 'ok' or a lag mode. */
-  nodeFor() {
+  nodeFor(method) {
     this.reads++;
-    if (this.lagLeft > 0) {
-      this.lagLeft--;
+    const left = this.lagLeft.get(method) ?? 0;
+    if (left > 0) {
+      this.lagLeft.set(method, left - 1);
       return this.lagModes[this.lagCycle++ % this.lagModes.length];
     }
     return 'ok';
@@ -263,7 +268,7 @@ export class FakeChain {
     this.receipts.set(lc(hash), receipt);
     this.txs.set(lc(hash), { hash, from: getAddress(from), to: getAddress(call.address), blockNumber: blk.number, input: call });
     this.sent.push({ hash, from: getAddress(from), to: getAddress(call.address), functionName: call.functionName, args: call.args ?? [], gas: call.gas });
-    this.lagLeft = this.lagReads;
+    this.lagNow(this.lagReads);
     return { hash, receipt };
   }
 
@@ -272,9 +277,9 @@ export class FakeChain {
     const self = this;
     const pc = {
       async getChainId() { return 91342; },
-      async getBlockNumber() { const m = self.nodeFor(); return m === 'ok' ? self.head.number : self.head.number - 1n; },
+      async getBlockNumber() { const m = self.nodeFor('getBlockNumber'); return m === 'ok' ? self.head.number : self.head.number - 1n; },
       async getBlock(args = {}) {
-        const m = self.nodeFor();
+        const m = self.nodeFor('getBlock');
         const n = args.blockNumber;
         if (n != null && self.neverHas != null && BigInt(n) >= self.neverHas) throw new BlockNotFoundError({ blockNumber: BigInt(n) });
         const visible = m === 'ok' ? self.head.number : self.head.number - 1n;
@@ -283,17 +288,17 @@ export class FakeChain {
         return { number: b.number, timestamp: b.timestamp, hash: keccak256(toHex(`b${b.number}`)) };
       },
       async readContract(c) {
-        const m = self.nodeFor();
+        const m = self.nodeFor('readContract');
         const b = self.at(c.blockNumber, m, c.functionName);
         return self.read(c, b.state, b);
       },
       async multicall({ contracts, blockNumber }) {
-        const m = self.nodeFor();
+        const m = self.nodeFor('multicall');
         const b = self.at(blockNumber, m, 'aggregate3');
         return contracts.map((c) => self.read(c, b.state, b));
       },
       async simulateContract(p) {
-        const m = self.nodeFor();
+        const m = self.nodeFor('simulateContract');
         const b = self.at(p.blockNumber, m, p.functionName);
         const st = clone(b.state);
         const sim = { number: b.number + 1n, timestamp: b.timestamp + 1n };

@@ -27,7 +27,7 @@ test('a lagging node: isBidder at the receipt block reads true after retries (at
   const { receipt } = chain.send(OWNER, { address: V, functionName: 'setBidder', args: [BIDDER, true] });
   // What the old code did — readContract at latest — on the node one block behind:
   assert.equal(await reader.publicClient.readContract({ address: V, functionName: 'isBidder', args: [BIDDER] }), false);
-  chain.lagLeft = 3;
+  chain.lagNow(3);
   const rb = await readBackAfterReceipt(reader, { vault: V, bidder: BIDDER, receipt });
   assert.equal(rb.isBidderAfter, true);
   assert.equal(rb.at, new Date(Number(chain.head.timestamp) * 1000).toISOString());

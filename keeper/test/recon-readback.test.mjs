@@ -417,7 +417,7 @@ test('runTrade on a lagging node: the same sent calls and the same plan records 
     const n0 = chain.sent.length;
     const v = await readVault(ctx.reader, V);
     await runTrade(ctx, v, T1, 1);
-    chain.lagLeft = 0; // the harness's own read below is not under test
+    chain.lagNow(0); // the harness's own read below is not under test
     await runTrade(ctx, await readVault(ctx.reader, V), T2, 1); // a drain: fill, balance 0, finalize at once
     return { sent: chain.sent.slice(n0).map((s) => ({ fn: s.functionName, args: s.args.map(String), gas: String(s.gas) })), plan: loadPlan(f), chain, ctx };
   };
@@ -442,7 +442,7 @@ test('call(): a simulation after a write runs at a block â‰¥ the last receipt â€
   // Our post moves the reference; the next post is only in band from the NEW value.
   await call(ctx, { who: 'keeper', to: V, functionName: 'setRefPrice', args: [AAA, (REF_AAA * 114n) / 100n], gas: 1n, what: 'post 1' });
   chain.lagReads = 3;
-  chain.lagLeft = 3; // the next reads come from a node one block behind (the old reference)
+  chain.lagNow(3); // the next reads come from a node one block behind (the old reference)
   await call(ctx, { who: 'keeper', to: V, functionName: 'setRefPrice', args: [AAA, (REF_AAA * 128n) / 100n], gas: 1n, what: 'post 2' });
   assert.equal(chain.head.state.refPrice[AAA.toLowerCase()], (REF_AAA * 128n) / 100n);
   await assert.rejects(call(ctx, { who: 'keeper', to: V, functionName: 'setRefPrice', args: [AAA, REF_AAA * 2n], gas: 1n, what: 'post 3' }), (e) => isRefused(e) && /NavMoveTooLarge/.test(e.message));
