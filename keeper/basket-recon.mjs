@@ -624,7 +624,7 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
   const win = fairWindow(t.duration, Number(v.premiumBps), Number(v.maxFillLossBps), o.fairWindowBps);
   const aimElapsed = policy === 'fair' ? win.aim : 0;
   if (opened.dry) {
-    log(`  would wait ${aimElapsed} s to the ${policy === 'fair' ? `fair window [${win.eMin}, ${win.eMax}] s` : 'open'}, re-read and re-post both references at their current values, then fill(${id}, min(${amount}, live balance)) as bidder ${ctx.bidderAddr}${t.drain ? `; then read ${t.sell}'s balance: zero → finalizeRemoval at once, else re-drain at once (≤ ${MAX_DRAIN_ATTEMPTS}×), else PENDING` : ''}`);
+    log(`  would wait ${aimElapsed} s to the ${policy === 'fair' ? `fair window [${win.eMin}, ${win.eMax}] s` : 'open'}, re-read and re-post both references at their current values, then fill(${id}, min(${amount}, live balance)) as bidder ${ctx.bidderAddr}${t.drain ? `; then read ${t.sell}'s balance: zero → finalizeRemoval at once, else re-drain at once (≤ ${MAX_DRAIN_ATTEMPTS}×), else left waiting (finalizePending)` : ''}`);
     await requireRefsUnmoved(ctx, sell, buy, pSell, pBuy, t);
     await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [sell, pSell], gas: GAS.post, what: `re-post ${t.sell} (same value)` });
     await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [buy, pBuy], gas: GAS.post, what: `re-post ${t.buy} (same value)` });
@@ -838,7 +838,20 @@ async function stageAuctions(ctx) {
     if (d > o.refDriftTol) throw new Refused(`${sym}: chain reference ${a.refPrice} is ${pct(d)} from the plan's ${planRef} (> ${pct(o.refDriftTol)}) — re-mark with the daily keeper (paper-index.mjs) first; this script does not move references`);
   }
   log(`${plan.trades.length} planned auction(s); ${plan.fills.length} already filled; fill policy ${o.fill}; every reference within ${pct(o.refDriftTol)} of the plan`);
-  if (plan.trades.length === 0) { log('nothing to trade'); return; }
+  if (plan.trades.length === 0) {
+    // A plan made on a later day has no auction for a remnant under the
+    // trade minimum (computeTrades skips it), and none for a removal when
+    // nothing else trades. An asset still in removal is drained and
+    // finalized all the same — otherwise a PENDING left by an earlier
+    // session could never be cleared by re-running this stage.
+    const left = v.assets.filter((a) => a.inRemoval);
+    if (left.length === 0) { log('nothing to trade'); return; }
+    const names = left.map((a) => `${plan.removes.find((r) => r.address === a.address)?.symbol ?? a.onchainSymbol} (${a.balance} base units)`).join(', ');
+    if (!ctx.live) { log(`no planned auction; still in removal: ${names} — a live run drains and finalizes (option K)`); return; }
+    log(`no planned auction; still in removal: ${names} — draining and finalizing`);
+    await sweepRemovals(ctx, 1);
+    return;
+  }
 
   for (let round = 1; round <= o.maxRounds; round++) {
     let trades;

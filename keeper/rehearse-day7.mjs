@@ -449,6 +449,44 @@ async function rehearseBasket(env, index) {
     const drainFill = res.plan.fills.find((f) => f.sell === X && typeof f.seq === 'number');
     const auctionAfter = drainFill ? await pc.readContract({ address: F.vault, abi: VAULT_ABI, functionName: 'auctions', args: [BigInt(drainFill.auctionId)] }) : null;
     check(`${X}: the fill shrank to the live balance, the rest of the auction was cancelled, ${X} finalized`, !!drainFill?.auctionAmount && BigInt(drainFill.sellTaken) < BigInt(drainFill.auctionAmount) && auctionAfter && auctionAfter[5] === false && res.plan.finalize.some((f) => f.symbol === X), drainFill ? `took ${drainFill.sellTaken} of an auction for ${drainFill.auctionAmount}; auction open ${auctionAfter?.[5]}` : 'no drain fill', '⑤');
+
+    // Review 2026-10-01 (first review of the K build): a PENDING left by one
+    // session must be cleared by a LATER plan's auctions stage. A later plan
+    // has no auction for a remnant under the trade minimum, so the stage has
+    // to drain what is in removal even with nothing planned.
+    const planArgs = ['--index', index, '--date', O.date, '--rpc', RPC, '--mocks', path.join(env.keeper, 'mocks', `${O.date}.json`), '--no-fetch', '--duration', String(O.duration)];
+    const pendingFile = path.join(env.keeper, `pending-registry-${index}.json`);
+    const Xaddr = F.removes.find((x) => x.symbol === X).address;
+    res = await day7(env, F, { label: 'donation at every attempt', hook: [{ point: 'after-fill', symbol: X, action: 'donate', amount: '1' }] });
+    baseChecks(F, res, 'PENDING, then a later plan', { expectPending: [X] });
+    // The work order is done once executed; the operator removes it (the
+    // planner refuses a work order that no longer matches the registry).
+    fs.renameSync(pendingFile, `${pendingFile}.executed`);
+    try {
+      let r = run(env, 'basket-plan.mjs', planArgs, 'a later plan (executed, remnant pending)');
+      const later = r.status === 0 ? loadPlan(F.planFile) : null;
+      check(`a later plan lists ${X} as in removal and plans no auction for a remnant under $1`, r.status === 0 && later.trades.length === 0 && later.removes.some((x) => x.symbol === X && x.inRemoval), later ? `removes ${later.removes.map((x) => `${x.symbol} balance ${x.balance} inRemoval ${x.inRemoval}`).join(', ')}; trades ${later.trades.length}` : `plan exit ${r.status}`, 'K-4');
+      r = run(env, 'basket-recon.mjs', recon(index, 'auctions', F.planFile, [...F.live, '--bidder', DEV.bidder, '--warp']), 'auctions with the later plan (no planned auction)');
+      const v2 = await readVault(reader, F.vault);
+      const after = loadPlan(F.planFile);
+      check(`${X}: the auctions stage of a later plan drains and finalizes the PENDING remnant`, r.status === 0 && !v2.assets.some((a) => a.address === Xaddr) && after.finalize.some((f) => f.symbol === X) && !(after.finalizePending ?? []).length, `exit ${r.status}; in registry ${v2.assets.some((a) => a.address === Xaddr)}; finalize ${after.finalize.map((f) => f.symbol).join(',') || '—'}`, 'K-4');
+      r = run(env, 'basket-recon.mjs', recon(index, 'verify', F.planFile), 'verify with the later plan');
+      check('verify passes after the later drain, nothing PENDING', r.status === 0 && /verify: all checks passed$/m.test(r.out), (r.out.match(/verify: [^\n]*/) ?? ['no verify line'])[0], 'K-4');
+    } finally {
+      fs.renameSync(`${pendingFile}.executed`, pendingFile);
+    }
+
+    // A third party executing BEFORE the day-7 plan is made is not what K-6
+    // covers (K-6: after the plan). Pinned here as it is today: the planner
+    // refuses, because the work order still lists as adds what the registry
+    // already holds — the manual path in the RUNBOOK applies.
+    await revert(F.snap);
+    F.snap = await snapshot();
+    const t = F.plan.announceTuple;
+    await tx(DEV.stranger, { address: F.vault, abi: EXTRA_ABI, functionName: 'executeRegistryChange', args: [t.adds.map((a) => getAddress(a)), t.removes.map((a) => getAddress(a)), t.decisionSha256], gas: 2_000_000n });
+    const rp = run(env, 'basket-plan.mjs', planArgs, 'day-7 plan after a third party executed');
+    check('known limit: a day-7 plan made AFTER a third party executed is refused by the planner (work order vs registry) — manual path', rp.status !== 0 && /resolve before planning/.test(rp.out), (rp.out.match(/[^\n]*resolve before planning[^\n]*/) ?? [`exit ${rp.status}`])[0].slice(0, 220), 'limit');
+    savePlan(F.planFile, loadPlan(F.savedPlan));
   }
   if (index === 'qai') {
     const [X, Y] = drains;
