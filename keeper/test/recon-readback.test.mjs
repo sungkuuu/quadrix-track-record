@@ -15,7 +15,7 @@ import path from 'node:path';
 import { getAddress } from 'viem';
 import { savePlan, loadPlan, toRefPrice, readVault } from '../basket-plan.mjs';
 import { READ_TIMING } from '../readback.mjs';
-import { stageAnnounce, stageExecute, stageFirstPrices, settleSent, call } from '../basket-recon.mjs';
+import { stageAnnounce, stageExecute, stageFirstPrices, settleSent, reconcileSession, runTrade, call } from '../basket-recon.mjs';
 import { FakeChain, ZERO32 } from './fake-chain.mjs';
 
 READ_TIMING.stepMs = 2; // the bound stays 30 s of fake waits; each wait is 2 ms here
@@ -296,11 +296,144 @@ test('first prices on a lagging node: recorded, then checked at the receipt bloc
   assert.equal(p.firstPrices[0].adopted, true);
 });
 
+// ===================================================== the session stages
 async function priced(chain) {
   const pend = await executed(chain);
   chain.send(OWNER, { address: V, functionName: 'setRefPrice', args: [ASTER, REF_ASTER] });
   return pend;
 }
+const T1 = { seq: 1, sell: 'AAA', sellAddress: AAA, buy: 'ASTER', buyAddress: ASTER, sellAmount: (100n * 10n ** 8n).toString(), duration: 1800, drain: false };
+const T2 = { seq: 2, sell: 'CRV', sellAddress: CRV, buy: 'BBB', buyAddress: BBB, sellAmount: (4_000n * 10n ** 8n).toString(), duration: 1800, drain: true };
+
+/** An earlier run: open, wait to the fair point, fill — and stop before recording. */
+function earlierFill(chain, { sell, buy, amount, elapsed = 1170n, take = amount }) {
+  const o = chain.send(OWNER, { address: V, functionName: 'openAuction', args: [sell, buy, amount, 1800n] });
+  const id = BigInt(chain.head.state.auctions.length - 1);
+  chain.timeOffset = elapsed - 1n;
+  const fl = chain.send(OWNER, { address: V, functionName: 'fill', args: [id, take] });
+  return { id, openTx: o.hash, fillTx: fl.hash };
+}
+
+test('fills: a mined fill missing from plan.fills is recorded as its planned seq and NOT traded again; a dry run only says so', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, trades: [T1, T2] }));
+  const { id, fillTx, openTx } = earlierFill(chain, { sell: AAA, buy: ASTER, amount: 100n * 10n ** 8n });
+  const dry = ctxFor(chain, f, { live: false });
+  let v = await readVault(dry.reader, V);
+  const seqsDry = await reconcileSession(dry, v);
+  assert.deepEqual([...seqsDry], [1]);
+  assert.equal(loadPlan(f).fills.length, 0, 'a dry run writes nothing');
+  const ctx = ctxFor(chain, f);
+  v = await readVault(ctx.reader, V);
+  const seqs = await reconcileSession(ctx, v, { cancelOrphans: true, halt: true });
+  assert.deepEqual([...seqs], [1]);
+  const p = loadPlan(f);
+  assert.equal(p.fills.length, 1);
+  const r = p.fills[0];
+  assert.deepEqual([r.seq, r.round, r.auctionId, r.sell, r.buy, r.fillTx, r.openTx, r.adopted, r.elapsed], [1, 1, id.toString(), 'AAA', 'ASTER', fillTx, openTx, true, 1170]);
+  // factor at 1,170 s of 1,800 with premium 200 and floor 100: 10000 + 200 − ⌊300·1170/1800⌋ = 10005 (inside the fair window)
+  assert.equal(r.factorBps, 10_005);
+  // The auction filled completely is closed: no orphan cancel was sent.
+  assert.equal(chain.sent.at(-1).hash, fillTx);
+  // A second pass records nothing new.
+  await reconcileSession(ctxFor(chain, f), v);
+  assert.equal(loadPlan(f).fills.length, 1);
+});
+
+test('fills: under the fair policy an adopted fill outside the fair window HALTs (after it is recorded), like a fill made now', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, trades: [T1] }));
+  earlierFill(chain, { sell: AAA, buy: ASTER, amount: 100n * 10n ** 8n, elapsed: 60n }); // factor 10190: above the window
+  const ctx = ctxFor(chain, f);
+  await assert.rejects(reconcileSession(ctx, await readVault(ctx.reader, V), { halt: true }), /HALT: adopted fill .* factor 10190/);
+  assert.equal(loadPlan(f).fills.length, 1, 'recorded before the HALT');
+});
+
+test('fills: two planned trades with the fill\'s pair → REFUSED (record it by hand); a fill of no planned pair → adopted-<id>', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, trades: [T1, { ...T1, seq: 3 }] }));
+  earlierFill(chain, { sell: AAA, buy: ASTER, amount: 10n * 10n ** 8n });
+  const ctx = ctxFor(chain, f);
+  await assert.rejects(reconcileSession(ctx, await readVault(ctx.reader, V)), (e) => isRefused(e) && /matches planned trades #1, #3/.test(e.message));
+  const chain2 = newChain();
+  const pend2 = await priced(chain2);
+  const f2 = planOn(chain2, (p) => ({ ...p, announce: { pendingHash: pend2, tuple: p.announceTuple }, trades: [T1] }), 'plan2.json');
+  const { id } = earlierFill(chain2, { sell: BBB, buy: ASTER, amount: 10n * 10n ** 8n });
+  const ctx2 = ctxFor(chain2, f2);
+  const seqs = await reconcileSession(ctx2, await readVault(ctx2.reader, V));
+  assert.equal(seqs.size, 0);
+  const r = loadPlan(f2).fills[0];
+  assert.deepEqual([r.seq, r.round], [`adopted-${id}`, null]);
+});
+
+test('orphans: an auction an earlier run opened and never filled is cancelled before anything is opened (dry run: printed only)', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, trades: [T1] }));
+  chain.send(OWNER, { address: V, functionName: 'openAuction', args: [AAA, ASTER, 100n * 10n ** 8n, 1800n] });
+  const id = BigInt(chain.head.state.auctions.length - 1);
+  const n = chain.sent.length;
+  const dry = ctxFor(chain, f, { live: false });
+  await reconcileSession(dry, await readVault(dry.reader, V), { cancelOrphans: true });
+  assert.equal(chain.sent.length, n);
+  assert.ok(dry.lines.some((l) => /still open from an earlier run — a live run cancels it/.test(l)));
+  const ctx = ctxFor(chain, f);
+  await reconcileSession(ctx, await readVault(ctx.reader, V), { cancelOrphans: true });
+  assert.equal(chain.sent.length, n + 1);
+  assert.deepEqual([chain.sent.at(-1).functionName, chain.sent.at(-1).args[0]], ['cancelAuction', id]);
+  assert.equal(chain.head.state.auctions[Number(id)].open, false);
+  assert.ok(loadPlan(f).sent.at(-1).what.startsWith(`cancel auction ${id}`));
+});
+
+test('finalize: a removal out of the registry but not in plan.finalize is recorded from RemovalFinalized', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, trades: [T2], fills: [] }));
+  earlierFill(chain, { sell: CRV, buy: BBB, amount: 4_000n * 10n ** 8n });
+  const fin = chain.send(OWNER, { address: V, functionName: 'finalizeRemoval', args: [CRV] });
+  const ctx = ctxFor(chain, f);
+  await reconcileSession(ctx, await readVault(ctx.reader, V));
+  const p = loadPlan(f);
+  assert.equal(p.finalize.length, 1);
+  assert.deepEqual([p.finalize[0].symbol, p.finalize[0].txHash, p.finalize[0].adopted], ['CRV', fin.hash, true]);
+  assert.equal(p.fills.length, 1, 'and the drain fill');
+  assert.equal(p.fills[0].seq, 2);
+});
+
+// ============================================ one trade, end to end, lagging
+test('runTrade on a lagging node: the same sent calls and the same plan records as on a clean node; the id comes from AuctionOpened', async () => {
+  const runOn = async (lagReads) => {
+    const chain = newChain();
+    const pend = await priced(chain);
+    // Another auction exists before ours: the id must be 1, from the event.
+    chain.send(OWNER, { address: V, functionName: 'openAuction', args: [BBB, AAA, 10n, 1800n] });
+    chain.send(OWNER, { address: V, functionName: 'cancelAuction', args: [0n] });
+    const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, trades: [T1, T2] }));
+    chain.lagReads = lagReads;
+    const ctx = ctxFor(chain, f);
+    const n0 = chain.sent.length;
+    const v = await readVault(ctx.reader, V);
+    await runTrade(ctx, v, T1, 1);
+    chain.lagLeft = 0; // the harness's own read below is not under test
+    await runTrade(ctx, await readVault(ctx.reader, V), T2, 1); // a drain: fill, balance 0, finalize at once
+    return { sent: chain.sent.slice(n0).map((s) => ({ fn: s.functionName, args: s.args.map(String), gas: String(s.gas) })), plan: loadPlan(f), chain, ctx };
+  };
+  const clean = await runOn(0);
+  const lag = await runOn(5);
+  assert.deepEqual(lag.sent, clean.sent, 'what is sent is the same');
+  assert.deepEqual(clean.sent.map((s) => s.fn), ['openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'finalizeRemoval']);
+  assert.equal(clean.sent[3].args[0], '1', 'fill(1, …): the id from AuctionOpened');
+  const norm = (p) => ({ fills: p.fills.map((x) => ({ ...x, openTx: null, fillTx: null })), finalize: p.finalize.map((x) => ({ ...x, txHash: null })) });
+  assert.deepEqual(norm(lag.plan), norm(clean.plan));
+  assert.equal(clean.plan.fills.length, 2);
+  assert.equal(clean.plan.finalize[0].symbol, 'CRV');
+  assert.deepEqual(clean.plan.finalize[0].order, [AAA, BBB, ASTER]);
+  assert.ok(lag.chain.reads > clean.chain.reads);
+});
+
 test('call(): a simulation after a write runs at a block ≥ the last receipt — a lagging node cannot fake a revert; a real revert is still refused', async () => {
   const chain = newChain();
   await priced(chain);

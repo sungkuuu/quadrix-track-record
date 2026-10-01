@@ -804,7 +804,7 @@ function fairWindow(duration, premiumBps, maxFillLossBps, windowBps) {
 }
 
 async function chainTime(ctx) {
-  return (await ctx.pc.getBlock()).timestamp;
+  return readAt(ctx, 'chain time', async (r) => (await r.publicClient.getBlock()).timestamp);
 }
 
 async function waitUntil(ctx, targetTs, why) {
@@ -824,14 +824,14 @@ async function waitUntil(ctx, targetTs, why) {
 }
 
 async function ensureInventory(ctx, token, symbol, need) {
-  const [bal, allowance] = await ctx.reader.batch([
+  const [bal, allowance] = await batchNow(ctx, `bidder's ${symbol}`, [
     { address: token, abi: ERC20_ABI, functionName: 'balanceOf', args: [ctx.bidderAddr] },
     { address: token, abi: ERC20_ABI, functionName: 'allowance', args: [ctx.bidderAddr, ctx.plan.vault] },
   ]);
   if (bal < need) {
     if (!ctx.o.faucet) throw new Refused(`bidder ${ctx.bidderAddr} holds ${bal} ${symbol}, needs ${need}, and --no-faucet is set`);
     let faucetAmount;
-    try { faucetAmount = await ctx.pc.readContract({ address: token, abi: ERC20_ABI, functionName: 'faucetAmount' }); } catch {
+    try { faucetAmount = await readNow(ctx, `${symbol} faucetAmount`, { address: token, abi: ERC20_ABI, functionName: 'faucetAmount' }); } catch {
       throw new Refused(`bidder holds ${bal} ${symbol}, needs ${need}, and ${token} has no faucet — fund the bidder`);
     }
     const calls = Number((need - bal + faucetAmount - 1n) / faucetAmount);
@@ -852,7 +852,7 @@ async function ensureInventory(ctx, token, symbol, need) {
  *  6-hourly NAV keeper, a manual run) moved a reference in between, posting
  *  the old value would step it BACK — this script never moves a reference. */
 async function requireRefsUnmoved(ctx, sell, buy, pSell, pBuy, t) {
-  const [curS, curB] = await ctx.reader.batch([
+  const [curS, curB] = await batchNow(ctx, 'references before the re-posts', [
     { address: ctx.plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [sell] },
     { address: ctx.plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [buy] },
   ]);
@@ -867,7 +867,7 @@ async function runHook(ctx, point, info) {
   if (ctx.hook) await ctx.hook(point, info, { rpc: ctx.o.rpc, vault: ctx.plan.vault, chainId: ctx.reader.chainId });
 }
 
-async function runTrade(ctx, v, t, round, attemptNo = 1) {
+export async function runTrade(ctx, v, t, round, attemptNo = 1) {
   const { plan, log, o } = ctx;
   // A residual drain under $1 (option K) fills at the open: waiting ~10
   // minutes for the fair point is the window a donation needs, and the most
@@ -875,7 +875,7 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
   const policy = t.immediate ? 'open' : o.fill;
   const sell = getAddress(t.sellAddress);
   const buy = getAddress(t.buyAddress);
-  const [sellBal, pSell, pBuy, tsSell, tsBuy] = await ctx.reader.batch([
+  const [sellBal, pSell, pBuy, tsSell, tsBuy] = await batchNow(ctx, `#${t.seq} balance and references`, [
     { address: sell, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] },
     { address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [sell] },
     { address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [buy] },
@@ -895,12 +895,12 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
   // Inventory for the worst case (+2% at the open), then the auction itself.
   const buyWorst = (amount * pSell * (10_000n + v.premiumBps) + pBuy * 10_000n - 1n) / (pBuy * 10_000n);
   await ensureInventory(ctx, buy, t.buy, buyWorst);
-  const idBefore = await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'auctionCount' });
   const opened = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'openAuction', args: [sell, buy, amount, BigInt(t.duration)], gas: GAS.openAuction, what: `open auction #${t.seq}` });
-  const id = idBefore;
   const win = fairWindow(t.duration, Number(v.premiumBps), Number(v.maxFillLossBps), o.fairWindowBps);
   const aimElapsed = policy === 'fair' ? win.aim : 0;
   if (opened.dry) {
+    // A dry run sends nothing: the id the open would get is auctionCount now.
+    const id = await readNow(ctx, 'auctionCount', { address: plan.vault, abi: VAULT_ABI, functionName: 'auctionCount' });
     log(`  would wait ${aimElapsed} s to the ${policy === 'fair' ? `fair window [${win.eMin}, ${win.eMax}] s` : 'open'}, re-read and re-post both references at their current values, then fill(${id}, min(${amount}, live balance)) as bidder ${ctx.bidderAddr}${t.drain ? `; then read ${t.sell}'s balance: zero → finalizeRemoval at once, else re-drain at once (≤ ${MAX_DRAIN_ATTEMPTS}×), else left waiting (finalizePending)` : ''}`);
     await requireRefsUnmoved(ctx, sell, buy, pSell, pBuy, t);
     await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [sell, pSell], gas: GAS.post, what: `re-post ${t.sell} (same value)` });
@@ -908,9 +908,16 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
     await call(ctx, { who: 'bidder', to: plan.vault, functionName: 'fill', args: [id, amount], gas: GAS.fill(v.assetCount), what: `fill #${t.seq}`, dependsOnUnsent: true });
     return { dry: true };
   }
-  const a = await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] });
-  const startTime = BigInt(a[3]);
-  if (getAddress(a[0]) !== sell || getAddress(a[1]) !== buy) throw new Error(`auction ${id} is not ours (${a[0]} → ${a[1]})`);
+  // The id is the one in the receipt's AuctionOpened event, not auctionCount
+  // read before the open (a stale read, or another open in between, would
+  // name an older auction). startTime is the open block's time — openAuction
+  // sets block.timestamp; the struct is read, at that block, only when the
+  // block's time could not be.
+  const oev = eventsIn(opened.receipt, VAULT_ABI, 'AuctionOpened', plan.vault)[0]?.args;
+  if (!oev) throw new Error(`no AuctionOpened event in ${opened.hash} — the next auctions run cancels whatever it opened`);
+  const id = oev.id;
+  if (getAddress(oev.sellAsset) !== sell || getAddress(oev.buyAsset) !== buy || oev.sellAmount !== amount) throw new Error(`auction ${id} opened in ${opened.hash} is ${oev.sellAmount} ${oev.sellAsset} → ${oev.buyAsset}, not this trade — the next auctions run cancels it`);
+  const startTime = opened.blockTimestamp ?? BigInt((await readNow(ctx, `auction ${id}`, { address: plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] }, opened.receipt.blockNumber))[3]);
 
   for (let attempt = 0; attempt < 2; attempt++) {
     await waitUntil(ctx, startTime + BigInt(aimElapsed), policy === 'fair' ? `to the fair point of auction ${id}` : `auction ${id} open`);
@@ -927,13 +934,13 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
     // Read before the factor, so that the factor check stays the last read
     // before the fill.
     await runHook(ctx, 'before-fill', { seq: t.seq, symbol: t.sell, asset: sell, auctionId: id, amount, drain: !!t.drain, residual: !!t.residual });
-    const liveBal = await ctx.pc.readContract({ address: sell, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] });
+    const liveBal = await readNow(ctx, `${t.sell} in the vault`, { address: sell, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] });
     const take = liveBal < amount ? liveBal : amount;
     if (take === 0n) {
       await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id} (nothing left to sell)` });
       return null;
     }
-    const factorNow = Number(await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'curveFactorBps', args: [id] }));
+    const factorNow = Number(await readNow(ctx, `curve factor of auction ${id}`, { address: plan.vault, abi: VAULT_ABI, functionName: 'curveFactorBps', args: [id] }));
     const late = policy !== 'natural' && factorNow < 10_000;
     const early = policy === 'fair' && factorNow > 10_000 + o.fairWindowBps;
     if (early) {
@@ -950,28 +957,32 @@ async function runTrade(ctx, v, t, round, attemptNo = 1) {
     }
     if (take !== amount) log(`  live balance ${liveBal} ${t.sell} is below the auction's ${amount} (a redemption in the window) — filling ${take}`);
     const filled = await call(ctx, { who: 'bidder', to: plan.vault, functionName: 'fill', args: [id, take], gas: GAS.fill(v.assetCount), what: `fill #${t.seq} (auction ${id})` });
-    const ev = parseEventLogs({ abi: VAULT_ABI, logs: filled.receipt.logs, eventName: 'AuctionFilled' })[0]?.args;
-    if (!ev) throw new Error(`no AuctionFilled event in ${filled.hash}`);
-    const elapsed = Number(filled.blockTimestamp - startTime);
-    const factor = 10_000 + Number(v.premiumBps) - Math.floor((win.range * elapsed) / t.duration);
+    // Recorded from the receipt before any read (call() contract). Without
+    // the block's time the factor is unknown: recorded as null, and a fair
+    // fill then stops below instead of guessing.
+    const ev = eventsIn(filled.receipt, VAULT_ABI, 'AuctionFilled', plan.vault).find((e) => e.args.id === id)?.args;
+    if (!ev) throw new Error(`no AuctionFilled event for auction ${id} in ${filled.hash}`);
+    const elapsed = filled.blockTimestamp == null ? null : Number(filled.blockTimestamp - startTime);
+    const factor = elapsed == null ? null : 10_000 + Number(v.premiumBps) - Math.floor((win.range * elapsed) / t.duration);
     const rec = {
       seq: t.seq, round, auctionId: id.toString(), sell: t.sell, buy: t.buy, sellTaken: ev.sellTaken.toString(), buyPaid: ev.buyPaid.toString(),
       lossAtRef: ev.lossAtRef.toString(), factorBps: factor, elapsed, policy, bidder: ctx.bidderAddr,
-      openTx: opened.hash, fillTx: filled.hash, at: iso(filled.blockTimestamp),
+      openTx: opened.hash, fillTx: filled.hash, at: isoOrNull(filled.blockTimestamp),
       ...(take !== amount ? { auctionAmount: amount.toString() } : {}),
       ...(t.residual ? { residualOf: t.parentSeq ?? null } : {}),
     };
     plan.fills.push(rec);
     savePlan(ctx.planFile, plan);
-    log(`  filled auction ${id}: took ${ev.sellTaken} ${t.sell}, paid ${ev.buyPaid} ${t.buy}, factor ${factor} bp (${elapsed} s in), lossAtRef ${ev.lossAtRef}`);
+    log(`  filled auction ${id}: took ${ev.sellTaken} ${t.sell}, paid ${ev.buyPaid} ${t.buy}, factor ${factor ?? 'unknown'} bp (${elapsed ?? '?'} s in), lossAtRef ${ev.lossAtRef}`);
     if (policy !== 'natural') {
       if (ev.lossAtRef !== 0n) throw new Error(`HALT: fill ${filled.hash} booked lossAtRef ${ev.lossAtRef} under the ${policy} policy`);
+      if (policy === 'fair' && factor == null) throw new Error(`HALT: fill ${filled.hash} is recorded, but the time of block ${filled.receipt.blockNumber} could not be read, so its factor is unknown — check the block's time against auction ${id}'s fair window by hand before re-running`);
       if (policy === 'fair' && (factor < 10_000 || factor > 10_000 + o.fairWindowBps)) throw new Error(`HALT: fill ${filled.hash} landed at factor ${factor}, outside [10000, ${10_000 + o.fairWindowBps}]`);
     }
     // K-1: a drain is finalized right here, not after the other auctions.
     if (t.drain && !t.residual) await settleRemoval(ctx, v, t, round);
     if (take !== amount) {
-      const a2 = await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] });
+      const a2 = await readNow(ctx, `auction ${id} after the fill`, { address: plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] });
       if (a2[5]) await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel the unfilled rest of auction ${id} (${a2[2]} ${t.sell})` });
     }
     return rec;
@@ -991,11 +1002,16 @@ async function finalizeOne(ctx, asset, sym, assetCount) {
   const { plan, log } = ctx;
   const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'finalizeRemoval', args: [asset], gas: GAS.finalize(assetCount + 2), what: `finalize ${sym}` });
   if (r.dry) return;
-  const after = await readVault(ctx.reader, plan.vault);
-  if (after.assets.some((x) => x.address === asset)) throw new Error(`${sym} still in the registry after finalizeRemoval`);
-  plan.finalize.push({ symbol: sym, address: asset, txHash: r.hash, at: iso(r.blockTimestamp), assetCount: after.assetCount, order: after.assets.map((x) => x.address) });
+  // Record first (call() contract), then read the registry AT the receipt's block.
+  const rec = { symbol: sym, address: asset, txHash: r.hash, at: isoOrNull(r.blockTimestamp), assetCount: null, order: null };
+  plan.finalize.push(rec);
   if (plan.finalizePending) plan.finalizePending = plan.finalizePending.filter((x) => x.address !== asset);
   savePlan(ctx.planFile, plan);
+  const after = await vaultNow(ctx, `registry after finalize ${sym}`, r.receipt.blockNumber);
+  rec.assetCount = after.assetCount;
+  rec.order = after.assets.map((x) => x.address);
+  savePlan(ctx.planFile, plan);
+  if (after.assets.some((x) => x.address === asset)) throw new Error(`${sym} still in the registry at block ${r.receipt.blockNumber} after finalizeRemoval`);
   log(`  ${sym} removed; registry order is now (swap-and-pop) ${after.assets.map((x) => plan.registry.find((p) => p.address === x.address)?.symbol ?? plan.adds.find((p) => p.address === x.address)?.symbol ?? x.address).join(' ')}`);
 }
 
@@ -1022,8 +1038,8 @@ async function settleRemoval(ctx, v, t, round) {
     await runHook(ctx, 'after-fill', { seq: t.seq, symbol: t.sell, asset, attempt: k });
     // Two direct reads, not a paced batch: this is the window K closes.
     const [bal, ref] = await Promise.all([
-      ctx.pc.readContract({ address: asset, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] }),
-      ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [asset] }),
+      readNow(ctx, `${t.sell} in the vault after the drain`, { address: asset, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] }),
+      readNow(ctx, `refPrice(${t.sell})`, { address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [asset] }),
     ]);
     if (bal === 0n) {
       log(`  ${t.sell}: balance 0 — finalizing now${k ? ` (after ${k} re-drain(s))` : ''}`);
@@ -1055,7 +1071,7 @@ function remnantBuy(ctx, v, sym) {
  *  re-drained (K-2) — this covers a re-run and a remnant that reached the
  *  vault in another trade's window. One PENDING per asset per run. */
 async function sweepRemovals(ctx, round) {
-  const v = await readVault(ctx.reader, ctx.plan.vault);
+  const v = await vaultNow(ctx, 'vault state after the round');
   for (const a of v.assets.filter((x) => x.inRemoval)) {
     if (ctx.pendingThisRun.has(a.address)) continue;
     const sym = ctx.plan.removes.find((r) => r.address === a.address)?.symbol ?? a.onchainSymbol;
@@ -1094,16 +1110,117 @@ export function residual(ctx, rows) {
   return out;
 }
 
-async function stageAuctions(ctx) {
+// ------------------------------------------- a re-run of a session stage
+/** The symbol a vault address has in this plan (registry, adds, removes). */
+const symOf = (plan, a) => {
+  const x = getAddress(a);
+  return [...plan.registry, ...plan.adds, ...plan.removes].find((r) => r.address && getAddress(r.address) === x)?.symbol ?? x;
+};
+
+/**
+ * A session stage re-run after a run that stopped right after a mined
+ * transaction. From this plan's `sent` receipts and the vault's events since
+ * the plan's block (plan.block):
+ *   - FILLS: a fill by this bidder that is not in plan.fills is recorded,
+ *     never traded again. It is matched to the planned round-1 trade with the
+ *     same sell/buy pair (computeTrades never repeats a pair); two candidates
+ *     → REFUSED; none → recorded as an unplanned fill (a residual round or a
+ *     re-drain — those are computed from live balances, so they cannot
+ *     repeat it). Its factor is recomputed from the auction's startTime and
+ *     the fill block's time. With `halt`, an adopted fill is held to the
+ *     same HALT rules as a fill made now.
+ *   - ORPHANS (`cancelOrphans`, the auctions stage): an auction opened since
+ *     the plan's block that is still open is cancelled before anything is
+ *     opened — a re-run never leaves one beside a new one.
+ *   - FINALIZED REMOVALS: a removal that has left the registry but is not in
+ *     plan.finalize is recorded from its RemovalFinalized event.
+ * `write` false (a dry run) prints what a live run would record or send.
+ * Returns the planned seqs whose fills were adopted (also when not written).
+ */
+export async function reconcileSession(ctx, v, { cancelOrphans = false, halt = false, write = ctx.live } = {}) {
+  const { plan, log, o } = ctx;
+  const vault = getAddress(plan.vault);
+  const events = await vaultEvents(ctx, ['AuctionOpened', 'AuctionFilled', 'AuctionCancelled', 'RemovalFinalized']);
+  // The plan's own receipts too: a log search on a node behind our last block can miss them.
+  const key = (e) => `${e.transactionHash.toLowerCase()}:${e.logIndex}`;
+  const seen = new Set(events.map(key));
+  for (const { receipt } of await sentReceipts(ctx, /^(fill |open auction |cancel |finalize )/)) {
+    for (const e of parseEventLogs({ abi: EVENT_ABI, logs: receipt.logs.filter((l) => getAddress(l.address) === vault) })) {
+      if (!seen.has(key(e))) { seen.add(key(e)); events.push(e); }
+    }
+  }
+  const adoptedSeqs = new Set();
+  const recordedFills = new Set(plan.fills.map((f) => String(f.fillTx ?? '').toLowerCase()));
+  const doneSeqs = new Set(plan.fills.filter((f) => f.round === 1).map((f) => f.seq));
+  const unrecorded = events.filter((e) => e.eventName === 'AuctionFilled' && getAddress(e.args.bidder) === ctx.bidderAddr && !recordedFills.has(e.transactionHash.toLowerCase()))
+    .sort((a, b) => (a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1));
+  const halts = [];
+  for (const e of unrecorded) {
+    const id = e.args.id;
+    const a = await readNow(ctx, `auction ${id}`, { address: vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] });
+    const [sellA, buyA, , startTime, duration] = a;
+    const openEv = events.find((x) => x.eventName === 'AuctionOpened' && x.args.id === id);
+    const cands = plan.trades.filter((t) => getAddress(t.sellAddress) === getAddress(sellA) && getAddress(t.buyAddress) === getAddress(buyA) && !doneSeqs.has(t.seq) && !adoptedSeqs.has(t.seq));
+    if (cands.length > 1) throw new Refused(`fill ${e.transactionHash} (auction ${id}, ${symOf(plan, sellA)} → ${symOf(plan, buyA)}) is not in plan.fills and matches planned trades ${cands.map((t) => `#${t.seq}`).join(', ')} — record it in plan.fills by hand (the planned seq it was) before re-running`);
+    const t = cands[0] ?? null;
+    const blk = (await retryRead(() => ctx.pc.getBlock({ blockNumber: e.blockNumber }), { what: `block ${e.blockNumber}` })).value;
+    const elapsed = Number(blk.timestamp - BigInt(startTime));
+    const range = Number(v.premiumBps) + Number(v.maxFillLossBps);
+    const factor = 10_000 + Number(v.premiumBps) - Math.floor((range * elapsed) / Number(duration));
+    const rec = {
+      seq: t ? t.seq : `adopted-${id}`, round: t ? 1 : null, auctionId: id.toString(), sell: symOf(plan, sellA), buy: symOf(plan, buyA),
+      sellTaken: e.args.sellTaken.toString(), buyPaid: e.args.buyPaid.toString(), lossAtRef: e.args.lossAtRef.toString(), factorBps: factor, elapsed,
+      policy: 'adopted', bidder: getAddress(e.args.bidder), openTx: openEv?.transactionHash ?? null, fillTx: e.transactionHash, at: iso(blk.timestamp), adopted: true,
+    };
+    if (t) adoptedSeqs.add(t.seq);
+    log(`  ${write ? 'recorded' : 'would record'} a fill an earlier run made but did not record: ${rec.sell}→${rec.buy} auction ${id}, took ${rec.sellTaken}, paid ${rec.buyPaid}, factor ${factor} bp, tx ${e.transactionHash}${t ? ` — planned #${t.seq}, not traded again` : ' — not a planned trade (a residual or a re-drain)'}`);
+    if (write) { plan.fills.push(rec); savePlan(ctx.planFile, plan); }
+    if (halt && o.fill !== 'natural') {
+      if (e.args.lossAtRef !== 0n) halts.push(`HALT: adopted fill ${e.transactionHash} booked lossAtRef ${e.args.lossAtRef} under the ${o.fill} policy`);
+      else if (t && o.fill === 'fair' && (factor < 10_000 || factor > 10_000 + o.fairWindowBps)) halts.push(`HALT: adopted fill ${e.transactionHash} landed at factor ${factor}, outside [10000, ${10_000 + o.fairWindowBps}]`);
+    }
+  }
+  if (halts.length) throw new Error(halts.join('; '));
+
+  if (cancelOrphans) {
+    const opened = events.filter((e) => e.eventName === 'AuctionOpened');
+    const states = opened.length ? await batchNow(ctx, 'auctions opened since the plan', opened.map((e) => ({ address: vault, abi: VAULT_ABI, functionName: 'auctions', args: [e.args.id] }))) : [];
+    for (let i = 0; i < opened.length; i++) {
+      if (!states[i][5]) continue;
+      const id = opened[i].args.id;
+      log(`  auction ${id} (${symOf(plan, states[i][0])} → ${symOf(plan, states[i][1])}, ${states[i][2]} left, opened in ${opened[i].transactionHash}) is still open from an earlier run — ${write ? 'cancelling it' : 'a live run cancels it'} before anything is opened`);
+      if (write) await call(ctx, { who: 'keeper', to: vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id} (left open by an earlier run)` });
+    }
+  }
+
+  const inRegistry = new Set(v.assets.map((a) => a.address));
+  for (const r of plan.removes) {
+    const addr = getAddress(r.address);
+    if (inRegistry.has(addr) || plan.finalize.some((f) => getAddress(f.address) === addr)) continue;
+    if (!plan.registry.some((x) => getAddress(x.address) === addr)) continue; // not in the registry when planned: not this plan's to record
+    const ev = events.filter((e) => e.eventName === 'RemovalFinalized' && getAddress(e.args.asset) === addr).at(-1);
+    let at = null;
+    if (ev) at = iso((await retryRead(() => ctx.pc.getBlock({ blockNumber: ev.blockNumber }), { what: `block ${ev.blockNumber}` })).value.timestamp);
+    log(`  ${write ? 'recorded' : 'would record'} the finalize of ${r.symbol} — out of the registry, not in plan.finalize (tx ${ev?.transactionHash ?? 'not found since the plan\'s block'})`);
+    if (write) {
+      plan.finalize.push({ symbol: r.symbol, address: addr, txHash: ev?.transactionHash ?? null, at, assetCount: null, order: null, adopted: true });
+      if (plan.finalizePending) plan.finalizePending = plan.finalizePending.filter((x) => getAddress(x.address) !== addr);
+      savePlan(ctx.planFile, plan);
+    }
+  }
+  return adoptedSeqs;
+}
+
+export async function stageAuctions(ctx) {
   const { plan, log, o } = ctx;
   requirePlanFresh(ctx);
-  let v = await readVault(ctx.reader, plan.vault);
+  let v = await vaultNow(ctx);
   if (v.pendingRegistryChange !== ZERO32) throw new Refused('a registry change is pending — execute it before trading');
   if (ctx.keeperAddr !== v.keeper) throw new Refused(`openAuction/setRefPrice are keeper-only; keeper is ${v.keeper}, signer is ${ctx.keeperAddr}`);
   const unpriced = v.assets.filter((a) => a.refPrice === 0n);
   if (unpriced.length) throw new Refused(`unpriced registry assets ${unpriced.map((a) => a.address).join(', ')} — every fill reverts PriceUnset until first-prices runs`);
   if (!v.biddingOpen) {
-    const isB = await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'isBidder', args: [ctx.bidderAddr] });
+    const isB = await readNow(ctx, 'isBidder', { address: plan.vault, abi: VAULT_ABI, functionName: 'isBidder', args: [ctx.bidderAddr] });
     if (!isB) throw new Refused(`bidder ${ctx.bidderAddr} is not whitelisted (isBidder false, biddingOpen false) — owner setBidder first`);
   }
   // References must be today's marks: this script never moves one.
@@ -1114,6 +1231,8 @@ async function stageAuctions(ctx) {
     const d = Math.abs(Number(a.refPrice) - Number(planRef)) / Number(planRef);
     if (d > o.refDriftTol) throw new Refused(`${sym}: chain reference ${a.refPrice} is ${pct(d)} from the plan's ${planRef} (> ${pct(o.refDriftTol)}) — re-mark with the daily keeper (paper-index.mjs) first; this script does not move references`);
   }
+  // A re-run first records what an earlier run did and cancels what it left open.
+  const adopted = await reconcileSession(ctx, v, { cancelOrphans: true, halt: true });
   log(`${plan.trades.length} planned auction(s); ${plan.fills.length} already filled; fill policy ${o.fill}; every reference within ${pct(o.refDriftTol)} of the plan`);
   if (plan.trades.length === 0) {
     // A plan made on a later day has no auction for a remnant under the
@@ -1133,7 +1252,7 @@ async function stageAuctions(ctx) {
   for (let round = 1; round <= o.maxRounds; round++) {
     let trades;
     if (round === 1) {
-      const done = new Set(plan.fills.filter((f) => f.round === 1).map((f) => f.seq));
+      const done = new Set([...plan.fills.filter((f) => f.round === 1).map((f) => f.seq), ...adopted]);
       trades = plan.trades.filter((t) => !done.has(t.seq));
     } else {
       const rows = await liveRows(ctx, v);
@@ -1144,7 +1263,7 @@ async function stageAuctions(ctx) {
     for (const t of trades) await runTrade(ctx, v, t, round);
     if (!ctx.live) { log('dry run: residual rounds need the fills above to have happened — stopping after round 1'); return; }
     await sweepRemovals(ctx, round);
-    v = await readVault(ctx.reader, plan.vault);
+    v = await vaultNow(ctx, 'vault state after the round');
     const res = residual(ctx, await liveRows(ctx, v));
     for (const r of res) log(`  ${r.symbol.padEnd(7)} ${pct(r.weight).padStart(7)} vs trade target ${pct(r.targetWeight).padStart(7)} (${(r.drift * 100).toFixed(2)} pt) ${r.ok ? 'ok' : r.pending ? 'PENDING (remnant under $1, finalize waiting)' : 'OUTSIDE'}`);
     if (res.every((r) => r.ok || r.pending)) { log(`inside tolerance after round ${round}${res.some((r) => r.pending) ? `; PENDING: ${res.filter((r) => r.pending).map((r) => r.symbol).join(', ')}` : ''}`); return; }
@@ -1153,9 +1272,10 @@ async function stageAuctions(ctx) {
 }
 
 // ================================================================ finalize
-async function stageFinalize(ctx) {
+export async function stageFinalize(ctx) {
   const { plan, log } = ctx;
-  const v = await readVault(ctx.reader, plan.vault);
+  const v = await vaultNow(ctx);
+  await reconcileSession(ctx, v);
   const inRem = v.assets.filter((a) => a.inRemoval);
   if (inRem.length === 0) { log('no asset is in removal — nothing to finalize'); return; }
   let blocked = 0;
@@ -1180,9 +1300,12 @@ async function stageFinalize(ctx) {
 }
 
 // ================================================================== verify
-async function stageVerify(ctx) {
+export async function stageVerify(ctx) {
   const { plan, log } = ctx;
-  const v = await readVault(ctx.reader, plan.vault);
+  const v = await vaultNow(ctx);
+  // verify writes plan.verify in any mode; it records what the chain shows
+  // an earlier run did (fills, finalized removals) the same way.
+  await reconcileSession(ctx, v, { write: true });
   const fails = [];
   const check = (ok, msg) => { log(`  ${ok ? 'ok  ' : 'FAIL'} ${msg}`); if (!ok) fails.push(msg); };
   check(v.pendingRegistryChange === ZERO32, `no pending registry change (${v.pendingRegistryChange === ZERO32 ? 'none' : v.pendingRegistryChange})`);
@@ -1214,10 +1337,10 @@ async function stageVerify(ctx) {
   for (const p of plan.finalizePending ?? []) log(`  PENDING ${p.symbol} ${p.address}: ${p.balance} base units (≈ $${p.valueUsd}) after ${p.attempts} re-drain(s), since ${p.at}`);
   // A redeem simulation from the owner (the genesis holder): the payout must
   // have one slice per registry asset. Reads no price, so it works in any state.
-  const ownerShares = await ctx.pc.readContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'balanceOf', args: [v.owner] });
+  const ownerShares = await readNow(ctx, 'owner shares', { address: plan.vault, abi: VAULT_ABI, functionName: 'balanceOf', args: [v.owner] });
   if (ownerShares >= 10n ** 18n) {
     try {
-      const { result } = await ctx.pc.simulateContract({ address: plan.vault, abi: VAULT_ABI, functionName: 'redeem', args: [10n ** 18n, v.owner], account: v.owner });
+      const { result } = await simulate(ctx, { address: plan.vault, abi: VAULT_ABI, functionName: 'redeem', args: [10n ** 18n, v.owner], account: v.owner });
       check(result.length === v.assetCount, `redeem(1 share) simulated from ${v.owner}: ${result.length} amounts, ${result.filter((x) => x > 0n).length} nonzero`);
     } catch (e) {
       check(false, `redeem simulation reverted: ${fmtErr(e)}`);
