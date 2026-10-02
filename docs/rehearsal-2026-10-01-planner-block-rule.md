@@ -424,3 +424,42 @@ ERC20InsufficientBalance). Their baselines passed with the same numbers.
 
 Not re-run here: qREV, qDEFI, qAI, qTRI on the merged code; `keeper/test/rehearse-readback.mjs`
 (main's lagging-node rehearsal) with the new planner; anvil in real time.
+
+## Second review, qAI with a stopped job and its re-run (2026-10-02)
+
+Commit `2ef88d7`. One anvil fork of GIWA Sepolia at block 37567703, `rehearse-day7.mjs --index qai
+--keeper-bids --mark-offset-bps 250 --stop-resume`, the 2026-10-01 work orders, books and cached
+prices, the Node clock set back 12 hours (a preload outside the repository) so that "today" is
+2026-10-01 for the executor's same-day plan rule; anvil's chain time is real. No key read; nothing
+sent outside the fork.
+
+- **75 PASS / 0 FAIL**, 860 s local.
+- Baseline: 11 auctions as planned, no residual round, every name at its book weight (book valued
+  at the same references) within the fill bound; largest gap to the aim TAO −0.0039 pt (bound
+  0.0091 pt), to the book NEAR +0.0089 pt; NEAR 29.545% / ICP 10.243% against the book's 29.536% /
+  10.240%. About 3.65 h one auction at a time on the public chain.
+- ⑧ A job stopped mid-session (the 6-hour limit terminates the runner and its plan file is not
+  committed): the executor is killed at a fill, the plan file is put back to the version the plan
+  stage committed, and the session is dispatched again.
+  - ⑧a killed right after the GRT drain fill (#5), before its finalize: the re-run records #1–#5
+    from the chain (`adopted`), sells nothing twice (11 fills on chain for 11 planned, each for its
+    planned amount), finalizes GRT after round 1 and AKT at its drain, verify passes.
+  - ⑧b killed with auction 7 (#8, VIRTUAL→ICP) open at its fair point: the re-run cancels it
+    (never filled), redoes #8 once, 11 fills for 11 planned, verify passes.
+  - ⑧c killed as in ⑧b, then TAO's reference moved +0.1% (the day's mark): the re-run records the 7
+    fills, cancels the open auction, then refuses. Resume as the RUNBOOK says: a plan made after
+    execute without `--reweight-block` plans **0 auctions** (no add left to mark; NEAR and ICP stay
+    short of the book), with it 9 auctions over all 10 names; auctions and verify pass; every name at
+    the book (valued at the resume plan's references) within the fill bound, largest gap ICP
+    +0.0011 pt (bound 0.0039 pt).
+  - ⑧d killed as in ⑧b: a dry-run `verify` on the old plan records the 7 fills from the chain and
+    fails its weight checks (5), as the first step of a resume on a later UTC day.
+- ⑨ After a finished session, every reference moved ±3% (a later mark): `verify` on the same plan
+  passes (it weighs the vault at the references the plan sized at, `b8790c9`).
+- The option K cases ②③ of qAI pass as before (three donations between fill and finalize →
+  three re-drains at 10,200 bp; a donation at every attempt → PENDING after five, cleared by a
+  later auctions run).
+
+A first attempt of this run stopped at ⑧a with the kill hook unparsed (a literal newline written
+into the generated hook; fixed in `0feca94`): the killed run exited at once and its re-run was a
+plain session. That attempt's baseline and ⑨ passed with the numbers above.
