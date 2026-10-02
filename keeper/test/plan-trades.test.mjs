@@ -171,6 +171,30 @@ test('10c. the vault above the cap while the book is not: opens the block', () =
   for (const r of rows) near(post(res)[r.symbol], r.targetWeight, 1e-9, r.symbol);
 });
 
+test('10d. the Quality sleeve cap (Triens): a name over the in-sleeve cap opens the sleeve only where the book is under it', () => {
+  const tok = (symbol, usd, decimals, value, target, sleeve) => {
+    const ref = (BigInt(Math.round(usd * 1e6)) * E18) / (10n ** BigInt(decimals) * 1_000_000n);
+    return { symbol, address: `0x${Buffer.from(symbol.padEnd(20, '_')).toString('hex').slice(0, 40)}`, decimals, balance: (BigInt(value) * E18) / ref, ref, targetWeight: target, isAdd: false, isRemove: false, inRemoval: false, sleeve };
+  };
+  const policy = { tolerancePoints: 5, capMaxWeight: null, qualityCap: 0.35, sleeve: true, duration: 1800, minTradeUsd: 1, fill: 'fair' };
+  // sleeves on target (30/40/30); inside Quality Q1 holds 36.7% of the sleeve (over the 35% cap)
+  const rows = (q1Book) => [
+    tok('BTC', 100_000, 14, 300_000, 0.30, 'monetary'),
+    tok('WC', 1, 9, 400_000, 0.40, 'workingCapital'),
+    tok('Q1', 25, 10, 110_000, q1Book * 0.30, 'quality'),
+    tok('Q2', 3, 9, 95_000, ((1 - q1Book) / 2) * 0.30, 'quality'),
+    tok('Q3', 0.4, 8, 95_000, ((1 - q1Book) / 2) * 0.30, 'quality'),
+  ];
+  // the book's Q1 is over the cap too (36% of the sleeve, < 5 pt away): marked, the sleeve stays
+  const above = computeTrades(rows(0.36), policy);
+  assert.deepEqual(tradedSet(above), ['Q1']);
+  assert.deepEqual(above.trades, []);
+  // the book's Q1 is under the cap (34%): the whole Quality sleeve trades to the book, BTC and WC do not
+  const under = computeTrades(rows(0.34), policy);
+  assert.deepEqual(tradedSet(under).sort(), ['Q1', 'Q2', 'Q3']);
+  assert.ok(under.trades.length > 0 && under.trades.every((t) => !['BTC', 'WC'].includes(t.sell) && !['BTC', 'WC'].includes(t.buy)));
+});
+
 test('11. rounding: decimals 0 and 18, sells within balances, no auction under $1, weights within (pairs × $1 + base units) / V', () => {
   const { rows, policy } = cases.rounding();
   const res = computeTrades(rows, policy);
