@@ -388,8 +388,15 @@ export async function call(ctx, { who, to, abi = VAULT_ABI, functionName, args =
   }
   // The block a simulation ran at is how it was read, not part of the
   // transaction: what is sent is the same request as before.
-  const { blockNumber: _simulatedAt, ...req } = request;
-  const hash = await sendNonceSafe(() => wallet.writeContract({ ...req, gas }));
+  // The signer is the WALLET's account. The simulation was made with the
+  // bare address, so request.account is a JSON-RPC account; left in, it
+  // overrides a KEEPER_PK wallet's private-key account and viem asks the node
+  // to sign (eth_sendTransaction) — the public endpoint holds no key
+  // (eth_accounts is []), so every live send would fail. With --from the
+  // wallet's account is that same JSON-RPC account, as before
+  // (keeper/test/live-signing.test.mjs).
+  const { blockNumber: _simulatedAt, account: _simulatedAs, ...req } = request;
+  const hash = await sendNonceSafe(() => wallet.writeContract({ ...req, account: wallet.account, gas }));
   const entry = { what, call: shown, to, from, hash, sentAt: new Date().toISOString() };
   (ctx.plan.sent ??= []).push(entry);
   savePlan(ctx.planFile, ctx.plan);

@@ -172,7 +172,11 @@ async function main() {
       throw new Refused(`${T}: setBidder(${bidder}, ${o.allowed}) would revert as ${from} — ${e.shortMessage ?? e.message}`);
     }
     if (!o.live) { log(`  ${T}: would setBidder(${bidder}, ${o.allowed}) as ${from} (simulated ok; biddingOpen ${open})`); continue; }
-    const hash = await sendNonceSafe(() => wallet.writeContract({ ...request, gas: GAS }));
+    // Signed by the wallet's account: request.account (from the simulation
+    // with the bare address) is a JSON-RPC account and would make viem ask the
+    // node to sign — basket-recon.mjs call(), keeper/test/live-signing.test.mjs.
+    const { account: _simulatedAs, ...req } = request;
+    const hash = await sendNonceSafe(() => wallet.writeContract({ ...req, account: wallet.account, gas: GAS }));
     log(`  ${T}: setBidder(${bidder}, ${o.allowed}) sent tx=${hash}`);
     let rc = null;
     let lastErr = null;
