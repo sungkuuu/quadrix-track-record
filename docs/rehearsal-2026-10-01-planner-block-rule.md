@@ -390,3 +390,37 @@ Checks:
 - PASS baseline: a holder redeems after the session — assetCount 11, gas 468489
 - PASS [spec §1.3] day7 refuses before execute when a reference moved after the plan (WC +0.1%); the change stays pending, nothing filled — REFUSED: reference(s) moved since the plan sized its auctions (WC 1000982315→1001983297) — regenerate the plan (keeper/basket-plan.mjs) after the mark, then run this stage
 
+
+## First review, re-run of qX20 on the merged code (2026-10-02, Opus 검수(Fable 한도))
+
+The branch merged with main `9ee440d` (reads after a write, re-run reconciliation) and the review's
+fixes, commit `fa469f7`. One anvil fork of GIWA Sepolia at block 37563577, `rehearse-day7.mjs
+--index qx20 --keeper-bids --mark-offset-bps 250 --create-shares 10000`. The 2026-10-01 work
+orders, books and cached prices, run with the clock of the Node processes set back 12 hours (a
+preload outside the repository) so that "today" is 2026-10-01 for the executor's same-day plan
+rule; anvil's chain time is real. No key read; nothing sent outside the fork.
+
+- **55 PASS / 0 FAIL**, 1,151 s local.
+- `--mark-offset-bps 250`: the emulated mark left every reference 250 bp above or below the plan's
+  market price, so the day-7 plan was sized at references that differ from the market price (the
+  runs above had them equal). Baseline: 22 auctions as planned, no residual round; every name at
+  its book weight (book valued at the same references) within the fill bound — largest gap ZEC
+  +0.0006 pt (bound 0.0033 pt); ZEC 1.2393% / XMR 0.5321% / NEAR 0.3543% against the book's
+  1.2387% / 0.5319% / 0.3542%. Sized at the market price instead, the same plan filled at the same
+  references would leave ZEC −0.017 pt off the book (computed offline from this run's day-7 plan).
+- `--create-shares 10000` (about 1% of the vault; the runs above made 1,000 shares, 0.1%, which
+  never leaves a name outside the bound): created in window 1 of #8 (GRAM drain), before NEAR had a
+  balance — NEAR −0.0033 pt against a bound of 0.0021 pt after round 1, **round 2: 10 residual
+  auctions**, inside the bound after round 2, GRAM re-drained and finalized, verify passed.
+  33 fills in all (22 planned, 1 re-drain, 10 residual) ≈ 11.0 h one at a time on the public chain.
+- Also passed: day7 refuses before execute when a reference moved after the plan; ⑥ a third party
+  executes first; ② one base unit between the drain fill and the finalize.
+
+Two earlier attempts of this review stopped in the creation case for harness reasons, both fixed
+in the harness: a faucet receipt that viem waited for until its 180 s timeout on an idle anvil
+(`9fa23b0`; 48 PASS / 1 FAIL at `61c7b89`), and a holder funded for 10,000 shares at today's
+balances, which has none of an add (`fa469f7`; 51 PASS / 4 FAIL at `9fa23b0`, create() reverted
+ERC20InsufficientBalance). Their baselines passed with the same numbers.
+
+Not re-run here: qREV, qDEFI, qAI, qTRI on the merged code; `keeper/test/rehearse-readback.mjs`
+(main's lagging-node rehearsal) with the new planner; anvil in real time.
