@@ -16,7 +16,7 @@ Nothing leaves the registry in this change.
 
 ## Target weights and the vault today
 
-"Target (book)" is the keeper's book after the reconstitution, at the plan's prices; "vault" is the vault's holdings at the same prices. "Record row" is the weight the record row of 2026-10-01 prints, at that row's prices. What this session trades: a name that enters or leaves the registry; a held name whose vault weight is 5 points or more away from its book target (the rulebook's reconstitution tolerance, applied here to the vault's weights); and every name, if any sleeve is that far from its target (every sleeve then resets). Every other name is held and not auctioned.
+"Target (book)" is the keeper's book after the reconstitution, at the plan's prices; "vault" is the vault's holdings at the same prices. "Record row" is the weight the record row of 2026-10-01 prints, at that row's prices. What this session trades: a name that enters or leaves the registry; a quality-sleeve name whose weight inside that sleeve is 5 points or more away from its book weight inside the sleeve, or above 35.00% of the sleeve (the rulebook's reconstitution tolerance and cap, applied here to the vault's weights); and every name, if any sleeve is 5 points or more away from its target (every sleeve then resets). Every other name is held and not auctioned.
 
 | Name | Sleeve | Target (book) | Record row | Vault | Drift | Action | Auctions aim at |
 | --- | --- | --- | --- | --- | --- | --- | --- |
