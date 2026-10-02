@@ -18,9 +18,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { computeTrades, BLOCK_ON_RULE_MARKS, BLOCK_REASON } from '../basket-plan.mjs';
+import { computeTrades, planRows, toRefPrice, BLOCK_ON_RULE_MARKS, BLOCK_REASON } from '../basket-plan.mjs';
 import { residual, residualBound, VERIFY_FIXED_POINTS } from '../basket-recon.mjs';
-import { cases, savedRows, applyFills, sig, E18 } from './plan-trades.cases.mjs';
+import { cases, savedRows, applyFills, sig, E18, RANKED } from './plan-trades.cases.mjs';
 
 const SAVED = JSON.parse(fs.readFileSync(new URL('./fixtures/plan-trades-2026-10-01.json', import.meta.url), 'utf8')).baskets;
 const usd = (x) => Number(x) / 1e18;
@@ -253,6 +253,66 @@ test('15. onlyForced (the executor\'s residual rounds): exactly as on main', () 
     assert.deepEqual(tradedSet(res), ['A', 'X', 'D']);
     assert.deepEqual(sig(res.trades), [['X', 'D', '93333333333333', false], ['X', 'A', '40000000000000', true]]);
   }
+});
+
+// ------------------------------------------- sizing at the chain references
+/** A day-7 shape for planRows (buildPlan's rows): the chain's references are
+ *  off the day's market price (a mark made earlier in the day, as on
+ *  2026-10-01, when they differed by up to 543 bp), one name has no
+ *  reference yet, a removal not yet in removal opens the block. */
+function chainShape() {
+  const market = { A: 2000, B: 50, C: 0.2, X: 0.03, D: 7, Z: 4 };
+  const chain = { A: 2000 * 1.031, B: 50 * 0.954, C: 0.2 * 1.012, X: 0.03 * 0.98, Z: 0 };
+  const dec = { A: 12, B: 10, C: 8, X: 7, D: 9, Z: 9 };
+  const held = { A: 300_000, B: 300_000, C: 150_000, X: 200_000, Z: 50_000 }; // USD at the chain reference (Z at the market)
+  const addr = (s) => `0x${Buffer.from(s.padEnd(20, '_')).toString('hex').slice(0, 40)}`;
+  const registry = Object.keys(chain).map((s) => {
+    const refPrice = chain[s] > 0 ? toRefPrice(chain[s], dec[s]) : 0n;
+    const at = refPrice > 0n ? refPrice : toRefPrice(market[s], dec[s]);
+    return { symbol: s, address: addr(s), decimals: dec[s], balance: (BigInt(held[s]) * E18) / at, refPrice, inRemoval: false };
+  });
+  const adds = [{ symbol: 'D', address: addr('D'), decimals: 9, firstRefPrice: toRefPrice(market.D, 9) }];
+  const book = { units: { A: 120, B: 5_100, C: 900_000, D: 21_000, Z: 15_000 }, sleeveOf: {} };
+  return { market, chain, registry, adds, book };
+}
+
+test('planRows: every held name is valued at its reference on chain, an add at its first reference, the book at the same prices; the market price is kept for the 5% guard', () => {
+  const { market, registry, adds, book } = chainShape();
+  const { rows, marketRef } = planRows({ registry, adds, book, isSleeve: false, priceA: (s) => market[s] ?? null });
+  for (const r of registry) {
+    const row = rows.find((x) => x.symbol === r.symbol);
+    if (r.refPrice > 0n) {
+      assert.equal(row.ref, r.refPrice, `${r.symbol} valued at its chain reference`);
+      assert.equal(row.chainRef, r.refPrice, `${r.symbol} chainRef`);
+    } else {
+      assert.equal(row.ref, toRefPrice(market[r.symbol], r.decimals), `${r.symbol} without a reference: at the market`);
+      assert.equal(row.chainRef, null, `${r.symbol} without a reference: no chainRef (nothing for the executor to compare)`);
+    }
+    assert.equal(marketRef[r.symbol], toRefPrice(market[r.symbol], r.decimals), `${r.symbol} planRefPrice is the market price`);
+  }
+  const d = rows.find((x) => x.symbol === 'D');
+  assert.deepEqual([d.ref, d.chainRef, d.isAdd, d.balance, d.bookUnits], [adds[0].firstRefPrice, null, true, 0n, 21_000]);
+  const x = rows.find((r) => r.symbol === 'X');
+  assert.deepEqual([x.isRemove, x.targetWeight, x.bookUnits], [true, 0, 0]);
+  // the book's weights, at the same references
+  const usdOf = (r) => (Number(r.ref) * 10 ** r.decimals) / 1e18;
+  const bookValue = rows.reduce((t, r) => t + (r.bookUnits || 0) * usdOf(r), 0);
+  for (const r of rows) near(r.targetWeight, ((r.bookUnits || 0) * usdOf(r)) / bookValue, 1e-15, r.symbol);
+});
+
+test('planRows + computeTrades: auctions sized at the chain references and filled at them (the contract) leave every balance proportional to the book units', () => {
+  const { market, chain, registry, adds, book } = chainShape();
+  const { rows } = planRows({ registry, adds, book, isSleeve: false, priceA: (s) => market[s] ?? null });
+  const res = computeTrades(rows, RANKED);
+  assert.ok(res.trades.length > 0 && tradedSet(res).length === rows.length, 'the removal opens the whole basket');
+  // the contract fills at the references on chain (an add at its first reference, a name without one at the reference first-prices or the mark gives it — here its market price)
+  const fillRef = (r) => (chain[r.symbol] > 0 ? toRefPrice(chain[r.symbol], r.decimals) : r.isAdd ? adds[0].firstRefPrice : toRefPrice(market[r.symbol], r.decimals));
+  const after = applyFills(rows.map((r) => ({ ...r, ref: fillRef(r) })), res.trades);
+  assert.equal(after.find((r) => r.symbol === 'X').balance, 0n, 'the removal drained');
+  const held = after.filter((r) => !r.isRemove);
+  const per = held.map((r) => ({ s: r.symbol, k: Number(r.balance) / 10 ** r.decimals / book.units[r.symbol] }));
+  const k0 = per[0].k;
+  for (const p of per) near(p.k / k0, 1, 2e-6, `${p.s} units per book unit`);
 });
 
 // ------------------------------------------------ the executor's bound

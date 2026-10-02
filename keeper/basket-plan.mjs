@@ -631,6 +631,55 @@ function argParse(argv) {
   return { flag, opt };
 }
 
+/**
+ * The rows computeTrades plans from (planner spec 2026-10-01 §1.3). Every
+ * row is valued at the price the contract will fill at: a registry name at
+ * its reference on chain (a name with no reference yet at source A, then its
+ * last mark), an add at the first reference the session posts. The book is
+ * valued at the SAME prices, so a block traded to these targets ends with
+ * balances exactly proportional to the book's units, whatever the price
+ * level. Pure; exported for keeper/test/plan-trades.test.mjs.
+ *
+ * registry: [{symbol, address, decimals, balance, refPrice, inRemoval}] (chain)
+ * adds:     [{symbol, address, decimals, firstRefPrice}]
+ * book:     readBook() — {units, sleeveOf}
+ * priceA:   symbol → USD per token today (source A), or null
+ * Returns {rows, marketRef}: marketRef[symbol] is the day's market price as a
+ * reference (planRefPrice — what the executor's 5% guard compares with).
+ */
+export function planRows({ registry, adds, book, isSleeve, priceA }) {
+  const rows = [];
+  const marketRef = {};
+  for (const r of registry) {
+    const p = priceA(r.symbol);
+    marketRef[r.symbol] = p > 0 ? toRefPrice(p, r.decimals) : r.refPrice; // a name without a price today is valued at its last mark
+    rows.push({
+      symbol: r.symbol, address: r.address, decimals: r.decimals, balance: r.balance,
+      ref: r.refPrice > 0n ? r.refPrice : marketRef[r.symbol],
+      chainRef: r.refPrice > 0n ? r.refPrice : null,
+      targetWeight: 0,
+      isAdd: false, isRemove: !book.units[r.symbol], inRemoval: r.inRemoval, sleeve: book.sleeveOf[r.symbol] ?? (isSleeve ? 'quality' : undefined),
+      bookUnits: book.units[r.symbol] ?? 0,
+    });
+  }
+  for (const a of adds) {
+    rows.push({
+      symbol: a.symbol, address: a.address, decimals: a.decimals, balance: 0n, ref: a.firstRefPrice, chainRef: null,
+      targetWeight: 0, isAdd: true, isRemove: false, inRemoval: false, sleeve: book.sleeveOf[a.symbol] ?? (isSleeve ? 'quality' : undefined),
+      bookUnits: book.units[a.symbol],
+    });
+  }
+  const usdPerToken = (r) => (Number(r.ref) * 10 ** r.decimals) / 1e18;
+  let bookValue = 0;
+  for (const r of rows) {
+    if (!r.bookUnits) continue;
+    if (!(r.ref > 0n)) throw new Error(`${r.symbol}: no reference on chain and no price from source A for a book member`);
+    bookValue += r.bookUnits * usdPerToken(r);
+  }
+  for (const r of rows) r.targetWeight = r.bookUnits ? (r.bookUnits * usdPerToken(r)) / bookValue : 0;
+  return { rows, marketRef };
+}
+
 export async function buildPlan(o) {
   const index = o.index;
   const date = o.date;
@@ -815,41 +864,7 @@ export async function buildPlan(o) {
   // at (spec §1.3); priceA stays the market check of the 5% guard.
   const policy = { tolerancePoints, capMaxWeight, qualityCap, sleeve: isSleeve, duration: o.duration, minTradeUsd: 1, fill: 'fair', firstPriceTolBps: 200, refDriftTolBps: 500, blockOnRuleMarks: BLOCK_ON_RULE_MARKS, priceBasis: 'chain refPrice; an add at its first reference (source A)' };
 
-  // Every row is valued at the price the contract will fill at: a registry
-  // name at its reference on chain (a name with no reference yet at source A,
-  // then its last mark), an add at the first reference the session posts.
-  // The book is valued at the SAME prices, so a block traded to these
-  // targets ends with balances exactly proportional to the book's units,
-  // whatever the price level (spec §1.3).
-  const rows = [];
-  const marketRef = {};
-  for (const r of registry) {
-    const p = priceA(r.symbol);
-    marketRef[r.symbol] = p > 0 ? toRefPrice(p, r.decimals) : r.refPrice; // a name without a price today is valued at its last mark
-    rows.push({
-      symbol: r.symbol, address: r.address, decimals: r.decimals, balance: r.balance,
-      ref: r.refPrice > 0n ? r.refPrice : marketRef[r.symbol],
-      chainRef: r.refPrice > 0n ? r.refPrice : null,
-      targetWeight: 0,
-      isAdd: false, isRemove: !book.units[r.symbol], inRemoval: r.inRemoval, sleeve: book.sleeveOf[r.symbol] ?? (isSleeve ? 'quality' : undefined),
-      bookUnits: book.units[r.symbol] ?? 0,
-    });
-  }
-  for (const a of adds) {
-    rows.push({
-      symbol: a.symbol, address: a.address, decimals: a.decimals, balance: 0n, ref: a.firstRefPrice, chainRef: null,
-      targetWeight: 0, isAdd: true, isRemove: false, inRemoval: false, sleeve: book.sleeveOf[a.symbol] ?? (isSleeve ? 'quality' : undefined),
-      bookUnits: book.units[a.symbol],
-    });
-  }
-  const usdPerToken = (r) => (Number(r.ref) * 10 ** r.decimals) / 1e18;
-  let bookValue = 0;
-  for (const r of rows) {
-    if (!r.bookUnits) continue;
-    if (!(r.ref > 0n)) throw new Error(`${r.symbol}: no reference on chain and no price from source A for a book member`);
-    bookValue += r.bookUnits * usdPerToken(r);
-  }
-  for (const r of rows) r.targetWeight = r.bookUnits ? (r.bookUnits * usdPerToken(r)) / bookValue : 0;
+  const { rows, marketRef } = planRows({ registry, adds, book, isSleeve, priceA });
   const plan0 = computeTrades(rows, policy, { reweightBlock: !!o.reweightBlock });
   log(`tolerance ${tolerancePoints} pt, cap ${capMaxWeight ?? qualityCap ?? '—'}${isSleeve ? ' (quality sleeve)' : ''}, duration ${o.duration} s; block rule on rule marks ${policy.blockOnRuleMarks ? 'yes' : 'no'}${o.reweightBlock ? '; --reweight-block' : ''}; vault value at the chain references $${plan0.totalValueUsd.toFixed(0)}`);
   for (const t of plan0.targets) {
