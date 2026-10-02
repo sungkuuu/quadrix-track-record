@@ -568,10 +568,42 @@
   "notes": [
     "The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference."
   ],
-  "announce": null,
+  "announce": {
+    "txHash": "0x10bdcf5d0957c06ef00f9ce63f5ce1f1b2221f73185b1dc40f56d4616b483798",
+    "block": "37579114",
+    "at": "2026-10-02T06:57:10.000Z",
+    "eta": "1791529030",
+    "etaIso": "2026-10-09T06:57:10.000Z",
+    "pendingHash": "0x0f21a7a873a077d858458472e5a25185b3f1c01c0adfa53f5ec1e74303825f75",
+    "tuple": {
+      "adds": [
+        "0xF96360330E54E861b4B95FaA023A77dAdDcf6511"
+      ],
+      "removes": [
+        "0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6"
+      ],
+      "decisionSha256": "0xc460b0d8442320dd68064896973576ffd1e076a7e38f6a4085c502edfe4cfdf8"
+    },
+    "decisionId": "2026-10-02-qdefi-basket-reconstitution",
+    "signer": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902"
+  },
   "execute": null,
   "firstPrices": [],
   "fills": [],
   "finalize": [],
-  "verify": null
+  "verify": null,
+  "sent": [
+    {
+      "what": "announce",
+      "call": "announceRegistryChange([0xF96360330E54E861b4B95FaA023A77dAdDcf6511], [0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6], 0xc460b0d8442320dd68064896973576ffd1e076a7e38f6a4085c502edfe4cfdf8)",
+      "to": "0x88D3b5f638fE0d331797C612a5496bD8f0491FD4",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x10bdcf5d0957c06ef00f9ce63f5ce1f1b2221f73185b1dc40f56d4616b483798",
+      "sentAt": "2026-10-02T06:57:09.861Z",
+      "block": "37579114",
+      "status": "success",
+      "gasUsed": "82142",
+      "at": "2026-10-02T06:57:10.000Z"
+    }
+  ]
 }
