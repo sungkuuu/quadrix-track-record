@@ -528,10 +528,44 @@
   "notes": [
     "The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference."
   ],
-  "announce": null,
+  "announce": {
+    "txHash": "0x3481256cd10e6bf2100dba163cd89523717e81e5f1cb3c426b9fbea35bf727d5",
+    "block": "37579235",
+    "at": "2026-10-02T06:59:11.000Z",
+    "eta": "1791529151",
+    "etaIso": "2026-10-09T06:59:11.000Z",
+    "pendingHash": "0x0f3b9019caf4577fc84eebb6a3e133de1d8a2f85fd345bc26020e9b67fcd5443",
+    "tuple": {
+      "adds": [
+        "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393",
+        "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16"
+      ],
+      "removes": [
+        "0x8BB34857ffF580158357102fa96bB0931e07E373",
+        "0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634"
+      ],
+      "decisionSha256": "0x3b64c22574c29985fdb94d59013322ec6d5a7e4c29bf5a47265f939770c8fc41"
+    },
+    "decisionId": "2026-10-02-qai-basket-reconstitution",
+    "signer": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902"
+  },
   "execute": null,
   "firstPrices": [],
   "fills": [],
   "finalize": [],
-  "verify": null
+  "verify": null,
+  "sent": [
+    {
+      "what": "announce",
+      "call": "announceRegistryChange([0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393, 0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16], [0x8BB34857ffF580158357102fa96bB0931e07E373, 0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634], 0x3b64c22574c29985fdb94d59013322ec6d5a7e4c29bf5a47265f939770c8fc41)",
+      "to": "0x75B072e674AfAd13Ff0C2b75A8937656643cBE97",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x3481256cd10e6bf2100dba163cd89523717e81e5f1cb3c426b9fbea35bf727d5",
+      "sentAt": "2026-10-02T06:59:10.144Z",
+      "block": "37579235",
+      "status": "success",
+      "gasUsed": "91513",
+      "at": "2026-10-02T06:59:11.000Z"
+    }
+  ]
 }
