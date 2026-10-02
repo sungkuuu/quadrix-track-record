@@ -120,7 +120,7 @@ function setupWork() {
   fs.rmSync(repo, { recursive: true, force: true });
   fs.mkdirSync(path.join(keeper, 'cache'), { recursive: true });
   fs.mkdirSync(path.join(repo, 'trackrecord', 'decisions'), { recursive: true });
-  for (const f of ['basket-plan.mjs', 'basket-recon.mjs', 'gen-recon-decision.mjs', 'deploy-mocks.mjs', 'set-bidder.mjs', 'nav-marks.jsonl']) fs.copyFileSync(path.join(HERE, f), path.join(keeper, f));
+  for (const f of ['basket-plan.mjs', 'basket-recon.mjs', 'readback.mjs', 'gen-recon-decision.mjs', 'deploy-mocks.mjs', 'set-bidder.mjs', 'nav-marks.jsonl']) fs.copyFileSync(path.join(HERE, f), path.join(keeper, f));
   if (O.mainRecon) fs.copyFileSync(path.resolve(O.mainRecon), path.join(keeper, 'basket-recon-main.mjs'));
   for (const d of ['rulebooks', 'artifacts']) fs.cpSync(path.join(HERE, d), path.join(keeper, d), { recursive: true });
   for (const f of fs.readdirSync(HERE).filter((f) => /^(state(-\w+)?|pending-registry-\w+)\.json$/.test(f))) fs.copyFileSync(path.join(HERE, f), path.join(keeper, f));

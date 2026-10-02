@@ -240,7 +240,7 @@ function setupWork(o) {
   for (const d of ['plans', 'cache']) fs.rmSync(path.join(keeper, d), { recursive: true, force: true });
   fs.rmSync(path.join(repo, 'trackrecord'), { recursive: true, force: true });
   fs.mkdirSync(path.join(repo, 'trackrecord', 'decisions'), { recursive: true });
-  for (const f of ['basket-plan.mjs', 'basket-recon.mjs', 'gen-recon-decision.mjs']) fs.copyFileSync(path.join(HERE, f), path.join(keeper, f));
+  for (const f of ['basket-plan.mjs', 'basket-recon.mjs', 'readback.mjs', 'gen-recon-decision.mjs']) fs.copyFileSync(path.join(HERE, f), path.join(keeper, f));
   fs.rmSync(path.join(keeper, 'rulebooks'), { recursive: true, force: true });
   fs.cpSync(path.join(HERE, 'rulebooks'), path.join(keeper, 'rulebooks'), { recursive: true });
   for (const f of fs.readdirSync(HERE).filter((f) => /^state(-\w+)?\.json$/.test(f))) fs.copyFileSync(path.join(HERE, f), path.join(keeper, f));

@@ -169,6 +169,11 @@ jobs:
       - name: Commit the plan file
         # Runs even after a failed stage: a fill that was mined must reach
         # main, and the plan file records every call up to the failure.
+        # The pull and push are tried up to five times: workflows outside the
+        # keeper-key group (ots) and pushes by hand can land between the pull
+        # and the push, and a rejected push would leave the plan file only in
+        # this runner. If every try fails, the plan-file commit is printed as a
+        # diff so that it can be applied on main by hand.
         if: ${{ !cancelled() }}
         env:
           MODE_LABEL: ${{ steps.mode.outputs.flag == '--live' && ' (live)' || ' (dry run)' }}
@@ -177,8 +182,15 @@ jobs:
           git config user.email "keeper@quadrix.finance"
           git add keeper/plans/ 2>/dev/null || true
           git diff --cached --quiet || git commit -m "basket-recon: $INDEX $STAGE $(date -u +%Y-%m-%d)$MODE_LABEL"
-          git pull --rebase origin main
-          git push
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push && exit 0
+            git rebase --abort 2>/dev/null || true
+            echo "::warning::pull/push attempt $i of 5 failed — trying again"
+            sleep $((i * 5))
+          done
+          echo "::error::the plan file could not be pushed to main — its commit is printed below as a diff; apply it on main by hand (git apply) before any other stage runs"
+          git show --format='%H %s' HEAD -- keeper/plans/
+          exit 1
 
       - name: Summary
         if: ${{ !cancelled() }}
