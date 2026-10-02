@@ -269,16 +269,23 @@ async function fillsSince(vault, fromBlock) {
 /** A creation in window 1 must be ONE transaction, as it would be on the
  *  chain: the holder is funded and has approved every asset (registry and
  *  adds) before the session, so the hook only sends create(). Funded for
- *  --create-shares shares at today's balances per share (at least the 3
- *  faucet calls per asset of the earlier runs; a share holds at most what it
- *  holds now plus the session's turnover, so the margin is 2×). */
+ *  --create-shares shares at the larger of today's balance and the plan's
+ *  post-session balance per share (an add has none today and its target
+ *  after the first auctions), times 2; at least the 3 faucet calls per asset
+ *  of the earlier runs. */
 async function prefundHolder(F) {
   const v = await readVault(reader, F.vault);
   const tokens = [...v.assets.map((a) => a.address), ...F.plan.adds.map((a) => getAddress(a.address))];
+  const value = v.assets.reduce((t, x) => t + x.balance * x.refPrice, 0n);
+  const symOfAddr = (a) => F.plan.registry.find((x) => getAddress(x.address) === a)?.symbol ?? F.plan.adds.find((x) => getAddress(x.address) === a)?.symbol;
   let calls = 0;
   for (const a of tokens) {
     const on = v.assets.find((x) => x.address === a);
-    const need = on && v.totalSupply > 0n ? (on.balance * O.createShares * 10n ** 18n * 2n) / v.totalSupply : 0n;
+    const ref = on?.refPrice || BigInt(F.plan.adds.find((x) => getAddress(x.address) === a)?.firstRefPrice ?? 0);
+    const aim = F.plan.targets.find((t) => t.symbol === symOfAddr(a))?.tradeTargetWeight ?? 0;
+    const post = ref > 0n ? BigInt(Math.ceil((aim * Number(value)) / Number(ref))) : 0n;
+    const perVault = (on?.balance ?? 0n) > post ? on.balance : post;
+    const need = v.totalSupply > 0n ? (perVault * O.createShares * 10n ** 18n * 2n) / v.totalSupply : 0n;
     const faucetAmount = await pc.readContract({ address: a, abi: FAUCET_ABI, functionName: 'faucetAmount' });
     let bal = await pc.readContract({ address: a, abi: ERC20_ABI, functionName: 'balanceOf', args: [DEV.holder] });
     for (let i = 0; i < 3 || (bal < need && i < 400); i++) { await tx(DEV.holder, { address: a, abi: ERC20_ABI, functionName: 'faucet', gas: 150_000n }); bal += faucetAmount; calls++; }
