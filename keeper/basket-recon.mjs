@@ -1159,14 +1159,18 @@ const symOf = (plan, a) => {
  * A session stage re-run after a run that stopped right after a mined
  * transaction. From this plan's `sent` receipts and the vault's events since
  * the plan's block (plan.block):
- *   - FILLS: a fill by this bidder that is not in plan.fills is recorded,
- *     never traded again. It is matched to the planned round-1 trade with the
- *     same sell/buy pair (computeTrades never repeats a pair); two candidates
- *     → REFUSED; none → recorded as an unplanned fill (a residual round or a
- *     re-drain — those are computed from live balances, so they cannot
- *     repeat it). Its factor is recomputed from the auction's startTime and
- *     the fill block's time. With `halt`, an adopted fill is held to the
- *     same HALT rules as a fill made now.
+ *   - FILLS: a fill of this vault's auctions that is not in plan.fills is
+ *     recorded, never traded again — WHOEVER the bidder: only the keeper
+ *     opens auctions, so the vault traded either way, and a run whose bidder
+ *     differs from the earlier run's (BIDDER_PK set in between, or a second
+ *     whitelisted bidder) would otherwise trade a planned amount twice.
+ *     It is matched to the planned round-1 trade with the same sell/buy
+ *     pair (computeTrades never repeats a pair); two candidates → REFUSED;
+ *     none → recorded as an unplanned fill (a residual round or a re-drain —
+ *     those are computed from live balances, so they cannot repeat it).
+ *     Its factor is recomputed from the auction's startTime and the fill
+ *     block's time. With `halt`, an adopted fill is held to the same HALT
+ *     rules as a fill made now.
  *   - ORPHANS (`cancelOrphans`, the auctions stage): an auction opened since
  *     the plan's block that is still open is cancelled before anything is
  *     opened — a re-run never leaves one beside a new one.
@@ -1190,7 +1194,7 @@ export async function reconcileSession(ctx, v, { cancelOrphans = false, halt = f
   const adoptedSeqs = new Set();
   const recordedFills = new Set(plan.fills.map((f) => String(f.fillTx ?? '').toLowerCase()));
   const doneSeqs = new Set(plan.fills.filter((f) => f.round === 1).map((f) => f.seq));
-  const unrecorded = events.filter((e) => e.eventName === 'AuctionFilled' && getAddress(e.args.bidder) === ctx.bidderAddr && !recordedFills.has(e.transactionHash.toLowerCase()))
+  const unrecorded = events.filter((e) => e.eventName === 'AuctionFilled' && !recordedFills.has(e.transactionHash.toLowerCase()))
     .sort((a, b) => (a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1));
   const halts = [];
   for (const e of unrecorded) {

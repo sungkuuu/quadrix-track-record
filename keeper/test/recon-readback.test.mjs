@@ -383,6 +383,27 @@ test('fills: two planned trades with the fill\'s pair → REFUSED (record it by 
   assert.deepEqual([r.seq, r.round], [`adopted-${id}`, null]);
 });
 
+test('fills: a fill of our auction by ANOTHER bidder (the bidder changed between runs, e.g. BIDDER_PK set) is recorded, not traded again', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, trades: [T1] }));
+  const OTHER = getAddress('0x70997970c51812dc3a010c7d01b50e0d17dc79c8');
+  chain.head.state.bidders[OTHER.toLowerCase()] = true;
+  for (const t of [AAA, BBB, CRV, ASTER]) chain.head.state.balances[t.toLowerCase()][OTHER.toLowerCase()] = 10n ** 15n;
+  // The earlier run opened #1's auction; the fill came from the other bidder.
+  chain.send(OWNER, { address: V, functionName: 'openAuction', args: [AAA, ASTER, 100n * 10n ** 8n, 1800n] });
+  const id = BigInt(chain.head.state.auctions.length - 1);
+  chain.timeOffset = 1169n;
+  const { hash: fillTx } = chain.send(OTHER, { address: V, functionName: 'fill', args: [id, 100n * 10n ** 8n] });
+  const n0 = chain.sent.length;
+  const ctx = ctxFor(chain, f); // this run's bidder is OWNER
+  await stageAuctions(ctx);
+  const after = chain.sent.slice(n0).map((x) => `${x.functionName}(${x.args.map(String).join(',')})`);
+  assert.equal(after.filter((x) => x.startsWith(`openAuction(${AAA}`)).length, 0, '#1 is not opened again');
+  const p = loadPlan(f);
+  assert.deepEqual(p.fills.filter((x) => x.sell === 'AAA').map((x) => [x.seq, x.fillTx, x.bidder, x.adopted]), [[1, fillTx, OTHER, true]]);
+});
+
 test('fills: a fill whose receipt never came — the re-run settles it from plan.sent and records it as its planned seq', async () => {
   const chain = newChain();
   const pend = await priced(chain);
