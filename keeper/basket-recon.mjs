@@ -1167,8 +1167,22 @@ async function liveRows(ctx, v) {
     const tgt = ctx.plan.targets.find((t) => t.symbol === a.symbol);
     // The target the auctions can reach (plan tradeTargetWeight): held names
     // keep their weight, the traded set shares its own value.
-    return { symbol: a.symbol, address: a.address, decimals: a.decimals, balance: a.balance, ref: a.refPrice, targetWeight: tgt?.tradeTargetWeight ?? tgt?.targetWeight ?? 0, isAdd: false, isRemove: removes.has(a.symbol) || a.inRemoval, sleeve: tgt?.sleeve };
+    return { symbol: a.symbol, address: a.address, decimals: a.decimals, balance: a.balance, ref: a.refPrice, sizingRef: sizingRefOf(ctx.plan, a.address), targetWeight: tgt?.tradeTargetWeight ?? tgt?.targetWeight ?? 0, isAdd: false, isRemove: removes.has(a.symbol) || a.inRemoval, sleeve: tgt?.sleeve };
   });
+}
+
+/** The reference the plan sized this asset's auctions at (chainRefAtPlan; an
+ *  add's first reference), or null for a plan made before 2026-10-02 or an
+ *  asset the plan did not price. The trade targets are weights at THESE
+ *  prices, so the check against them values the vault at them too: a later
+ *  mark moves every weight at today's references, not the balances the
+ *  session left (second review of the planner change). */
+export function sizingRefOf(plan, address) {
+  const r = (plan.registry ?? []).find((x) => x.address && getAddress(x.address) === getAddress(address));
+  if (r?.chainRefAtPlan != null) return big(r.chainRefAtPlan);
+  const a = (plan.adds ?? []).find((x) => x.address && getAddress(x.address) === getAddress(address));
+  if (a?.firstRefPrice != null && r == null && (plan.registry ?? []).some((x) => x.chainRefAtPlan != null)) return big(a.firstRefPrice);
+  return null;
 }
 
 /**
@@ -1199,10 +1213,10 @@ export const VERIFY_FIXED_POINTS = null;
  * from rounding; V — the vault's value now.
  */
 export function residualBound(ctx, rows) {
-  const total = rows.reduce((t, r) => t + Number(r.balance * r.ref), 0);
+  const total = rows.reduce((t, r) => t + Number(r.balance * valuedAt(r)), 0);
   const traded = new Set(ctx.plan.targets.filter((t) => t.traded).map((t) => t.symbol));
   const windowBps = ctx.o?.fairWindowBps ?? 10;
-  const refOf = Object.fromEntries(rows.map((r) => [r.symbol, r.ref]));
+  const refOf = Object.fromEntries(rows.map((r) => [r.symbol, valuedAt(r)]));
   const excess = {}; // Σ e_f·v_f per buy asset
   let excessAll = 0;
   const fills = ctx.plan.fills ?? [];
@@ -1215,19 +1229,23 @@ export function residualBound(ctx, rows) {
     excessAll += ev;
   }
   const n = rows.filter((r) => traded.has(r.symbol) || r.isRemove).length;
-  const maxRef = rows.reduce((m, r) => (r.ref > m ? r.ref : m), 0n);
+  const maxRef = rows.reduce((m, r) => (valuedAt(r) > m ? valuedAt(r) : m), 0n);
   const slack = total > 0 ? (n * Number(minTradeValue(ctx.plan)) + fills.length * Number(maxRef)) / total : 0;
   return (r) => (total > 0 ? ((excess[r.symbol] ?? 0) + Math.max(0, r.targetWeight) * excessAll) / total : 0) + slack;
 }
 
+/** The price a row is weighed at against its trade target: the plan's sizing
+ *  reference when the row carries one (liveRows), else the reference now. */
+const valuedAt = (r) => r.sizingRef ?? r.ref;
+
 export function residual(ctx, rows) {
-  const total = rows.reduce((t, r) => t + Number(r.balance * r.ref), 0);
+  const total = rows.reduce((t, r) => t + Number(r.balance * valuedAt(r)), 0);
   const traded = new Set(ctx.plan.targets.filter((t) => t.traded).map((t) => t.symbol));
   const minValue = minTradeValue(ctx.plan);
   const boundOf = VERIFY_FIXED_POINTS != null ? () => VERIFY_FIXED_POINTS / 100 : residualBound(ctx, rows);
   const out = [];
   for (const r of rows) {
-    const w = total > 0 ? Number(r.balance * r.ref) / total : 0;
+    const w = total > 0 ? Number(r.balance * valuedAt(r)) / total : 0;
     const drift = w - r.targetWeight;
     const bound = boundOf(r);
     // K-4: a removal remnant under the trade minimum is PENDING, not a failure.

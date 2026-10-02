@@ -19,7 +19,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { computeTrades, planRows, toRefPrice, BLOCK_ON_RULE_MARKS, BLOCK_REASON } from '../basket-plan.mjs';
-import { residual, residualBound, VERIFY_FIXED_POINTS } from '../basket-recon.mjs';
+import { residual, residualBound, sizingRefOf, VERIFY_FIXED_POINTS } from '../basket-recon.mjs';
 import { cases, savedRows, applyFills, sig, E18, RANKED } from './plan-trades.cases.mjs';
 
 const SAVED = JSON.parse(fs.readFileSync(new URL('./fixtures/plan-trades-2026-10-01.json', import.meta.url), 'utf8')).baskets;
@@ -400,6 +400,29 @@ test('bound: an entering name left at 0 fails verification (what the 5-point che
   const aero = residual(ctx, live).find((r) => r.symbol === 'AERO');
   assert.equal(aero.ok, false);
   assert.ok(Math.abs(aero.drift) < 0.05, 'inside the old 5-point check');
+});
+
+test('bound: a finished session still passes after a later mark moves the references (verify values the vault at the plan\'s sizing references)', () => {
+  for (const ix of ['qx20', 'qrev', 'qdefi', 'qai', 'triens']) {
+    const { ctx, live } = sessionAt(SAVED[ix], 10_005n);
+    // the next day's mark: every reference 3% up or down, balances unchanged
+    const marked = live.map((r, i) => ({ ...r, ref: (r.ref * (i % 2 ? 9_700n : 10_300n)) / 10_000n }));
+    const atToday = residual(ctx, marked).filter((r) => !r.ok);
+    assert.ok(atToday.length > 0, `${ix}: weighed at today's references a finished session looks off its targets`);
+    const atPlan = residual(ctx, marked.map((r, i) => ({ ...r, sizingRef: live[i].ref }))).filter((r) => !r.ok);
+    assert.deepEqual(atPlan.map((r) => `${r.symbol} ${r.drift} > ${r.bound}`), [], `${ix}: weighed at the plan's references it passes`);
+  }
+});
+
+test('sizingRefOf: chainRefAtPlan of a registry name, the first reference of an add, null for a plan without chainRefAtPlan', () => {
+  const A = '0x00000000000000000000000000000000000000a1';
+  const N = '0x00000000000000000000000000000000000000b2';
+  const plan = { registry: [{ address: A, chainRefAtPlan: '123' }], adds: [{ address: N, firstRefPrice: '456' }] };
+  assert.equal(sizingRefOf(plan, A.toUpperCase().replace('0X', '0x')), 123n);
+  assert.equal(sizingRefOf(plan, N), 456n);
+  assert.equal(sizingRefOf({ registry: [{ address: A, planRefPrice: '9' }], adds: [{ address: N, firstRefPrice: '456' }] }, N), null, 'a plan made before chainRefAtPlan: today\'s reference, as before');
+  assert.equal(sizingRefOf({ registry: [{ address: A, planRefPrice: '9' }], adds: [] }, A), null);
+  assert.equal(sizingRefOf(plan, '0x00000000000000000000000000000000000000c3'), null);
 });
 
 test('weights helper sanity: the fixture vaults are worth what the spec says', () => {
