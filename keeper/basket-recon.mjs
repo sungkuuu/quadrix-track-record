@@ -559,8 +559,8 @@ const tupleHashOf = (args) => tupleHash({ adds: args.adds.map((a) => getAddress(
  *  spec 2026-10-01 §1.3) — the prices the contract fills at. A reference
  *  that moved since (a daily mark between the plan and this run) makes the
  *  planned amounts miss the book by that move: regenerate the plan. Checked
- *  by the auctions stage, and by day7 before it sends execute (after
- *  execute a regenerated plan no longer sees the adds). */
+ *  by the auctions stage after its re-run reconciliation, and by day7 before
+ *  it sends execute (requireSizingBeforeExecute). */
 function requireRefsAsPlanned(ctx, v) {
   if (ctx.plan.trades.length === 0) return;
   const moved = [];
@@ -570,6 +570,25 @@ function requireRefsAsPlanned(ctx, v) {
     if (on && on.refPrice !== big(r.chainRefAtPlan)) moved.push(`${r.symbol} ${r.chainRefAtPlan}→${on.refPrice}`);
   }
   if (moved.length) throw new Refused(`reference(s) moved since the plan sized its auctions (${moved.join(', ')}) — regenerate the plan (keeper/basket-plan.mjs) after the mark, then run this stage`);
+}
+
+/**
+ * day7, before it sends execute: a plan whose sizing references moved is
+ * refused while the change is still pending, because after execute a
+ * regenerated plan no longer sees the adds. Once execute has run (a re-run
+ * of day7) nothing is refused here: the auctions stage first records what
+ * the earlier run did — its fills, finalizes, and the auctions it left open
+ * — and then makes the same check, so a run stopped mid-session (the 6-hour
+ * job limit) whose re-run comes after the day's mark still leaves every
+ * fill in this plan's record before it refuses.
+ */
+export async function requireSizingBeforeExecute(ctx) {
+  const v = await vaultNow(ctx, 'references before execute');
+  if (v.pendingRegistryChange === ZERO32) {
+    ctx.log('no registry change pending (executed already, or none in this plan): the auctions stage checks the plan\'s references after it records what an earlier run did');
+    return;
+  }
+  requireRefsAsPlanned(ctx, v);
 }
 
 function requirePlanFresh(ctx) {
@@ -1496,7 +1515,7 @@ async function main() {
       requirePlanFresh(ctx);
       // Read through readAt: a re-run whose plan records sent transactions
       // reads at a block ≥ the last of them (settleSent raised ctx.floor).
-      requireRefsAsPlanned(ctx, await vaultNow(ctx, 'references before execute'));
+      await requireSizingBeforeExecute(ctx);
       await run('execute', stageExecute);
       await run('first-prices', stageFirstPrices);
       await run('auctions', stageAuctions);

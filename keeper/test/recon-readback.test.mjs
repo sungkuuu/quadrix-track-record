@@ -15,7 +15,7 @@ import path from 'node:path';
 import { getAddress } from 'viem';
 import { savePlan, loadPlan, toRefPrice, readVault } from '../basket-plan.mjs';
 import { READ_TIMING } from '../readback.mjs';
-import { stageAnnounce, stageExecute, stageFirstPrices, stageAuctions, stageFinalize, stageVerify, settleSent, requireNothingPending, reconcileSession, runTrade, call } from '../basket-recon.mjs';
+import { stageAnnounce, stageExecute, stageFirstPrices, stageAuctions, stageFinalize, stageVerify, settleSent, requireNothingPending, reconcileSession, runTrade, call, requireSizingBeforeExecute } from '../basket-recon.mjs';
 import { FakeChain, ZERO32 } from './fake-chain.mjs';
 
 READ_TIMING.stepMs = 2; // the bound stays 30 s of fake waits; each wait is 2 ms here
@@ -439,6 +439,53 @@ test('fills: a fill whose receipt never came — the re-run settles it from plan
   const r = loadPlan(f).fills[0];
   assert.deepEqual([r.seq, r.fillTx, r.adopted, r.factorBps], [1, hash, true, 10_005]);
   assert.equal(chain.sent.at(-1).hash, hash, 'nothing sent: the auction is closed, no orphan to cancel');
+});
+
+// ------------- the planner's sizing references (planner change of 2026-10-01, merged here)
+/** The plan as the planner writes it since 2026-10-01: every registry name
+ *  with the reference it was sized at (chainRefAtPlan). */
+const sized = (p) => ({ ...p, registry: p.registry.map((r) => ({ ...r, chainRefAtPlan: r.planRefPrice })) });
+
+test('sizing references: day7 refuses before it sends execute when a reference moved since the plan; nothing is sent', async () => {
+  const chain = newChain();
+  await announced(chain);
+  const f = planOn(chain, (p) => sized({ ...p, announce: { pendingHash: chain.head.state.pending, tuple: p.announceTuple }, trades: [T1, T2] }));
+  chain.send(OWNER, { address: V, functionName: 'setRefPrice', args: [AAA, REF_AAA + REF_AAA / 1000n] }); // the day's mark, after the plan
+  chain.lagReads = 3;
+  const n = chain.sent.length;
+  await assert.rejects(requireSizingBeforeExecute(ctxFor(chain, f)), (e) => isRefused(e) && /moved since the plan sized its auctions \(AAA /.test(e.message));
+  assert.equal(chain.sent.length, n);
+  assert.notEqual(chain.head.state.pending, ZERO32, 'the change is still pending');
+});
+
+test('sizing references: a day7 re-run after execute is not refused before the auctions stage, which records the earlier run\'s fill and cancels its open auction BEFORE it refuses the moved reference', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => sized({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, execute: { txHash: '0xearlier' }, trades: [T1, T2] }));
+  // The earlier run filled #1 and opened #2, then stopped (the 6-hour limit) before recording either.
+  const { fillTx } = earlierFill(chain, { sell: AAA, buy: ASTER, amount: 100n * 10n ** 8n });
+  chain.send(OWNER, { address: V, functionName: 'openAuction', args: [CRV, BBB, 4_000n * 10n ** 8n, 1800n] });
+  const orphan = BigInt(chain.head.state.auctions.length - 1);
+  // The queued daily run marks the moment the job ends.
+  chain.send(OWNER, { address: V, functionName: 'setRefPrice', args: [BBB, REF_BBB + REF_BBB / 1000n] });
+  chain.lagReads = 3;
+  const ctx = ctxFor(chain, f);
+  await requireSizingBeforeExecute(ctx); // not refused: execute has run
+  assert.ok(ctx.lines.some((l) => /no registry change pending/.test(l)));
+  await assert.rejects(stageAuctions(ctx), (e) => isRefused(e) && /moved since the plan sized its auctions \(BBB /.test(e.message));
+  const p = loadPlan(f);
+  assert.deepEqual(p.fills.map((x) => [x.seq, x.fillTx, x.adopted]), [[1, fillTx, true]], 'the earlier fill is in the record');
+  assert.equal(chain.head.state.auctions[Number(orphan)].open, false, 'the orphan was cancelled');
+  assert.ok(chain.sent.at(-1).functionName === 'cancelAuction', 'the cancel is the last thing sent; nothing opened');
+});
+
+test('sizing references: the auctions stage with every reference as planned goes on', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => sized({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, execute: { txHash: '0xearlier' }, trades: [T1] }));
+  const ctx = ctxFor(chain, f, { live: false });
+  await stageAuctions(ctx);
+  assert.ok(ctx.lines.some((l) => /equal to the one the plan sized at/.test(l)));
 });
 
 test('auctions stage re-run on a lagging node: the fill an earlier run made but did not record is NOT traded again; its orphan-free session goes on with the rest', async () => {
