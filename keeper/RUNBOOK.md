@@ -467,6 +467,7 @@ mined the chain-side records below pick it up. Then, per stage:
 | cancelAuction mined | nothing to record (the trade reopens from live balances; an orphan is closed). |
 | finalizeRemoval mined, not in `plan.finalize` | **recorded** from `RemovalFinalized` by the auctions, finalize or verify stage, so verify's asset count matches. |
 | setBidder mined, not logged | the chain already says `allowed` → nothing sent. setBidder emits no event, so the line cannot be rebuilt: take the hash from the run's log (printed when sent) and add the line by hand. |
+| any stage, and the day's mark has moved a reference since the plan | the plan sized its auctions at the references it read (`chainRefAtPlan`). The auctions stage first records the earlier run's fills and finalizes and cancels what it left open (rows above), then **REFUSED** "reference(s) moved since the plan sized its auctions"; `day7` refuses before it sends execute. Make a new plan after the mark and dispatch again — after execute, with `reweight_block` (the new plan sees no add; "Someone else executed" for the work-order file). The new plan reads the balances the earlier run left, so nothing is traded twice. |
 
 Known limits: a re-run that finds a fill matching two planned trades, a
 `sent` entry with no receipt, or a HALT on an adopted fill stops and says what
