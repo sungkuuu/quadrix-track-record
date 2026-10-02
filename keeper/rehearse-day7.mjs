@@ -53,6 +53,13 @@
  *   --keeper-bids       no separate bidder: the keeper key fills its own auctions, as on
  *                       the chain while no BIDDER_PK secret is set (set-bidder then has
  *                       nothing to send, and the new mocks' inventory goes to the keeper)
+ *   --mark-offset-bps n  the emulated daily mark leaves each reference n bp off the plan's
+ *                       market price, alternately above and below (default 0: exactly at
+ *                       it). On the chain the mark and the plan's price differ (2026-10-01:
+ *                       94–252 bp median, 543 bp at most); at 0 the day-7 plan's chain
+ *                       references equal its market prices, so sizing at either looks the
+ *                       same and the chain-reference sizing goes untested. Must stay under
+ *                       the executor's 5% guard.
  *   --keep-anvil
  */
 import fs from 'node:fs';
@@ -98,11 +105,12 @@ const O = {
   foundry: opt('--foundry-bin', process.env.FOUNDRY_BIN ?? path.join(os.homedir(), '.foundry', 'bin')),
   keepAnvil: flag('--keep-anvil'),
   keeperBids: flag('--keeper-bids'),
+  markOffsetBps: Number(opt('--mark-offset-bps', 0)),
 };
 const RPC = `http://127.0.0.1:${O.port}`;
 
 // ------------------------------------------------------------ reporting
-const REPORT = { startedAt: new Date().toISOString(), date: O.date, checks: [], commands: [], baskets: {} };
+const REPORT = { startedAt: new Date().toISOString(), date: O.date, markOffsetBps: O.markOffsetBps, checks: [], commands: [], baskets: {} };
 let CURRENT = 'setup';
 const log = (m) => console.log(`[day7] ${m}`);
 function check(name, ok, detail = '', criterion = null) {
@@ -205,13 +213,17 @@ const snapshot = () => rpc('evm_snapshot');
 const revert = async (id) => { const ok = await rpc('evm_revert', [id]); if (!ok) throw new Error(`evm_revert ${id} failed`); };
 
 /** The daily mark, emulated: step each chain reference to the plan's price in
- *  in-band posts from the keeper (what paper-index.mjs does on the day). */
+ *  in-band posts from the keeper (what paper-index.mjs does on the day) —
+ *  with --mark-offset-bps, that many bp above it for every other name and
+ *  below it for the rest, as a mark made at another time of the day is. */
 async function markToPlan(keeper, vault, plan) {
   let posts = 0;
+  let k = 0;
   for (const r of plan.registry) {
     if (r.inRemoval) continue;
     let cur = await pc.readContract({ address: vault, abi: VAULT_ABI, functionName: 'refPrice', args: [r.address] });
-    const target = BigInt(r.planRefPrice);
+    const off = BigInt(O.markOffsetBps) * (k++ % 2 === 0 ? 1n : -1n);
+    const target = (BigInt(r.planRefPrice) * (10_000n + off)) / 10_000n;
     while (cur !== target) {
       const span = (cur * (BAND_BPS - 10n)) / 10_000n;
       const next = target > cur ? (target - cur <= span ? target : cur + span) : (cur - target <= span ? target : cur - span);
@@ -368,7 +380,7 @@ async function flowToDay7(env, index) {
   must('re-plan while pending exits 0 and carries the tuple', r.status === 0 && /carrying the announced tuple/.test(r.out));
   plan = loadPlan(planFile);
   const posts = await markToPlan(B.owner, B.vault, plan);
-  log(`daily mark emulated: ${posts} in-band reference post(s)`);
+  log(`daily mark emulated: ${posts} in-band reference post(s)${O.markOffsetBps ? `, each reference ±${O.markOffsetBps} bp off the plan's market price` : ''}`);
   r = run(env, 'basket-plan.mjs', planArgs, 'day-7 plan after the mark (tuple carried)');
   must('day-7 plan after the mark exits 0 and carries the tuple', r.status === 0 && /carrying the announced tuple/.test(r.out));
   plan = loadPlan(planFile);
@@ -705,6 +717,7 @@ export default async function hook(point, info, api) {
 async function main() {
   if (process.env.GITHUB_ACTIONS === 'true') { console.error('REFUSED: a local rehearsal — not for a workflow'); process.exit(1); }
   if (O.date !== new Date().toISOString().slice(0, 10)) { console.error(`REFUSED: --date ${O.date} is not today (UTC) — the executor refuses a plan not generated today`); process.exit(1); }
+  if (!Number.isInteger(O.markOffsetBps) || O.markOffsetBps < 0 || O.markOffsetBps >= 500) { console.error(`REFUSED: --mark-offset-bps ${O.markOffsetBps} — a whole number of bp under 500 (the executor refuses a reference more than 5% from the market)`); process.exit(1); }
   if (!(await portFree(O.port))) { console.error(`port ${O.port} is in use — pass --port`); process.exit(1); }
   fs.mkdirSync(O.work, { recursive: true });
   const env = setupWork();
