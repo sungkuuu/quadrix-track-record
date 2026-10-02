@@ -605,10 +605,44 @@
   "notes": [
     "The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference."
   ],
-  "announce": null,
+  "announce": {
+    "txHash": "0x490446075ab51597d300fedb7b487b68a6b20524f5a1f564e9e98a8052dc5403",
+    "block": "37578992",
+    "at": "2026-10-02T06:55:08.000Z",
+    "eta": "1791528908",
+    "etaIso": "2026-10-09T06:55:08.000Z",
+    "pendingHash": "0xb9e1ef790c03e95bac1171e9cf735402b402727ae841fe902cbe10399eb56eae",
+    "tuple": {
+      "adds": [
+        "0x13dB3B252c993dD7AD7e6b02964dADD7d181D460",
+        "0xA8C8310bF839B24CB10fD40c0323C9BF8f19ddc2",
+        "0x9F23FF0f9f58a391603c07dC12ca2bb881BC0F45",
+        "0xbD815b0c9601f32A5bab22E7cff38E483789E4e8",
+        "0x495fA29f63cbAE7e1Abbfdb209413a8dC4b950e9"
+      ],
+      "removes": [],
+      "decisionSha256": "0x28479f245a33bdb4b5248c6e0d4e2e452fa37082406991f04d320c08c80bedad"
+    },
+    "decisionId": "2026-10-02-qrev-basket-reconstitution",
+    "signer": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902"
+  },
   "execute": null,
   "firstPrices": [],
   "fills": [],
   "finalize": [],
-  "verify": null
+  "verify": null,
+  "sent": [
+    {
+      "what": "announce",
+      "call": "announceRegistryChange([0x13dB3B252c993dD7AD7e6b02964dADD7d181D460, 0xA8C8310bF839B24CB10fD40c0323C9BF8f19ddc2, 0x9F23FF0f9f58a391603c07dC12ca2bb881BC0F45, 0xbD815b0c9601f32A5bab22E7cff38E483789E4e8, 0x495fA29f63cbAE7e1Abbfdb209413a8dC4b950e9], [], 0x28479f245a33bdb4b5248c6e0d4e2e452fa37082406991f04d320c08c80bedad)",
+      "to": "0xBa83462fDFeDE13DC7Eb1D1fd893aE76dCaaD975",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x490446075ab51597d300fedb7b487b68a6b20524f5a1f564e9e98a8052dc5403",
+      "sentAt": "2026-10-02T06:55:07.211Z",
+      "block": "37578992",
+      "status": "success",
+      "gasUsed": "90103",
+      "at": "2026-10-02T06:55:08.000Z"
+    }
+  ]
 }
