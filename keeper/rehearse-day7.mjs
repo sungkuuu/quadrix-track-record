@@ -592,7 +592,7 @@ async function stopResume(env, F) {
     baseChecks(F, res, '⑧a re-run');
     onceOnChain(F, res, '⑧a re-run');
     const adopted = res.plan.fills.filter((f) => f.adopted);
-    check('⑧a the re-run records the killed run\'s fills from the chain (the plan file had none of them)', adopted.length === res.fillsAtKill.length && adopted.every((f) => typeof f.seq === 'number'), `adopted #${adopted.map((f) => f.seq).join(',')}`, '⑧');
+    check('⑧a the re-run records the killed run\'s fills from the chain (the plan file had none of them)', adopted.length > 0 && adopted.length === res.fillsAtKill.length && adopted.every((f) => typeof f.seq === 'number'), `adopted #${adopted.map((f) => f.seq).join(',')}`, '⑧');
     sessionChecks(F, res, '⑧a re-run');
     // ⑨ the next day's mark moves every reference; verify on the same plan
     const v0 = await readVault(reader, F.vault);
@@ -624,7 +624,7 @@ async function stopResume(env, F) {
     });
     const killedId = res.hooks[0]?.auctionId;
     const a = killedId != null ? await pc.readContract({ address: F.vault, abi: VAULT_ABI, functionName: 'auctions', args: [BigInt(killedId)] }) : null;
-    check(`⑧c after the mark moved ${r0.symbol} the re-run records the killed run's fills, cancels its open auction, then refuses`, refused(res.r2, /moved since the plan sized its auctions/) && res.plan.fills.length === res.fillsAtKill.length && res.plan.fills.every((f) => f.adopted) && !!a && a[5] === false, `${(res.r2.out.match(/REFUSED: [^\n]*/) ?? [`exit ${res.r2.status}`])[0].slice(0, 160)}; recorded ${res.plan.fills.length}/${res.fillsAtKill.length}`, '⑧');
+    check(`⑧c after the mark moved ${r0.symbol} the re-run records the killed run's fills, cancels its open auction, then refuses`, refused(res.r2, /moved since the plan sized its auctions/) && res.fillsAtKill.length > 0 && res.plan.fills.length === res.fillsAtKill.length && res.plan.fills.every((f) => f.adopted) && !!a && a[5] === false, `${(res.r2.out.match(/REFUSED: [^\n]*/) ?? [`exit ${res.r2.status}`])[0].slice(0, 160)}; recorded ${res.plan.fills.length}/${res.fillsAtKill.length}`, '⑧');
     // The RUNBOOK's resume: the work order is done (executed), a plan with --reweight-block, auctions, verify.
     const pendingFile = path.join(env.keeper, `pending-registry-${index}.json`);
     const planArgs = ['--index', index, '--date', O.date, '--rpc', RPC, '--mocks', path.join(env.keeper, 'mocks', `${O.date}.json`), '--no-fetch', '--duration', String(O.duration)];
@@ -837,7 +837,7 @@ export default async function hook(point, info, api) {
     SEEN[i]++;
     if (c.action === 'kill') {
       // The runner terminated (the 6-hour job limit): nothing after this line runs.
-      fs.appendFileSync(c.log, JSON.stringify({ point, symbol: info.symbol, seq: String(info.seq), auctionId: info.auctionId != null ? String(info.auctionId) : null, action: 'kill' }) + '\n');
+      fs.appendFileSync(c.log, JSON.stringify({ point, symbol: info.symbol, seq: String(info.seq), auctionId: info.auctionId != null ? String(info.auctionId) : null, action: 'kill' }) + '\\n');
       console.log('[hook] ' + point + ' #' + info.seq + ' ' + info.symbol + ': the job is killed here');
       process.exit(137);
     }
