@@ -209,7 +209,16 @@ const walletFor = (a) => (wallets[a] ??= createWalletClient({ account: getAddres
 async function tx(from, { address, abi = VAULT_ABI, functionName, args = [], gas = 3_000_000n }) {
   const { request } = await pc.simulateContract({ address, abi, functionName, args, account: getAddress(from) });
   const hash = await walletFor(from).writeContract({ ...request, gas });
-  const rc = await pc.waitForTransactionReceipt({ hash, pollingInterval: 50 });
+  // viem re-checks the receipt only when the block number moves; an idle
+  // auto-mining anvil makes no further block, so a receipt that was not yet
+  // there at the first look is waited for until the timeout (seen under load:
+  // the faucet tx mined in the next block, the wait ran out at 180 s). Ask
+  // for the receipt directly once the wait gives up.
+  let rc;
+  try { rc = await pc.waitForTransactionReceipt({ hash, pollingInterval: 50, timeout: 30_000 }); } catch (e) {
+    rc = await pc.getTransactionReceipt({ hash }).catch(() => null);
+    if (!rc) throw e;
+  }
   if (rc.status !== 'success') throw new Error(`${functionName} reverted (${hash})`);
   return rc;
 }
