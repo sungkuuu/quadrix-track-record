@@ -63,6 +63,16 @@
  *   --create-shares n    shares the ④ creation in window 1 makes (default 1,000 — 0.1% of the
  *                       2026-10-01 vaults, too small to leave a traded name outside the fill
  *                       bound; about 10,000 makes the executor run a residual round)
+ *   --stop-resume       ⑧ the job stopped mid-session (the 6-hour limit of a GitHub job: the
+ *                       runner is terminated and the plan file is not committed) — the
+ *                       executor is killed at a fill, the plan file is put back to the version
+ *                       the plan stage committed, and day7 is dispatched again: (a) killed
+ *                       right after a drain's fill, before its finalize; (b) killed with an
+ *                       auction open at its fair point; (c) as (b), then the day's mark moves
+ *                       a reference before the re-run — the re-run records and refuses, and
+ *                       the RUNBOOK's resume path (work order put aside, a plan with
+ *                       --reweight-block, auctions, verify) finishes the session. Then ⑨ a
+ *                       verify run after a later mark. (second review of the planner change)
  *   --keep-anvil
  */
 import fs from 'node:fs';
@@ -111,6 +121,7 @@ const O = {
   keeperBids: flag('--keeper-bids'),
   markOffsetBps: Number(opt('--mark-offset-bps', 0)),
   createShares: BigInt(opt('--create-shares', '1000')),
+  stopResume: flag('--stop-resume'),
 };
 const RPC = `http://127.0.0.1:${O.port}`;
 
@@ -261,7 +272,7 @@ async function fillsSince(vault, fromBlock) {
     const blk = await pc.getBlock({ blockNumber: l.blockNumber });
     const elapsed = Number(blk.timestamp - BigInt(a[3]));
     const factor = 10_000 + Number(v.premiumBps) - Math.floor(((Number(v.premiumBps) + Number(v.maxFillLossBps)) * elapsed) / Number(a[4]));
-    rows.push({ id: l.args.id.toString(), bidder: getAddress(l.args.bidder), sell: getAddress(a[0]), sellTaken: l.args.sellTaken, buyPaid: l.args.buyPaid, lossAtRef: l.args.lossAtRef, factor, open: a[5], sellRemaining: a[2] });
+    rows.push({ id: l.args.id.toString(), bidder: getAddress(l.args.bidder), sell: getAddress(a[0]), buy: getAddress(a[1]), sellTaken: l.args.sellTaken, buyPaid: l.args.buyPaid, lossAtRef: l.args.lossAtRef, factor, open: a[5], sellRemaining: a[2] });
   }
   return rows;
 }
@@ -533,6 +544,118 @@ function sessionChecks(F, res, label) {
   };
 }
 
+// ------------------------------------- ⑧ a job stopped mid-session, re-run
+/** day7 killed by the hook at `at` (the 6-hour job limit terminates the
+ *  runner), the plan file put back to the version the plan stage committed
+ *  (a terminated job commits nothing), `between` (e.g. the day's mark), then
+ *  day7 dispatched again. */
+async function killedThenRerun(env, F, label, at, { between = null } = {}) {
+  await revert(F.snap);
+  F.snap = await snapshot();
+  savePlan(F.planFile, loadPlan(F.savedPlan));
+  const fromBlock = BigInt(await rpc('eth_blockNumber')) + 1n;
+  const extra = [...F.live, ...bidderArg(), '--warp', '--fill', 'fair'];
+  const hookLog = path.join(O.work, `${F.index}-${label.replace(/\W+/g, '-')}-hook.jsonl`);
+  fs.rmSync(hookLog, { force: true });
+  const r1 = run(env, 'basket-recon.mjs', recon(F.index, 'day7', F.planFile, [...extra, '--hook', env.hook]), `day7 — ${label} (killed)`, { REHEARSAL_HOOK_CONFIG: JSON.stringify([{ ...at, action: 'kill', max: 1, log: hookLog }]) });
+  const hooks = fs.existsSync(hookLog) ? fs.readFileSync(hookLog, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+  const fillsAtKill = await fillsSince(F.vault, fromBlock);
+  savePlan(F.planFile, loadPlan(F.savedPlan));
+  if (between) await between();
+  const r2 = run(env, 'basket-recon.mjs', recon(F.index, 'day7', F.planFile, extra), `day7 — ${label} (re-run)`);
+  const plan = loadPlan(F.planFile);
+  const fills = await fillsSince(F.vault, fromBlock);
+  const v = await readVault(reader, F.vault);
+  fs.copyFileSync(F.planFile, path.join(O.work, `${F.index}-${label.replace(/\W+/g, '-')}-plan.json`));
+  return { r: r2, r1, r2, hooks, fillsAtKill, plan, fills, v, fromBlock };
+}
+
+/** Every planned trade sold exactly once on chain, for its planned amount
+ *  (a drain: the balance), and nothing else filled. */
+function onceOnChain(F, res, label) {
+  const per = F.plan.trades.map((t) => {
+    const hits = res.fills.filter((f) => f.sell === getAddress(t.sellAddress) && f.buy === getAddress(t.buyAddress));
+    return { t, hits };
+  });
+  const bad = per.filter(({ t, hits }) => hits.length !== 1 || (!t.drain && hits[0].sellTaken !== BigInt(t.sellAmount)));
+  check(`${label}: every planned auction sold exactly once on chain, for its planned amount; nothing else filled`, bad.length === 0 && res.fills.length === F.plan.trades.length, bad.length ? bad.map(({ t, hits }) => `#${t.seq} ${t.sell}→${t.buy} fills ${hits.length}${hits.length ? ` took ${hits.map((h) => h.sellTaken).join('+')} planned ${t.sellAmount}` : ''}`).join('; ') : `${res.fills.length} fill(s) on chain for ${F.plan.trades.length} planned`, '⑧');
+}
+
+async function stopResume(env, F) {
+  const index = F.index;
+  const drain = F.plan.trades.find((t) => t.drain);
+  const plain = F.plan.trades.filter((t) => !t.drain);
+  const late = plain[Math.min(plain.length - 1, Math.floor(plain.length * 0.6))];
+  if (drain) {
+    const res = await killedThenRerun(env, F, 'stopped after a drain fill', { point: 'after-fill', seq: drain.seq });
+    check(`⑧a the job is killed right after the ${drain.sell} drain fill (#${drain.seq}), before its finalize`, res.r1.status === 137 && res.hooks.length === 1 && res.fillsAtKill.length === drain.seq, `exit ${res.r1.status}; ${res.fillsAtKill.length} fill(s) mined before the kill`, '⑧');
+    baseChecks(F, res, '⑧a re-run');
+    onceOnChain(F, res, '⑧a re-run');
+    const adopted = res.plan.fills.filter((f) => f.adopted);
+    check('⑧a the re-run records the killed run\'s fills from the chain (the plan file had none of them)', adopted.length === res.fillsAtKill.length && adopted.every((f) => typeof f.seq === 'number'), `adopted #${adopted.map((f) => f.seq).join(',')}`, '⑧');
+    sessionChecks(F, res, '⑧a re-run');
+    // ⑨ the next day's mark moves every reference; verify on the same plan
+    const v0 = await readVault(reader, F.vault);
+    let k = 0;
+    for (const a of v0.assets.filter((x) => !x.inRemoval)) {
+      const next = (a.refPrice * (k++ % 2 ? 9_700n : 10_300n)) / 10_000n;
+      await tx(F.owner, { address: F.vault, functionName: 'setRefPrice', args: [a.address, next], gas: 150_000n });
+    }
+    const rv = run(env, 'basket-recon.mjs', recon(index, 'verify', F.planFile), 'verify after a later mark (every reference ±3%)');
+    check('⑨ verify after a later mark (every reference ±3%): a finished session still passes', rv.status === 0 && /verify: all checks passed/.test(rv.out), (rv.out.match(/verify: [^\n]*/) ?? [`exit ${rv.status}`])[0], '⑨');
+  }
+  {
+    const res = await killedThenRerun(env, F, 'stopped with an auction open', { point: 'before-fill', seq: late.seq });
+    const killedId = res.hooks[0]?.auctionId;
+    const a = killedId != null ? await pc.readContract({ address: F.vault, abi: VAULT_ABI, functionName: 'auctions', args: [BigInt(killedId)] }) : null;
+    check(`⑧b the job is killed with auction ${killedId ?? '?'} (#${late.seq}) open at its fair point`, res.r1.status === 137 && res.hooks.length === 1, `exit ${res.r1.status}; ${res.fillsAtKill.length} fill(s) mined before the kill`, '⑧');
+    check('⑧b the re-run cancels the auction the killed run left open; it is never filled', !!a && a[5] === false && !res.fills.some((f) => f.id === String(killedId)) && /left open by an earlier run|still open from an earlier run/.test(res.r2.out), `auction ${killedId}: open ${a?.[5]}, sellRemaining ${a?.[2]}`, '⑧');
+    baseChecks(F, res, '⑧b re-run');
+    onceOnChain(F, res, '⑧b re-run');
+    sessionChecks(F, res, '⑧b re-run');
+  }
+  {
+    const r0 = F.plan.registry.find((x) => !x.inRemoval && x.chainRefAtPlan != null && !F.plan.trades.some((t) => t.sell === x.symbol && t.drain));
+    const res = await killedThenRerun(env, F, 'stopped, then the mark moved a reference', { point: 'before-fill', seq: late.seq }, {
+      between: async () => {
+        const cur = BigInt(r0.chainRefAtPlan);
+        await tx(F.owner, { address: F.vault, functionName: 'setRefPrice', args: [getAddress(r0.address), cur + cur / 1000n], gas: 150_000n });
+      },
+    });
+    const killedId = res.hooks[0]?.auctionId;
+    const a = killedId != null ? await pc.readContract({ address: F.vault, abi: VAULT_ABI, functionName: 'auctions', args: [BigInt(killedId)] }) : null;
+    check(`⑧c after the mark moved ${r0.symbol} the re-run records the killed run's fills, cancels its open auction, then refuses`, refused(res.r2, /moved since the plan sized its auctions/) && res.plan.fills.length === res.fillsAtKill.length && res.plan.fills.every((f) => f.adopted) && !!a && a[5] === false, `${(res.r2.out.match(/REFUSED: [^\n]*/) ?? [`exit ${res.r2.status}`])[0].slice(0, 160)}; recorded ${res.plan.fills.length}/${res.fillsAtKill.length}`, '⑧');
+    // The RUNBOOK's resume: the work order is done (executed), a plan with --reweight-block, auctions, verify.
+    const pendingFile = path.join(env.keeper, `pending-registry-${index}.json`);
+    const planArgs = ['--index', index, '--date', O.date, '--rpc', RPC, '--mocks', path.join(env.keeper, 'mocks', `${O.date}.json`), '--no-fetch', '--duration', String(O.duration)];
+    fs.copyFileSync(F.planFile, path.join(O.work, `${index}-stop-c-first-plan-records.json`));
+    fs.renameSync(pendingFile, `${pendingFile}.executed`);
+    try {
+      let r = run(env, 'basket-plan.mjs', planArgs, 'resume plan without --reweight-block (what it misses)');
+      const p1 = r.status === 0 ? loadPlan(F.planFile) : null;
+      r = run(env, 'basket-plan.mjs', [...planArgs, '--reweight-block'], 'resume plan with --reweight-block');
+      const p2 = r.status === 0 ? loadPlan(F.planFile) : null;
+      check('⑧c resume: a plan made after execute sees no add; without --reweight-block it trades less than the block, with it the whole block', !!p1 && !!p2 && p2.adds.length === 0 && p2.trades.length > 0 && p2.targets.every((t) => t.traded) && p2.notes.some((x) => /--reweight-block/.test(x)) && p1.trades.length <= p2.trades.length, `without: ${p1?.trades.length ?? '—'} auction(s), traded ${p1?.targets.filter((t) => t.traded).length ?? '—'}/${p1?.targets.length ?? '—'}; with: ${p2?.trades.length ?? '—'} auction(s), traded ${p2?.targets.filter((t) => t.traded).length ?? '—'}/${p2?.targets.length ?? '—'}`, '⑧');
+      if (p2) {
+        const savedP2 = path.join(O.work, `${index}-stop-c-resume-plan.json`);
+        savePlan(savedP2, p2);
+        const from2 = BigInt(await rpc('eth_blockNumber')) + 1n;
+        r = run(env, 'basket-recon.mjs', recon(index, 'auctions', F.planFile, [...F.live, ...bidderArg(), '--warp', '--fill', 'fair']), 'auctions with the resume plan');
+        const ra = r;
+        r = run(env, 'basket-recon.mjs', recon(index, 'verify', F.planFile), 'verify with the resume plan');
+        const after = loadPlan(F.planFile);
+        const v = await readVault(reader, F.vault);
+        const fills2 = await fillsSince(F.vault, from2);
+        check('⑧c resume: auctions and verify pass; every removal finalized', ra.status === 0 && r.status === 0 && /verify: all checks passed/.test(r.out) && F.removes.every((x) => !v.assets.some((q) => q.address === x.address)), `${fills2.length} fill(s); ${(r.out.match(/verify: [^\n]*/) ?? [`exit ${r.status}`])[0]}`, '⑧');
+        sessionChecks({ ...F, plan: loadPlan(savedP2) }, { plan: after, v, fills: fills2 }, '⑧c resumed session against the resume plan (the book at its references)');
+      }
+    } finally {
+      fs.renameSync(`${pendingFile}.executed`, pendingFile);
+      savePlan(F.planFile, loadPlan(F.savedPlan));
+    }
+  }
+}
+
 // ------------------------------------------------------------- per basket
 async function rehearseBasket(env, index) {
   CURRENT = index;
@@ -598,6 +721,8 @@ async function rehearseBasket(env, index) {
     sessionChecks(F, res, '⑥ third party executed');
     check('day7 names the third party and continues (plan.execute.byThirdParty)', res.r.status === 0 && /executeRegistryChange is permissionless and was called by 0x90F79bf6EB2c4f870365E785982E1f101E93b906/i.test(res.r.out) && res.plan.execute?.byThirdParty === true && !!res.plan.execute.txHash, `execute tx ${res.plan.execute?.txHash ?? '—'} by ${res.plan.execute?.signer ?? '—'}`, '⑥');
   }
+
+  if (O.stopResume) await stopResume(env, F);
 
   // Removal cases.
   if (index === 'qdefi') {
@@ -705,10 +830,17 @@ const ABI = parseAbi([
 export default async function hook(point, info, api) {
   for (let i = 0; i < CFG.length; i++) {
     const c = CFG[i];
-    if (c.point !== point || c.symbol !== info.symbol) continue;
-    if (point === 'before-fill' && (!info.drain || info.residual)) continue;
+    if (c.point !== point) continue;
+    if (c.seq != null ? String(info.seq) !== String(c.seq) : c.symbol !== info.symbol) continue;
+    if (point === 'before-fill' && c.action !== 'kill' && (!info.drain || info.residual)) continue;
     if (c.max != null && SEEN[i] >= c.max) continue;
     SEEN[i]++;
+    if (c.action === 'kill') {
+      // The runner terminated (the 6-hour job limit): nothing after this line runs.
+      fs.appendFileSync(c.log, JSON.stringify({ point, symbol: info.symbol, seq: String(info.seq), auctionId: info.auctionId != null ? String(info.auctionId) : null, action: 'kill' }) + '\n');
+      console.log('[hook] ' + point + ' #' + info.seq + ' ' + info.symbol + ': the job is killed here');
+      process.exit(137);
+    }
     const chain = { id: api.chainId, name: 'anvil', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [api.rpc] } } };
     const pc = createPublicClient({ chain, transport: http(api.rpc) });
     const send = async (from, address, functionName, args = []) => {
