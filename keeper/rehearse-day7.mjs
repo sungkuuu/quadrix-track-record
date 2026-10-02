@@ -635,7 +635,7 @@ async function stopResume(env, F) {
       const p1 = r.status === 0 ? loadPlan(F.planFile) : null;
       r = run(env, 'basket-plan.mjs', [...planArgs, '--reweight-block'], 'resume plan with --reweight-block');
       const p2 = r.status === 0 ? loadPlan(F.planFile) : null;
-      check('⑧c resume: a plan made after execute sees no add; without --reweight-block it trades less than the block, with it the whole block', !!p1 && !!p2 && p2.adds.length === 0 && p2.trades.length > 0 && p2.targets.every((t) => t.traded) && p2.notes.some((x) => /--reweight-block/.test(x)) && p1.trades.length <= p2.trades.length, `without: ${p1?.trades.length ?? '—'} auction(s), traded ${p1?.targets.filter((t) => t.traded).length ?? '—'}/${p1?.targets.length ?? '—'}; with: ${p2?.trades.length ?? '—'} auction(s), traded ${p2?.targets.filter((t) => t.traded).length ?? '—'}/${p2?.targets.length ?? '—'}`, '⑧');
+      check('⑧c resume: a plan made after execute sees no add; without --reweight-block it trades less than the block, with it the whole block (the Quality sleeve for Triens)', !!p1 && !!p2 && p2.adds.length === 0 && p2.trades.length > 0 && p2.targets.filter((t) => !p2.policy.sleeve || (t.sleeve ?? 'quality') === 'quality').every((t) => t.traded) && p2.notes.some((x) => /--reweight-block/.test(x)) && p1.trades.length <= p2.trades.length, `without: ${p1?.trades.length ?? '—'} auction(s), traded ${p1?.targets.filter((t) => t.traded).length ?? '—'}/${p1?.targets.length ?? '—'}; with: ${p2?.trades.length ?? '—'} auction(s), traded ${p2?.targets.filter((t) => t.traded).length ?? '—'}/${p2?.targets.length ?? '—'}`, '⑧');
       if (p2) {
         const savedP2 = path.join(O.work, `${index}-stop-c-resume-plan.json`);
         savePlan(savedP2, p2);
