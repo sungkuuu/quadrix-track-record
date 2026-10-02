@@ -60,6 +60,9 @@
  *                       references equal its market prices, so sizing at either looks the
  *                       same and the chain-reference sizing goes untested. Must stay under
  *                       the executor's 5% guard.
+ *   --create-shares n    shares the ④ creation in window 1 makes (default 1,000 — 0.1% of the
+ *                       2026-10-01 vaults, too small to leave a traded name outside the fill
+ *                       bound; about 10,000 makes the executor run a residual round)
  *   --keep-anvil
  */
 import fs from 'node:fs';
@@ -85,6 +88,7 @@ const EXTRA_ABI = parseAbi([
   'function transfer(address to, uint256 amount) returns (bool)',
   'function executeRegistryChange(address[] adds, address[] removes, bytes32 decisionSha256)',
 ]).concat(VAULT_ABI.filter((x) => x.type === 'error'));
+const FAUCET_ABI = parseAbi(['function faucetAmount() view returns (uint256)']);
 const AUCTION_FILLED = VAULT_ABI.find((x) => x.type === 'event' && x.name === 'AuctionFilled');
 const BAND_BPS = 1_500n;
 /** Who fills: anvil #1, or (--keeper-bids) the vault's own keeper. */
@@ -106,11 +110,12 @@ const O = {
   keepAnvil: flag('--keep-anvil'),
   keeperBids: flag('--keeper-bids'),
   markOffsetBps: Number(opt('--mark-offset-bps', 0)),
+  createShares: BigInt(opt('--create-shares', '1000')),
 };
 const RPC = `http://127.0.0.1:${O.port}`;
 
 // ------------------------------------------------------------ reporting
-const REPORT = { startedAt: new Date().toISOString(), date: O.date, markOffsetBps: O.markOffsetBps, checks: [], commands: [], baskets: {} };
+const REPORT = { startedAt: new Date().toISOString(), date: O.date, markOffsetBps: O.markOffsetBps, createShares: O.createShares.toString(), checks: [], commands: [], baskets: {} };
 let CURRENT = 'setup';
 const log = (m) => console.log(`[day7] ${m}`);
 function check(name, ok, detail = '', criterion = null) {
@@ -254,15 +259,24 @@ async function fillsSince(vault, fromBlock) {
 
 /** A creation in window 1 must be ONE transaction, as it would be on the
  *  chain: the holder is funded and has approved every asset (registry and
- *  adds) before the session, so the hook only sends create(). */
+ *  adds) before the session, so the hook only sends create(). Funded for
+ *  --create-shares shares at today's balances per share (at least the 3
+ *  faucet calls per asset of the earlier runs; a share holds at most what it
+ *  holds now plus the session's turnover, so the margin is 2×). */
 async function prefundHolder(F) {
   const v = await readVault(reader, F.vault);
   const tokens = [...v.assets.map((a) => a.address), ...F.plan.adds.map((a) => getAddress(a.address))];
+  let calls = 0;
   for (const a of tokens) {
-    for (let i = 0; i < 3; i++) await tx(DEV.holder, { address: a, abi: ERC20_ABI, functionName: 'faucet', gas: 150_000n });
+    const on = v.assets.find((x) => x.address === a);
+    const need = on && v.totalSupply > 0n ? (on.balance * O.createShares * 10n ** 18n * 2n) / v.totalSupply : 0n;
+    const faucetAmount = await pc.readContract({ address: a, abi: FAUCET_ABI, functionName: 'faucetAmount' });
+    let bal = await pc.readContract({ address: a, abi: ERC20_ABI, functionName: 'balanceOf', args: [DEV.holder] });
+    for (let i = 0; i < 3 || (bal < need && i < 400); i++) { await tx(DEV.holder, { address: a, abi: ERC20_ABI, functionName: 'faucet', gas: 150_000n }); bal += faucetAmount; calls++; }
+    if (bal < need) throw new Abort(`holder cannot be funded for ${O.createShares} shares of ${a} (${bal} < ${need} after 400 faucet calls)`);
     await tx(DEV.holder, { address: a, abi: ERC20_ABI, functionName: 'approve', args: [F.vault, maxUint256], gas: 100_000n });
   }
-  log(`holder funded with 3 faucet calls of each of ${tokens.length} assets and approved`);
+  log(`holder funded for ${O.createShares} shares (${calls} faucet calls over ${tokens.length} assets) and approved`);
 }
 
 async function redeemOne(vault) {
@@ -576,8 +590,8 @@ async function rehearseBasket(env, index) {
     baseChecks(F, res, '① 1 base unit donated in window 1');
     const rem = res.plan.fills.filter((f) => typeof f.seq !== 'number');
     check(`${X}: donation landed in window 1 and was re-drained at once; finalized in the same run`, res.hooks.length === 1 && rem.length >= 1 && rem.every((f) => f.policy === 'open') && res.plan.finalize.some((f) => f.symbol === X) && !(res.plan.finalizePending ?? []).length, `${res.hooks.length} donation(s); remnant fills ${rem.map((f) => `${f.seq} took ${f.sellTaken} at ${f.factorBps} bp`).join(', ')}`, '①');
-    res = await day7(env, F, { label: 'window-1 create', before: () => prefundHolder(F), hook: [{ point: 'before-fill', symbol: X, action: 'create', shares: '1000', max: 1 }] });
-    baseChecks(F, res, '④ 1,000-share creation in window 1');
+    res = await day7(env, F, { label: 'window-1 create', before: () => prefundHolder(F), hook: [{ point: 'before-fill', symbol: X, action: 'create', shares: String(O.createShares), max: 1 }] });
+    baseChecks(F, res, `④ ${O.createShares}-share creation in window 1`);
     const rem4 = res.plan.fills.filter((f) => typeof f.seq !== 'number');
     check(`${X}: a creation's pro-rata slice in window 1 is re-drained and ${X} finalized`, res.hooks.length === 1 && rem4.length >= 1 && res.plan.finalize.some((f) => f.symbol === X), `remnant fills ${rem4.map((f) => `${f.seq} ${f.policy} took ${f.sellTaken} at ${f.factorBps} bp`).join(', ')}`, '④');
     check('④ after the creation: verify within the fill bound after the residual rounds', res.r.status === 0 && /verify: all checks passed/.test(res.r.out), `fills by round ${JSON.stringify(res.plan.fills.reduce((m, f) => ({ ...m, [f.round]: (m[f.round] ?? 0) + 1 }), {}))}`, 'spec §4');
@@ -650,8 +664,8 @@ async function rehearseBasket(env, index) {
     const remX = res.plan.fills.filter((f) => f.sell === X && typeof f.seq !== 'number');
     check(`${X}: one base unit between the drain fill and the finalize → one immediate re-drain, finalized in the same run`, res.hooks.length === 1 && remX.length === 1 && res.plan.finalize.some((f) => f.symbol === X), remX.map((f) => `${f.seq} took ${f.sellTaken} paid ${f.buyPaid} at ${f.factorBps} bp`).join(', '), '②');
     const Z = drains[1];
-    const res2 = await day7(env, F, { label: 'window-1 create', before: () => prefundHolder(F), hook: [{ point: 'before-fill', symbol: Z, action: 'create', shares: '1000', max: 1 }] });
-    baseChecks(F, res2, '④ 1,000-share creation in window 1');
+    const res2 = await day7(env, F, { label: 'window-1 create', before: () => prefundHolder(F), hook: [{ point: 'before-fill', symbol: Z, action: 'create', shares: String(O.createShares), max: 1 }] });
+    baseChecks(F, res2, `④ ${O.createShares}-share creation in window 1`);
     check(`${Z}: a creation in window 1 → re-drained and finalized`, res2.hooks.length === 1 && res2.plan.finalize.some((f) => f.symbol === Z) && res2.plan.fills.some((f) => f.sell === Z && typeof f.seq !== 'number'), res2.plan.fills.filter((f) => f.sell === Z).map((f) => `${f.seq} ${f.policy} ${f.sellTaken}`).join(', '), '④');
     check('④ after the creation: verify within the fill bound after the residual rounds', res2.r.status === 0 && /verify: all checks passed/.test(res2.r.out), `fills by round ${JSON.stringify(res2.plan.fills.reduce((m, f) => ({ ...m, [f.round]: (m[f.round] ?? 0) + 1 }), {}))}`, 'spec §4');
   }
