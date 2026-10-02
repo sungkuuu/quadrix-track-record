@@ -18,7 +18,13 @@
  *   empty    — eth_call and eth_getCode answer "0x"; a block that is not
  *              there yet is null; eth_blockNumber is the old head;
  *   notfound — every read that names a block errors "header not found"; a
- *              block by number is null; `latest` is the old head.
+ *              block by number is null; `latest` is the old head;
+ *   null     — what the public endpoint (op-reth) answers, measured
+ *              2026-10-02 at its head + 500: eth_call and eth_getCode that
+ *              name a block it has not got answer `null` (no error), the
+ *              block is null, eth_getLogs past its head answers [] (clamped,
+ *              no error); `latest` is the old head. Not in the default
+ *              --modes, so earlier rehearsals replay unchanged.
  * Reads are eth_call, eth_getCode, eth_getBalance, eth_getStorageAt,
  * eth_getBlockByNumber, eth_blockNumber and eth_getLogs. Everything else
  * (sending, receipts, transactions, nonces, gas, the anvil and evm
@@ -30,7 +36,10 @@
  * into evm_setNextBlockTimestamp(the latest block's time + d): under
  * anvil_setBlockTimestampInterval (block times independent of the wall
  * clock, so two runs compare block for block) anvil ignores
- * evm_increaseTime, which the tool's --warp uses. --log appends every
+ * evm_increaseTime, which the tool's --warp uses. --refuse-node-signing
+ * answers eth_sendTransaction with "unknown account", as the public endpoint
+ * does (it holds no key: eth_accounts is []), so a tool that asks the node to
+ * sign fails here as it would live. --log appends every
  * eth_sendTransaction and
  * eth_sendRawTransaction it forwards (JSON lines) and --events the lag it
  * played. Listens on 127.0.0.1 only; refuses a non-local upstream.
@@ -47,6 +56,7 @@ const SEND_LOG = opt('--log', null);
 const EVENT_LOG = opt('--events', null);
 const MODES = (opt('--modes', 'stale,empty,notfound')).split(',');
 const EXACT_WARP = argv.includes('--exact-warp');
+const REFUSE_NODE_SIGNING = argv.includes('--refuse-node-signing');
 const DARK_SELECTOR = (opt('--dark-after-selector', '') || '').toLowerCase();
 const DARK_MS = Number(opt('--dark-ms', 40_000));
 const darkHashes = new Set();
@@ -82,6 +92,13 @@ async function lagged(req, mode) {
   if (method === 'eth_blockNumber') return ok(id, hex(old));
   if (method === 'eth_getLogs') {
     const f = { ...params[0] };
+    if (mode === 'null') {
+      // op-reth: past its head it answers what it has, silently.
+      const to = f.toBlock == null || ['latest', 'pending', 'safe', 'finalized'].includes(f.toBlock) ? old : big(f.toBlock);
+      if (big(f.fromBlock) != null && big(f.fromBlock) > old) return ok(id, []);
+      f.toBlock = hex(to != null && to < old ? to : old);
+      return up({ ...req, params: [f] });
+    }
     const to = f.toBlock == null || ['latest', 'pending', 'safe', 'finalized'].includes(f.toBlock) ? old : big(f.toBlock);
     if (mode === 'notfound' && to != null && to >= lagBlock) return err(id, 'header not found');
     f.toBlock = hex(to != null && to < old ? to : old);
@@ -99,6 +116,11 @@ async function lagged(req, mode) {
     return up(req);
   }
   if (mode === 'empty' && (method === 'eth_call' || method === 'eth_getCode')) return ok(id, '0x');
+  if (mode === 'null') {
+    if (isLatest) { params[at] = hex(old); return up({ ...req, params }); }
+    if (n != null && n >= lagBlock) return ok(id, method === 'eth_call' || method === 'eth_getCode' ? null : '0x0');
+    return up(req);
+  }
   if (mode === 'notfound') return err(id, 'header not found');
   // stale
   if (isLatest) { params[at] = hex(old); return up({ ...req, params }); }
@@ -116,6 +138,10 @@ async function handle(req) {
     return r.error ? r : ok(req.id, hex(d));
   }
   if (SEND_LOG && (req.method === 'eth_sendTransaction' || req.method === 'eth_sendRawTransaction')) fs.appendFileSync(SEND_LOG, JSON.stringify({ method: req.method, params: req.params }) + '\n');
+  if (REFUSE_NODE_SIGNING && (req.method === 'eth_sendTransaction' || req.method === 'eth_sign' || req.method === 'eth_signTransaction')) {
+    stats.refusedNodeSigning = (stats.refusedNodeSigning ?? 0) + 1;
+    return err(req.id, 'unknown account');
+  }
   if (READS.has(req.method) && Date.now() < darkUntil) {
     stats.dark = (stats.dark ?? 0) + 1;
     note({ dark: true, method: req.method });

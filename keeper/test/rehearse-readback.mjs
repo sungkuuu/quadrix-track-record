@@ -40,10 +40,21 @@
  * re-run must not trade the recorded fill again, and must leave the same
  * mined transactions and vault state as the clean run.
  *
+ * --pk-variant adds the announce as the workflow sends it: signed with
+ * KEEPER_PK instead of an unlocked --from, through a lagging proxy that
+ * refuses to sign (--refuse-node-signing: "unknown account", as the public
+ * endpoint answers — it holds no key). The key is generated in this process
+ * for this fork only and handed to that one child; nothing is read from the
+ * environment, and every other child still gets KEEPER_PK blanked. On the
+ * fork the vault's ownership is first moved to the key's address (announce
+ * is onlyOwner). With --main-recon the tool as on main runs the same way.
+ *
  * Options: --date (today, UTC) --index (qdefi) --stages announce|day7 (day7)
  *          --lag n (4) --port n (8571) --proxy-port n (8581) --work DIR
  *          --fork-block n --duration s (1800) --main-recon FILE --foundry-bin DIR
- *          --stop-variant
+ *          --stop-variant --pk-variant
+ *          --modes m,m…    lag-proxy modes (default its own: stale,empty,notfound;
+ *                          `null` plays the public op-reth node)
  *          --anvil-pid n   use the anvil the caller started on --port (same fork
  *                          arguments as below) and kill that pid at the end
  */
@@ -53,7 +64,8 @@ import net from 'node:net';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createWalletClient, http, getAddress, toFunctionSelector } from 'viem';
+import { createWalletClient, http, getAddress, toFunctionSelector, parseAbi, parseTransaction, recoverTransactionAddress } from 'viem';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { GIWA_RPC, GIWA_CHAIN_ID, VAULT_ABI, chainFor, makeReader, readVault, sha256, loadPlan, savePlan } from '../basket-plan.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -77,6 +89,8 @@ const O = {
   mainRecon: opt('--main-recon', null),
   foundry: opt('--foundry-bin', process.env.FOUNDRY_BIN ?? path.join(os.homedir(), '.foundry', 'bin')),
   stopVariant: argv.includes('--stop-variant'),
+  pkVariant: argv.includes('--pk-variant'),
+  modes: opt('--modes', null),
   anvilPid: opt('--anvil-pid', null) == null ? null : Number(opt('--anvil-pid')),
 };
 const ANVIL = `http://127.0.0.1:${O.port}`;
@@ -130,7 +144,7 @@ async function startProxy(tag, extra = [], lag = O.lag) {
   const events = path.join(O.work, `${tag}-proxy-lag.jsonl`);
   for (const f of [sends, events]) fs.rmSync(f, { force: true });
   const fd = fs.openSync(path.join(O.work, `${tag}-proxy.log`), 'w');
-  proxyChild = spawn(process.execPath, [path.join(HERE, 'lag-proxy.mjs'), '--port', String(O.proxyPort), '--upstream', ANVIL, '--lag', String(lag), '--exact-warp', '--log', sends, '--events', events, ...extra], { stdio: ['ignore', fd, fd] });
+  proxyChild = spawn(process.execPath, [path.join(HERE, 'lag-proxy.mjs'), '--port', String(O.proxyPort), '--upstream', ANVIL, '--lag', String(lag), '--exact-warp', '--log', sends, '--events', events, ...(O.modes ? ['--modes', O.modes] : []), ...extra], { stdio: ['ignore', fd, fd] });
   await waitUp(PROXY, 20_000);
   return { sends, events };
 }
@@ -168,12 +182,14 @@ function setupWork() {
   fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(repo, 'node_modules'), 'dir');
   return { repo, keeper, ledger: path.join(repo, 'trackrecord', 'decisions.jsonl') };
 }
-function run(env, script, args, label) {
-  console.log(`$ node keeper/${script} ${args.join(' ')}`);
+function run(env, script, args, label, { throwawayKey = null } = {}) {
+  console.log(`$ node keeper/${script} ${args.join(' ')}${throwawayKey ? ' (KEEPER_PK = a key generated for this fork)' : ''}`);
+  // A throwaway key goes only to a child that talks to the local proxy.
+  if (throwawayKey && args[args.indexOf('--rpc') + 1] !== PROXY) throw new Error('a throwaway key is only for a run against the local proxy');
   const t0 = Date.now();
   const r = spawnSync(process.execPath, [path.join(env.keeper, script), ...args], {
     cwd: env.repo, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024,
-    env: { ...process.env, GITHUB_ACTIONS: '', KEEPER_PK: '', BIDDER_PK: '', COINGECKO_API_KEY: '' },
+    env: { ...process.env, GITHUB_ACTIONS: '', KEEPER_PK: throwawayKey ?? '', BIDDER_PK: '', COINGECKO_API_KEY: '' },
   });
   const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
   fs.writeFileSync(path.join(O.work, `${label.replace(/\W+/g, '-')}.log`), out);
@@ -316,6 +332,40 @@ async function variantStop(env, B, tag) {
   return res;
 }
 
+const OWNABLE_ABI = parseAbi(['function transferOwnership(address newOwner)']);
+const ANNOUNCE_SELECTOR = toFunctionSelector('announceRegistryChange(address[],address[],bytes32)');
+
+/** The announce as the workflow sends it: KEEPER_PK, a node that will not sign. */
+async function variantPk(env, B, tag, { script, lag }) {
+  await rpc('evm_revert', [B.snap]);
+  B.snap = await rpc('evm_snapshot');
+  await rpc('anvil_setBlockTimestampInterval', [1]);
+  savePlan(B.planFile, loadPlan(B.savedPlan));
+  const key = generatePrivateKey(); // this fork only; never written anywhere
+  const signer = privateKeyToAccount(key).address;
+  await tx(B.owner, { address: B.vault, abi: OWNABLE_ABI, functionName: 'transferOwnership', args: [signer], gas: 100_000n });
+  await rpc('anvil_setBalance', [signer, `0x${(10n ** 18n).toString(16)}`]);
+  log(`${tag}: vault ownership moved on the fork to a throwaway signer ${signer}`);
+  const from = BigInt(await rpc('eth_blockNumber')) + 1n;
+  const { sends } = await startProxy(tag, ['--refuse-node-signing'], lag);
+  const r = run(env, script, ['--index', O.index, '--stage', 'announce', '--rpc', PROXY, '--plan', B.planFile, '--live'], `${tag}-announce`, { throwawayKey: key });
+  const res = { tag, script, signer, announceExit: r.status, announceOut: r.out };
+  res.lagStats = await rpc('lagproxy_stats', [], PROXY).catch(() => null);
+  await stopProxy();
+  res.plan = planRecords(loadPlan(B.planFile));
+  res.mined = await minedSince(from);
+  res.chain = await vaultState(B.vault);
+  res.sends = fs.existsSync(sends) ? fs.readFileSync(sends, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+  res.raw = [];
+  for (const x of res.sends.filter((y) => y.method === 'eth_sendRawTransaction')) {
+    const t = parseTransaction(x.params[0]);
+    res.raw.push({ to: getAddress(t.to), input: t.data, gas: t.gas.toString(), chainId: t.chainId, from: await recoverTransactionAddress({ serializedTransaction: x.params[0] }) });
+  }
+  fs.copyFileSync(B.planFile, path.join(O.work, `${tag}-plan.json`));
+  fs.writeFileSync(path.join(O.work, `${tag}-result.json`), JSON.stringify(res, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
+  return res;
+}
+
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function firstDiff(a, b, p = '') {
   if (same(a, b)) return null;
@@ -372,6 +422,10 @@ async function main() {
       out.mainLag = await variant(env, B, 'main-lagging', { script: 'basket-recon-main.mjs', lag: O.lag });
       out.mainClean = await variant(env, B, 'main-clean', { script: 'basket-recon-main.mjs', lag: 0 });
     }
+    if (O.pkVariant) {
+      out.pk = await variantPk(env, B, 'new-pk-lagging', { script: 'basket-recon.mjs', lag: O.lag });
+      if (O.mainRecon) out.mainPk = await variantPk(env, B, 'main-pk-lagging', { script: 'basket-recon-main.mjs', lag: O.lag });
+    }
 
     // ---- checks
     const c = out.clean;
@@ -394,6 +448,17 @@ async function main() {
       check('the tool on main, lagging node: the announcement is mined but NOT recorded (the failure being fixed)', ml.afterAnnounce.chain.pending !== ZERO32 && !ml.afterAnnounce.plan.announce && ml.announceExit !== 0, (ml.announceOut.split('\n').filter(Boolean).at(-1) ?? '').slice(0, 200));
       const strip = (m) => m.map(({ from, to, input, gas }) => ({ from, to, input, gas }));
       check('what is sent: the tool on main and this tool send the same transactions (from, to, input, gas; block and time too) on a clean node', same(strip(mc.mined), strip(c.mined)) && same(mc.mined, c.mined), firstDiff(mc.mined, c.mined) ?? `${c.mined.length} transaction(s)`);
+    }
+    if (out.pk) {
+      const p = out.pk;
+      const ref = c.mined.find((m) => m.input.startsWith(ANNOUNCE_SELECTOR));
+      check('KEEPER_PK path, lagging node that will not sign: announce exits 0, signed here (eth_sendRawTransaction only), recorded with the signer', p.announceExit === 0 && p.sends.length === 1 && p.sends.every((x) => x.method === 'eth_sendRawTransaction') && p.raw[0]?.from === p.signer && p.plan.announce?.pendingHash === p.chain.pending && p.plan.announce?.signer === p.signer && p.plan.sent.length === 1 && p.plan.sent[0].status === 'success', `exit ${p.announceExit}; sends ${p.sends.map((x) => x.method).join(',') || 'none'}; lag ${JSON.stringify(p.lagStats ?? {})}`);
+      check('KEEPER_PK path: the same transaction (to, calldata, gas) and the same pending tuple hash as the --from run', !!ref && p.raw.length === 1 && p.raw[0].to === ref.to && p.raw[0].input === ref.input && p.raw[0].gas === ref.gas && p.chain.pending === c.afterAnnounce.chain.pending, ref ? `gas ${ref.gas}; pending ${p.chain.pending}` : 'no announce in the --from run');
+      if (out.mainPk) {
+        const m = out.mainPk;
+        // viem prints the node's refusal (code -32000) as "Missing or invalid parameters."
+        check('the tool on main, KEEPER_PK path: it asks the node to sign (eth_sendTransaction), the node refuses — nothing sent, nothing announced (the defect fixed in 8812757)', m.announceExit !== 0 && m.mined.length === 0 && m.chain.pending === ZERO32 && (m.lagStats?.refusedNodeSigning ?? 0) >= 1 && m.sends.length >= 1 && m.sends.every((x) => x.method === 'eth_sendTransaction'), `exit ${m.announceExit}; asked the node to sign ${m.lagStats?.refusedNodeSigning ?? 0}×; mined ${m.mined.length}; last line: ${(m.announceOut.split('\n').filter(Boolean).at(-2) ?? '').slice(0, 120)}`);
+      }
     }
     if (out.stop) {
       const s = out.stop;
