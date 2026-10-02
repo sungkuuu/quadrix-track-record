@@ -3,16 +3,16 @@
   "index": "qx20",
   "ticker": "qX20",
   "date": "2026-10-02",
-  "generatedAt": "2026-10-02T06:01:57.394Z",
+  "generatedAt": "2026-10-02T06:59:58.654Z",
   "chainId": 91342,
   "rpc": "https://sepolia-rpc.giwa.io",
   "vault": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
   "block": {
-    "number": "37575790",
-    "timestamp": "1790920906"
+    "number": "37579272",
+    "timestamp": "1790924388"
   },
   "keeperRun": {
-    "id": "36971581217",
+    "id": "36976238654",
     "workflow": "basket-reconstitution"
   },
   "sources": {
@@ -55,10 +55,10 @@
       "refPrice": "8605900000",
       "refPriceUpdatedAt": "1790920554",
       "inRemoval": false,
-      "planRefPrice": "8597300000",
-      "priceA": 85973,
-      "priceB": 85927.86896444623,
-      "disagreementBps": 5
+      "planRefPrice": "8596900000",
+      "priceA": 85969,
+      "priceB": 86002.41694234163,
+      "disagreementBps": 4
     },
     {
       "i": 1,
@@ -70,10 +70,10 @@
       "refPrice": "2718820000",
       "refPriceUpdatedAt": "1790920559",
       "inRemoval": false,
-      "planRefPrice": "2719300000",
-      "priceA": 2719.3,
-      "priceB": 2717.812485670527,
-      "disagreementBps": 5
+      "planRefPrice": "2728870000",
+      "priceA": 2728.87,
+      "priceB": 2731.0953043413515,
+      "disagreementBps": 8
     },
     {
       "i": 2,
@@ -85,10 +85,10 @@
       "refPrice": "7770600000",
       "refPriceUpdatedAt": "1790920561",
       "inRemoval": false,
-      "planRefPrice": "7769000000",
-      "priceA": 776.9,
-      "priceB": 776.6013747942885,
-      "disagreementBps": 4
+      "planRefPrice": "7771400000",
+      "priceA": 777.14,
+      "priceB": 777.5158816035785,
+      "disagreementBps": 5
     },
     {
       "i": 3,
@@ -102,8 +102,8 @@
       "inRemoval": false,
       "planRefPrice": "1520000000",
       "priceA": 1.52,
-      "priceB": 1.5162793307249756,
-      "disagreementBps": 24
+      "priceB": 1.5234660389037649,
+      "disagreementBps": 23
     },
     {
       "i": 4,
@@ -115,10 +115,10 @@
       "refPrice": "12201000000",
       "refPriceUpdatedAt": "1790920571",
       "inRemoval": false,
-      "planRefPrice": "12187000000",
-      "priceA": 121.87,
-      "priceB": 121.85147003289423,
-      "disagreementBps": 2
+      "planRefPrice": "12178000000",
+      "priceA": 121.78,
+      "priceB": 121.88461895438259,
+      "disagreementBps": 9
     },
     {
       "i": 5,
@@ -130,10 +130,10 @@
       "refPrice": "3343410000",
       "refPriceUpdatedAt": "1790920576",
       "inRemoval": false,
-      "planRefPrice": "3341470000",
-      "priceA": 0.334147,
-      "priceB": 0.33406296039671535,
-      "disagreementBps": 3
+      "planRefPrice": "3340900000",
+      "priceA": 0.33409,
+      "priceB": 0.33415636243417385,
+      "disagreementBps": 2
     },
     {
       "i": 6,
@@ -145,10 +145,10 @@
       "refPrice": "8970000000",
       "refPriceUpdatedAt": "1790920578",
       "inRemoval": false,
-      "planRefPrice": "9009000000",
-      "priceA": 90.09,
-      "priceB": 90.15323222499295,
-      "disagreementBps": 7
+      "planRefPrice": "9015000000",
+      "priceA": 90.15,
+      "priceB": 90.18770393842765,
+      "disagreementBps": 4
     },
     {
       "i": 7,
@@ -160,10 +160,10 @@
       "refPrice": "9575600000",
       "refPriceUpdatedAt": "1790920580",
       "inRemoval": false,
-      "planRefPrice": "9582300000",
-      "priceA": 0.095823,
-      "priceB": 0.09576272875221994,
-      "disagreementBps": 6
+      "planRefPrice": "9592300000",
+      "priceA": 0.095923,
+      "priceB": 0.0960531315378706,
+      "disagreementBps": 14
     },
     {
       "i": 8,
@@ -175,10 +175,10 @@
       "refPrice": "1206561000",
       "refPriceUpdatedAt": "1790920585",
       "inRemoval": false,
-      "planRefPrice": "1203938000",
-      "priceA": 0.01203938,
-      "priceB": 0.012042620245201653,
-      "disagreementBps": 3
+      "planRefPrice": "1205854000",
+      "priceA": 0.01205854,
+      "priceB": 0.012066005254881789,
+      "disagreementBps": 6
     },
     {
       "i": 9,
@@ -190,10 +190,10 @@
       "refPrice": "1446000000",
       "refPriceUpdatedAt": "1790920587",
       "inRemoval": false,
-      "planRefPrice": "1445000000",
-      "priceA": 14.45,
-      "priceB": 14.434172119146401,
-      "disagreementBps": 11
+      "planRefPrice": "1442000000",
+      "priceA": 14.42,
+      "priceB": 14.433079357604285,
+      "disagreementBps": 9
     },
     {
       "i": 10,
@@ -205,10 +205,10 @@
       "refPrice": "2532360000",
       "refPriceUpdatedAt": "1790920592",
       "inRemoval": false,
-      "planRefPrice": "2533860000",
-      "priceA": 0.253386,
-      "priceB": 0.2531824754895449,
-      "disagreementBps": 8
+      "planRefPrice": "2546360000",
+      "priceA": 0.254636,
+      "priceB": 0.2548833026455486,
+      "disagreementBps": 10
     },
     {
       "i": 11,
@@ -220,10 +220,10 @@
       "refPrice": "2221570000",
       "refPriceUpdatedAt": "1790920597",
       "inRemoval": false,
-      "planRefPrice": "2220370000",
-      "priceA": 0.222037,
-      "priceB": 0.2219096556318218,
-      "disagreementBps": 6
+      "planRefPrice": "2222120000",
+      "priceA": 0.222212,
+      "priceB": 0.22250573400487156,
+      "disagreementBps": 13
     },
     {
       "i": 12,
@@ -235,10 +235,10 @@
       "refPrice": "3131600000",
       "refPriceUpdatedAt": "1790920599",
       "inRemoval": false,
-      "planRefPrice": "3134400000",
-      "priceA": 313.44,
-      "priceB": 313.16805806432524,
-      "disagreementBps": 9
+      "planRefPrice": "3148900000",
+      "priceA": 314.89,
+      "priceB": 314.9061520211088,
+      "disagreementBps": 1
     },
     {
       "i": 13,
@@ -250,10 +250,10 @@
       "refPrice": "9150000000",
       "refPriceUpdatedAt": "1790920601",
       "inRemoval": false,
-      "planRefPrice": "9140000000",
-      "priceA": 9.14,
-      "priceB": 9.127779313596328,
-      "disagreementBps": 13
+      "planRefPrice": "9160000000",
+      "priceA": 9.16,
+      "priceB": 9.175633147007613,
+      "disagreementBps": 17
     },
     {
       "i": 14,
@@ -265,10 +265,10 @@
       "refPrice": "1550000000",
       "refPriceUpdatedAt": "1790920603",
       "inRemoval": false,
-      "planRefPrice": "1550000000",
-      "priceA": 1.55,
-      "priceB": 1.5514695858644318,
-      "disagreementBps": 9
+      "planRefPrice": "1560000000",
+      "priceA": 1.56,
+      "priceB": 1.556928785881093,
+      "disagreementBps": 20
     },
     {
       "i": 15,
@@ -280,10 +280,10 @@
       "refPrice": "12022800000",
       "refPriceUpdatedAt": "1790920608",
       "inRemoval": false,
-      "planRefPrice": "12032900000",
-      "priceA": 0.120329,
-      "priceB": 0.12022905686074824,
-      "disagreementBps": 8
+      "planRefPrice": "11965000000",
+      "priceA": 0.11965,
+      "priceB": 0.1196485365968335,
+      "disagreementBps": 0
     },
     {
       "i": 16,
@@ -295,10 +295,10 @@
       "refPrice": "10431000000",
       "refPriceUpdatedAt": "1790920610",
       "inRemoval": false,
-      "planRefPrice": "10421400000",
-      "priceA": 0.104214,
-      "priceB": 0.10416732517144858,
-      "disagreementBps": 4
+      "planRefPrice": "10422600000",
+      "priceA": 0.104226,
+      "priceB": 0.1043356475590646,
+      "disagreementBps": 11
     },
     {
       "i": 17,
@@ -310,10 +310,10 @@
       "refPrice": "11070000000",
       "refPriceUpdatedAt": "1790920612",
       "inRemoval": false,
-      "planRefPrice": "11070000000",
-      "priceA": 11.07,
-      "priceB": 11.05734160228482,
-      "disagreementBps": 11
+      "planRefPrice": "11100000000",
+      "priceA": 11.1,
+      "priceB": 11.107714656349103,
+      "disagreementBps": 7
     },
     {
       "i": 18,
@@ -325,10 +325,10 @@
       "refPrice": "5870000000",
       "refPriceUpdatedAt": "1790920615",
       "inRemoval": false,
-      "planRefPrice": "5860000000",
-      "priceA": 0.00000586,
-      "priceB": 0.000005862376260688343,
-      "disagreementBps": 4
+      "planRefPrice": "5890000000",
+      "priceA": 0.00000589,
+      "priceB": 0.0000058995260320568135,
+      "disagreementBps": 16
     },
     {
       "i": 19,
@@ -340,10 +340,10 @@
       "refPrice": "11900000000",
       "refPriceUpdatedAt": "1790920620",
       "inRemoval": false,
-      "planRefPrice": "11800000000",
-      "priceA": 1.18,
-      "priceB": 1.18187426681676,
-      "disagreementBps": 16
+      "planRefPrice": "11900000000",
+      "priceA": 1.19,
+      "priceB": 1.1886445887884214,
+      "disagreementBps": 11
     }
   ],
   "adds": [
@@ -352,11 +352,11 @@
       "address": "0x1fA38B14335e3052B5C27D59D0C4b0597483a99D",
       "decimals": 12,
       "decimalsSource": "onchain 0x1fA38B14335e3052B5C27D59D0C4b0597483a99D (mZEC)",
-      "priceA": 1381.11,
-      "priceB": 1379.4130068681634,
-      "disagreementBps": 12,
-      "firstRefPrice": "1381110000",
-      "firstRefPriceB": "1379413006",
+      "priceA": 1380.16,
+      "priceB": 1382.4337983003186,
+      "disagreementBps": 16,
+      "firstRefPrice": "1380160000",
+      "firstRefPriceB": "1382433798",
       "targetUnits": 0.000011634297728576679
     },
     {
@@ -364,11 +364,11 @@
       "address": "0xf150Bc6654Ec9DAFd64f44B21CF5eB74fDDd5154",
       "decimals": 11,
       "decimalsSource": "onchain 0xf150Bc6654Ec9DAFd64f44B21CF5eB74fDDd5154 (mXMR)",
-      "priceA": 547.69,
-      "priceB": 547.4568478539826,
-      "disagreementBps": 4,
-      "firstRefPrice": "5476900000",
-      "firstRefPriceB": "5474568478",
+      "priceA": 550.64,
+      "priceB": 550.6517014111838,
+      "disagreementBps": 0,
+      "firstRefPrice": "5506400000",
+      "firstRefPriceB": "5506517014",
       "targetUnits": 0.000012889848373954468
     },
     {
@@ -376,11 +376,11 @@
       "address": "0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049",
       "decimals": 9,
       "decimalsSource": "onchain 0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049 (mNEAR)",
-      "priceA": 4.99,
-      "priceB": 4.9790012413111855,
-      "disagreementBps": 22,
-      "firstRefPrice": "4990000000",
-      "firstRefPriceB": "4979001241",
+      "priceA": 5,
+      "priceB": 5.008886310617246,
+      "disagreementBps": 18,
+      "firstRefPrice": "5000000000",
+      "firstRefPriceB": "5008886310",
       "targetUnits": 0.000896235611253252
     }
   ],
@@ -407,10 +407,22 @@
       "inRemoval": false
     }
   ],
-  "decisionSha256": null,
-  "decisionId": null,
+  "decisionSha256": "4e485c18d1f316639f087bfcd9da254221d6636ebd5819b6e3f59fe68dd5f424",
+  "decisionId": "2026-10-02-qx20-basket-reconstitution",
   "decisionFile": "trackrecord/decisions/2026-10-02-qx20-basket-reconstitution.md",
-  "announceTuple": null,
+  "announceTuple": {
+    "adds": [
+      "0x1fA38B14335e3052B5C27D59D0C4b0597483a99D",
+      "0xf150Bc6654Ec9DAFd64f44B21CF5eB74fDDd5154",
+      "0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049"
+    ],
+    "removes": [
+      "0x293eE9abd3F625D8844b66eA82A57dcD40c6156B",
+      "0x6DEeb1B63d7F4BAF8874452B80223521F6aBF895",
+      "0x1Bf8091DB22e3C34a9F28A53F38e3822E57195a3"
+    ],
+    "decisionSha256": "0x4e485c18d1f316639f087bfcd9da254221d6636ebd5819b6e3f59fe68dd5f424"
+  },
   "carried": null,
   "policy": {
     "tolerancePoints": 5,
@@ -426,126 +438,126 @@
   "targets": [
     {
       "symbol": "BTC",
-      "targetWeight": 0.6045871616427584,
-      "tradeTargetWeight": 0.5949533736423933,
-      "currentWeight": 0.5949533736423933,
+      "targetWeight": 0.604163005201097,
+      "tradeTargetWeight": 0.594514062799996,
+      "currentWeight": 0.594514062799996,
       "driftPoints": -1,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "ETH",
-      "targetWeight": 0.1698385616533635,
-      "tradeTargetWeight": 0.1795343495083947,
-      "currentWeight": 0.1795343495083947,
+      "targetWeight": 0.17032462512574525,
+      "tradeTargetWeight": 0.18004152537095638,
+      "currentWeight": 0.18004152537095638,
       "driftPoints": 1,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "BNB",
-      "targetWeight": 0.05292156256777644,
-      "tradeTargetWeight": 0.05659493631202839,
-      "currentWeight": 0.05659493631202839,
+      "targetWeight": 0.052903233168788595,
+      "tradeTargetWeight": 0.056573249412835515,
+      "currentWeight": 0.056573249412835515,
       "driftPoints": 0.4,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "XRP",
-      "targetWeight": 0.04897005730614819,
-      "tradeTargetWeight": 0.05227849711949029,
-      "currentWeight": 0.05227849711949029,
+      "targetWeight": 0.048937978588565745,
+      "tradeTargetWeight": 0.05224232555570264,
+      "currentWeight": 0.05224232555570264,
       "driftPoints": 0.3,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "SOL",
-      "targetWeight": 0.0366596610618674,
-      "tradeTargetWeight": 0.03902663880196989,
-      "currentWeight": 0.03902663880196989,
+      "targetWeight": 0.03660859136512865,
+      "tradeTargetWeight": 0.03897083530417326,
+      "currentWeight": 0.03897083530417326,
       "driftPoints": 0.2,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "TRX",
-      "targetWeight": 0.016237834100336426,
-      "tradeTargetWeight": 0.01735301245093303,
-      "currentWeight": 0.01735301245093303,
+      "targetWeight": 0.01622442912099371,
+      "tradeTargetWeight": 0.017338047786537334,
+      "currentWeight": 0.017338047786537334,
       "driftPoints": 0.1,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "HYPE",
-      "targetWeight": 0.010252387722909494,
-      "tradeTargetWeight": 0.010961230961299692,
-      "currentWeight": 0.010961230961299692,
+      "targetWeight": 0.010252495335954907,
+      "tradeTargetWeight": 0.010960942006689707,
+      "currentWeight": 0.010960942006689707,
       "driftPoints": 0.1,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "DOGE",
-      "targetWeight": 0.007653530451358824,
-      "tradeTargetWeight": 0.00816373574970427,
-      "currentWeight": 0.00816373574970427,
+      "targetWeight": 0.007656498790199658,
+      "tradeTargetWeight": 0.008166600954448162,
+      "currentWeight": 0.008166600954448162,
       "driftPoints": 0.1,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "RAIN",
-      "targetWeight": 0.004368144338754785,
-      "tradeTargetWeight": 0.004670814781074339,
-      "currentWeight": 0.004670814781074339,
+      "targetWeight": 0.0043722300108017175,
+      "tradeTargetWeight": 0.0046750112353102944,
+      "currentWeight": 0.0046750112353102944,
       "driftPoints": 0,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "LINK",
-      "targetWeight": 0.005529685662514958,
-      "tradeTargetWeight": 0.005913932601764803,
-      "currentWeight": 0.005913932601764803,
+      "targetWeight": 0.005514590546511483,
+      "tradeTargetWeight": 0.005897571178136678,
+      "currentWeight": 0.005897571178136678,
       "driftPoints": 0,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "ADA",
-      "targetWeight": 0.0048641579905015836,
-      "tradeTargetWeight": 0.005196637436994401,
-      "currentWeight": 0.005196637436994401,
+      "targetWeight": 0.004884951708331731,
+      "tradeTargetWeight": 0.0052186601124253,
+      "currentWeight": 0.0052186601124253,
       "driftPoints": 0,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "XLM",
-      "targetWeight": 0.0039790006028531865,
-      "tradeTargetWeight": 0.004213855253984984,
-      "currentWeight": 0.004213855253984984,
+      "targetWeight": 0.003979528109430745,
+      "tradeTargetWeight": 0.004214258563047974,
+      "currentWeight": 0.004214258563047974,
       "driftPoints": 0,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "BCH",
-      "targetWeight": 0.0032227820658730843,
-      "tradeTargetWeight": 0.003443023737130635,
-      "currentWeight": 0.003443023737130635,
+      "targetWeight": 0.0032355700210722187,
+      "tradeTargetWeight": 0.003456558203438233,
+      "currentWeight": 0.003456558203438233,
       "driftPoints": 0,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "UNI",
-      "targetWeight": 0.0028987967465334153,
-      "tradeTargetWeight": 0.0031158593307955935,
-      "currentWeight": 0.0031158593307955935,
+      "targetWeight": 0.0029032367824812578,
+      "tradeTargetWeight": 0.0031205168189552468,
+      "currentWeight": 0.0031205168189552468,
       "driftPoints": 0,
       "traded": false,
       "reason": null
@@ -554,16 +566,16 @@
       "symbol": "GRAM",
       "targetWeight": 0,
       "tradeTargetWeight": 0,
-      "currentWeight": 0.002350610169817936,
+      "currentWeight": 0.0023641385134814713,
       "driftPoints": 0.2,
       "traded": true,
       "reason": "remove"
     },
     {
       "symbol": "CC",
-      "targetWeight": 0.0024476083736377392,
-      "tradeTargetWeight": 0.00259665243579054,
-      "currentWeight": 0.00259665243579054,
+      "targetWeight": 0.002432202553724202,
+      "tradeTargetWeight": 0.0025802133939161593,
+      "currentWeight": 0.0025802133939161593,
       "driftPoints": 0,
       "traded": false,
       "reason": null
@@ -572,16 +584,16 @@
       "symbol": "HBAR",
       "targetWeight": 0,
       "tradeTargetWeight": 0,
-      "currentWeight": 0.0024989517991882383,
+      "currentWeight": 0.002497510320415153,
       "driftPoints": 0.2,
       "traded": true,
       "reason": "remove"
     },
     {
       "symbol": "AVAX",
-      "targetWeight": 0.002510309208648574,
-      "tradeTargetWeight": 0.002614950513996839,
-      "currentWeight": 0.002614950513996839,
+      "targetWeight": 0.0025154633349655886,
+      "tradeTargetWeight": 0.0026202229096929765,
+      "currentWeight": 0.0026202229096929765,
       "driftPoints": 0,
       "traded": false,
       "reason": null
@@ -590,24 +602,24 @@
       "symbol": "SHIB",
       "targetWeight": 0,
       "tradeTargetWeight": 0,
-      "currentWeight": 0.0018881994648314536,
+      "currentWeight": 0.0018965528788965256,
       "driftPoints": 0.2,
       "traded": true,
       "reason": "remove"
     },
     {
       "symbol": "SUI",
-      "targetWeight": 0.0024713490161022787,
-      "tradeTargetWeight": 0.0026307379284167495,
-      "currentWeight": 0.0026307379284167495,
+      "targetWeight": 0.0024906600306648834,
+      "tradeTargetWeight": 0.0026511966809449274,
+      "currentWeight": 0.0026511966809449274,
       "driftPoints": 0,
       "traded": false,
       "reason": null
     },
     {
       "symbol": "ZEC",
-      "targetWeight": 0.011985591283021936,
-      "tradeTargetWeight": 0.003922594280516147,
+      "targetWeight": 0.01196950098706007,
+      "tradeTargetWeight": 0.003926675404143508,
       "currentWeight": 0,
       "driftPoints": -1.2,
       "traded": true,
@@ -615,8 +627,8 @@
     },
     {
       "symbol": "XMR",
-      "targetWeight": 0.005265912527391778,
-      "tradeTargetWeight": 0.001723405869085523,
+      "targetWeight": 0.0052908079834308955,
+      "tradeTargetWeight": 0.0017356851884657901,
       "currentWeight": 0,
       "driftPoints": -0.5,
       "traded": true,
@@ -624,8 +636,8 @@
     },
     {
       "symbol": "NEAR",
-      "targetWeight": 0.0033359056776480207,
-      "tradeTargetWeight": 0.0010917612842359578,
+      "targetWeight": 0.0033404012350520236,
+      "tradeTargetWeight": 0.0010958411201770935,
       "currentWeight": 0,
       "driftPoints": -0.3,
       "traded": true,
@@ -640,9 +652,9 @@
       "buy": "ZEC",
       "buyAddress": "0x1fA38B14335e3052B5C27D59D0C4b0597483a99D",
       "sellAmount": "280713318254",
-      "sellValueUsd": 2925.4257748522355,
-      "expectedBuyAtFair": "2118170004455",
-      "expectedBuyAtOpen": "2160533404545",
+      "sellValueUsd": 2925.7626308341405,
+      "expectedBuyAtFair": "2119872066162",
+      "expectedBuyAtOpen": "2162269507486",
       "duration": 1800,
       "drain": true,
       "reason": "remove → add"
@@ -653,10 +665,10 @@
       "sellAddress": "0x293eE9abd3F625D8844b66eA82A57dcD40c6156B",
       "buy": "ZEC",
       "buyAddress": "0x1fA38B14335e3052B5C27D59D0C4b0597483a99D",
-      "sellAmount": "1075227701575",
-      "sellValueUsd": 1666.6029374412499,
-      "expectedBuyAtFair": "1206712671288",
-      "expectedBuyAtOpen": "1230846924714",
+      "sellAmount": "1073222072470",
+      "sellValueUsd": 1674.2264330532,
+      "expectedBuyAtFair": "1213066914745",
+      "expectedBuyAtOpen": "1237328253040",
       "duration": 1800,
       "drain": false,
       "reason": "remove → add"
@@ -667,10 +679,10 @@
       "sellAddress": "0x293eE9abd3F625D8844b66eA82A57dcD40c6156B",
       "buy": "XMR",
       "buyAddress": "0xf150Bc6654Ec9DAFd64f44B21CF5eB74fDDd5154",
-      "sellAmount": "700106487550",
-      "sellValueUsd": 1085.1650557025,
-      "expectedBuyAtFair": "198134903998",
-      "expectedBuyAtOpen": "202097602078",
+      "sellAmount": "702112116655",
+      "sellValueUsd": 1095.2949019818,
+      "expectedBuyAtFair": "198913065158",
+      "expectedBuyAtOpen": "202891326462",
       "duration": 1800,
       "drain": true,
       "reason": "remove → add"
@@ -681,10 +693,10 @@
       "sellAddress": "0x1Bf8091DB22e3C34a9F28A53F38e3822E57195a3",
       "buy": "XMR",
       "buyAddress": "0xf150Bc6654Ec9DAFd64f44B21CF5eB74fDDd5154",
-      "sellAmount": "159105671078",
-      "sellValueUsd": 932.3592325170799,
-      "expectedBuyAtFair": "170234846815",
-      "expectedBuyAtOpen": "173639543752",
+      "sellAmount": "159254865122",
+      "sellValueUsd": 938.01115556858,
+      "expectedBuyAtFair": "170349258240",
+      "expectedBuyAtOpen": "173756243405",
       "duration": 1800,
       "drain": false,
       "reason": "remove → add"
@@ -695,10 +707,10 @@
       "sellAddress": "0x1Bf8091DB22e3C34a9F28A53F38e3822E57195a3",
       "buy": "NEAR",
       "buyAddress": "0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049",
-      "sellAmount": "218102818295",
-      "sellValueUsd": 1278.0825152087,
-      "expectedBuyAtFair": "256128760563",
-      "expectedBuyAtOpen": "261251335775",
+      "sellAmount": "217953624251",
+      "sellValueUsd": 1283.74684683839,
+      "expectedBuyAtFair": "256749369368",
+      "expectedBuyAtOpen": "261884356756",
       "duration": 1800,
       "drain": true,
       "reason": "remove → add"
@@ -707,73 +719,73 @@
   "expectedPostTradeWeights": [
     {
       "symbol": "BTC",
-      "weight": 0.5949533736423879,
-      "targetWeight": 0.6045871616427584
+      "weight": 0.5945140627999902,
+      "targetWeight": 0.604163005201097
     },
     {
       "symbol": "ETH",
-      "weight": 0.17953434950839306,
-      "targetWeight": 0.1698385616533635
+      "weight": 0.18004152537095464,
+      "targetWeight": 0.17032462512574525
     },
     {
       "symbol": "BNB",
-      "weight": 0.05659493631202787,
-      "targetWeight": 0.05292156256777644
+      "weight": 0.056573249412834974,
+      "targetWeight": 0.052903233168788595
     },
     {
       "symbol": "XRP",
-      "weight": 0.052278497119489814,
-      "targetWeight": 0.04897005730614819
+      "weight": 0.05224232555570214,
+      "targetWeight": 0.048937978588565745
     },
     {
       "symbol": "SOL",
-      "weight": 0.039026638801969535,
-      "targetWeight": 0.0366596610618674
+      "weight": 0.038970835304172884,
+      "targetWeight": 0.03660859136512865
     },
     {
       "symbol": "TRX",
-      "weight": 0.017353012450932872,
-      "targetWeight": 0.016237834100336426
+      "weight": 0.017338047786537168,
+      "targetWeight": 0.01622442912099371
     },
     {
       "symbol": "HYPE",
-      "weight": 0.010961230961299591,
-      "targetWeight": 0.010252387722909494
+      "weight": 0.010960942006689603,
+      "targetWeight": 0.010252495335954907
     },
     {
       "symbol": "DOGE",
-      "weight": 0.008163735749704193,
-      "targetWeight": 0.007653530451358824
+      "weight": 0.008166600954448084,
+      "targetWeight": 0.007656498790199658
     },
     {
       "symbol": "RAIN",
-      "weight": 0.004670814781074296,
-      "targetWeight": 0.004368144338754785
+      "weight": 0.00467501123531025,
+      "targetWeight": 0.0043722300108017175
     },
     {
       "symbol": "LINK",
-      "weight": 0.0059139326017647485,
-      "targetWeight": 0.005529685662514958
+      "weight": 0.005897571178136622,
+      "targetWeight": 0.005514590546511483
     },
     {
       "symbol": "ADA",
-      "weight": 0.0051966374369943535,
-      "targetWeight": 0.0048641579905015836
+      "weight": 0.00521866011242525,
+      "targetWeight": 0.004884951708331731
     },
     {
       "symbol": "XLM",
-      "weight": 0.004213855253984945,
-      "targetWeight": 0.0039790006028531865
+      "weight": 0.004214258563047933,
+      "targetWeight": 0.003979528109430745
     },
     {
       "symbol": "BCH",
-      "weight": 0.0034430237371306034,
-      "targetWeight": 0.0032227820658730843
+      "weight": 0.0034565582034381996,
+      "targetWeight": 0.0032355700210722187
     },
     {
       "symbol": "UNI",
-      "weight": 0.003115859330795565,
-      "targetWeight": 0.0028987967465334153
+      "weight": 0.0031205168189552164,
+      "targetWeight": 0.0029032367824812578
     },
     {
       "symbol": "GRAM",
@@ -782,8 +794,8 @@
     },
     {
       "symbol": "CC",
-      "weight": 0.002596652435790516,
-      "targetWeight": 0.0024476083736377392
+      "weight": 0.0025802133939161346,
+      "targetWeight": 0.002432202553724202
     },
     {
       "symbol": "HBAR",
@@ -792,8 +804,8 @@
     },
     {
       "symbol": "AVAX",
-      "weight": 0.002614950513996815,
-      "targetWeight": 0.002510309208648574
+      "weight": 0.0026202229096929514,
+      "targetWeight": 0.0025154633349655886
     },
     {
       "symbol": "SHIB",
@@ -802,28 +814,27 @@
     },
     {
       "symbol": "SUI",
-      "weight": 0.002630737928416725,
-      "targetWeight": 0.0024713490161022787
+      "weight": 0.002651196680944902,
+      "targetWeight": 0.0024906600306648834
     },
     {
       "symbol": "ZEC",
-      "weight": 0.003922594280517744,
-      "targetWeight": 0.011985591283021936
+      "weight": 0.003926675404143472,
+      "targetWeight": 0.01196950098706007
     },
     {
       "symbol": "XMR",
-      "weight": 0.0017234058690917364,
-      "targetWeight": 0.005265912527391778
+      "weight": 0.0017356851884692244,
+      "targetWeight": 0.0052908079834308955
     },
     {
       "symbol": "NEAR",
-      "weight": 0.0010917612842372588,
-      "targetWeight": 0.0033359056776480207
+      "weight": 0.0010958411201899842,
+      "targetWeight": 0.0033404012350520236
     }
   ],
   "notes": [
-    "The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference.",
-    "announce tuple incomplete: addresses ok; decisionSha256 null (anchor the decision document first)"
+    "The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference."
   ],
   "announce": null,
   "execute": null,
