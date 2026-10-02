@@ -92,3 +92,22 @@ test('blockAtLeast: the RPC head, never below the floor (a lagging head is raise
   await blockAtLeast(pc, 0n);
   assert.deepEqual(pc.calls[0], ['getBlockNumber', 0], 'uncached head');
 });
+
+test('eventsIn: only the named emitter\'s events — a same-signature event from another contract in the receipt is not ours', async () => {
+  const { encodeEventTopics, encodeAbiParameters, parseAbi } = await import('viem');
+  const { eventsIn } = await import('../readback.mjs');
+  const abi = parseAbi(['event AuctionOpened(uint256 indexed id, address indexed sellAsset, address indexed buyAsset, uint256 sellAmount, uint64 duration)']);
+  const VAULT = '0x88D3b5f638fE0d331797C612a5496bD8f0491FD4';
+  const OTHER = '0x1111111111111111111111111111111111111111';
+  const A = '0x2222222222222222222222222222222222222222';
+  const B = '0x3333333333333333333333333333333333333333';
+  const log = (address, id) => ({
+    address, topics: encodeEventTopics({ abi, eventName: 'AuctionOpened', args: { id, sellAsset: A, buyAsset: B } }),
+    data: encodeAbiParameters([{ type: 'uint256' }, { type: 'uint64' }], [5n, 1800n]), blockNumber: 1n, logIndex: 0, transactionHash: `0x${'a'.repeat(64)}`,
+  });
+  // The other contract's log comes FIRST, so taking [0] of an unfiltered parse would name its id.
+  const receipt = { logs: [log(OTHER, 99n), log(VAULT.toLowerCase(), 7n)] };
+  const got = eventsIn(receipt, abi, 'AuctionOpened', VAULT);
+  assert.equal(got.length, 1);
+  assert.equal(got[0].args.id, 7n);
+});
