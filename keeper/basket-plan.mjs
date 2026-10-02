@@ -417,6 +417,24 @@ export const BLOCK_ON_RULE_MARKS = true;
 export const BLOCK_REASON = 'block: the book re-weighted every name of this block';
 
 /**
+ * When a plan leaves a block untraded, the largest gap between the vault and
+ * the book among the block's names, as a note for the operator (no
+ * threshold: it is printed whatever its size). A session stopped after its
+ * registry change was executed leaves the entering names short, and a plan
+ * made after that sees no add to mark it: without --reweight-block it plans
+ * nothing for that block and the shortfall stays (second review of the
+ * planner change, rehearsal ⑧c: 0 auctions). The note names the gap and the
+ * flag. Pure; returns null when every name is traded.
+ */
+export function untradedGapNote(targets) {
+  const held = targets.filter((t) => !t.traded && (t.bookUnits ?? (t.targetWeight > 0 ? 1 : 0)) > 0);
+  if (held.length === 0) return null;
+  const worst = held.reduce((m, t) => (Math.abs(t.currentWeight - t.targetWeight) > Math.abs(m.currentWeight - m.targetWeight) ? t : m));
+  const gap = (worst.currentWeight - worst.targetWeight) * 100;
+  return `untraded: ${held.length} name(s) of the book are not traded by this plan; the largest gap between the vault and the book among them is ${worst.symbol} ${gap >= 0 ? '+' : ''}${gap.toFixed(4)} pt — if an earlier session of an executed registry change was stopped before it finished, plan again with --reweight-block (workflow input reweight_block)`;
+}
+
+/**
  * Which names the rulebook says to trade, and the auctions that do it.
  * Pure over the rows given; exported so the executor can recompute residual
  * trades from live balances with the same rule.
@@ -874,6 +892,8 @@ export async function buildPlan(o) {
     log(`  #${t.seq} sell ${t.sell} → buy ${t.buy}: ${t.sellAmount} base units ($${t.sellValueUsd.toFixed(0)})${t.drain ? ' [drain]' : ''} ${t.duration}s`);
   }
   for (const n of plan0.notes) log(`  ${n}`);
+  const gapNote = untradedGapNote(plan0.targets);
+  if (gapNote) log(`  NOTE ${gapNote}`);
 
   const plan = {
     schema: 'basket-recon-plan/1',
@@ -919,6 +939,7 @@ export async function buildPlan(o) {
       ...book.notes,
       ...(o.reweightBlock ? ['--reweight-block: every block traded to the book although no registry change is pending in this plan (a session resumed after its registry change was executed)'] : []),
       ...plan0.notes,
+      ...(gapNote ? [gapNote] : []),
       'The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference.',
       ...(weightOnly ? ['nothing to announce (weight-only change): the registry is unchanged, so no announcement is made — auctions only'] : []),
       ...(announceTuple || weightOnly ? [] : [`announce tuple incomplete: ${adds.filter((a) => !a.address).map((a) => a.symbol).join(',') || 'addresses ok'}${decisionSha256 ? '' : '; decisionSha256 null (anchor the decision document first)'}`]),

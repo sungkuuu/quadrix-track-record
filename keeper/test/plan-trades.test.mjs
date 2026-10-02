@@ -18,7 +18,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { computeTrades, planRows, toRefPrice, BLOCK_ON_RULE_MARKS, BLOCK_REASON } from '../basket-plan.mjs';
+import { computeTrades, planRows, toRefPrice, untradedGapNote, BLOCK_ON_RULE_MARKS, BLOCK_REASON } from '../basket-plan.mjs';
 import { residual, residualBound, sizingRefOf, VERIFY_FIXED_POINTS } from '../basket-recon.mjs';
 import { cases, savedRows, applyFills, sig, E18, RANKED } from './plan-trades.cases.mjs';
 
@@ -423,6 +423,26 @@ test('sizingRefOf: chainRefAtPlan of a registry name, the first reference of an 
   assert.equal(sizingRefOf({ registry: [{ address: A, planRefPrice: '9' }], adds: [{ address: N, firstRefPrice: '456' }] }, N), null, 'a plan made before chainRefAtPlan: today\'s reference, as before');
   assert.equal(sizingRefOf({ registry: [{ address: A, planRefPrice: '9' }], adds: [] }, A), null);
   assert.equal(sizingRefOf(plan, '0x00000000000000000000000000000000000000c3'), null);
+});
+
+test('untradedGapNote: a plan that trades nothing names the largest gap to the book and --reweight-block; a plan that trades every name has no note', () => {
+  // the qAI case of the second review (⑧c): the registry change executed, a session stopped, no add left to mark
+  const fx = SAVED.qai;
+  const rows = savedRows(fx);
+  const res = computeTrades(rows, fx.policy);
+  // after execute and #1-#7 (the two drains finalized): no add left to mark, ICP still short of the book but
+  // inside the 5-point tolerance — the stop of rehearsal ⑧c
+  const half = applyFills(rows, res.trades.slice(0, 7)).filter((r) => !r.isRemove).map((r) => ({ ...r, isAdd: false, bookUnits: 1 }));
+  const stopped = computeTrades(half, fx.policy);
+  assert.equal(stopped.trades.length, 0, 'nothing opens a block: the plan trades nothing and the entering names stay short');
+  const note = untradedGapNote(stopped.targets.map((t) => ({ ...t, bookUnits: half.find((r) => r.symbol === t.symbol).bookUnits })));
+  assert.match(note ?? '', /largest gap between the vault and the book among them is \w+ [+-]\d+\.\d{4} pt .*--reweight-block/);
+  const resumed = computeTrades(half, fx.policy, { reweightBlock: true });
+  assert.equal(untradedGapNote(resumed.targets.map((t) => ({ ...t, bookUnits: half.find((r) => r.symbol === t.symbol).bookUnits }))), null);
+  assert.ok(resumed.trades.length > 0);
+  assert.equal(untradedGapNote([]), null);
+  const two = untradedGapNote([{ symbol: 'A', traded: false, bookUnits: 2, targetWeight: 0.6, currentWeight: 0.58 }, { symbol: 'B', traded: false, bookUnits: 1, targetWeight: 0.4, currentWeight: 0.42 }]);
+  assert.match(two, /A -2\.0000 pt|B \+2\.0000 pt/);
 });
 
 test('weights helper sanity: the fixture vaults are worth what the spec says', () => {
