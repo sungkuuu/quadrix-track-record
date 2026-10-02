@@ -409,10 +409,40 @@
   "notes": [
     "The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference."
   ],
-  "announce": null,
+  "announce": {
+    "txHash": "0xdbf857384c35bfee79dfaa1c405bd201a5519cc397ee99a0da5985c3bf402803",
+    "block": "37579480",
+    "at": "2026-10-02T07:03:16.000Z",
+    "eta": "1791529396",
+    "etaIso": "2026-10-09T07:03:16.000Z",
+    "pendingHash": "0xd44710784045a611f1117403e8dd579550a949fc5bd3b05f60f3e3f72c8310f4",
+    "tuple": {
+      "adds": [
+        "0x2BefB7Fcb681b20014c9E19b023ae4c9ccB28D4d"
+      ],
+      "removes": [],
+      "decisionSha256": "0xca01c383847e52e7cedb4325da8216f5827a58d79eb165e5d6598545617e86d0"
+    },
+    "decisionId": "2026-10-02-triens-basket-reconstitution",
+    "signer": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902"
+  },
   "execute": null,
   "firstPrices": [],
   "fills": [],
   "finalize": [],
-  "verify": null
+  "verify": null,
+  "sent": [
+    {
+      "what": "announce",
+      "call": "announceRegistryChange([0x2BefB7Fcb681b20014c9E19b023ae4c9ccB28D4d], [], 0xca01c383847e52e7cedb4325da8216f5827a58d79eb165e5d6598545617e86d0)",
+      "to": "0xaFd422C43e8a0aFD36a9bce01Bb20DB19e4324A5",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xdbf857384c35bfee79dfaa1c405bd201a5519cc397ee99a0da5985c3bf402803",
+      "sentAt": "2026-10-02T07:03:15.008Z",
+      "block": "37579480",
+      "status": "success",
+      "gasUsed": "76214",
+      "at": "2026-10-02T07:03:16.000Z"
+    }
+  ]
 }
