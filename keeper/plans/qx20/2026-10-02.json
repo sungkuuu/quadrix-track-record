@@ -836,10 +836,46 @@
   "notes": [
     "The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference."
   ],
-  "announce": null,
+  "announce": {
+    "txHash": "0xdf571a7c2c7a785a1bb83248e9aaf5f952ebf41219ea4f277a22cabbcaeeb142",
+    "block": "37579362",
+    "at": "2026-10-02T07:01:18.000Z",
+    "eta": "1791529278",
+    "etaIso": "2026-10-09T07:01:18.000Z",
+    "pendingHash": "0x1e6d5f42076b949391ccde618b0289a7559b10716227f92681a819ce7417b96c",
+    "tuple": {
+      "adds": [
+        "0x1fA38B14335e3052B5C27D59D0C4b0597483a99D",
+        "0xf150Bc6654Ec9DAFd64f44B21CF5eB74fDDd5154",
+        "0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049"
+      ],
+      "removes": [
+        "0x293eE9abd3F625D8844b66eA82A57dcD40c6156B",
+        "0x6DEeb1B63d7F4BAF8874452B80223521F6aBF895",
+        "0x1Bf8091DB22e3C34a9F28A53F38e3822E57195a3"
+      ],
+      "decisionSha256": "0x4e485c18d1f316639f087bfcd9da254221d6636ebd5819b6e3f59fe68dd5f424"
+    },
+    "decisionId": "2026-10-02-qx20-basket-reconstitution",
+    "signer": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902"
+  },
   "execute": null,
   "firstPrices": [],
   "fills": [],
   "finalize": [],
-  "verify": null
+  "verify": null,
+  "sent": [
+    {
+      "what": "announce",
+      "call": "announceRegistryChange([0x1fA38B14335e3052B5C27D59D0C4b0597483a99D, 0xf150Bc6654Ec9DAFd64f44B21CF5eB74fDDd5154, 0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049], [0x293eE9abd3F625D8844b66eA82A57dcD40c6156B, 0x6DEeb1B63d7F4BAF8874452B80223521F6aBF895, 0x1Bf8091DB22e3C34a9F28A53F38e3822E57195a3], 0x4e485c18d1f316639f087bfcd9da254221d6636ebd5819b6e3f59fe68dd5f424)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xdf571a7c2c7a785a1bb83248e9aaf5f952ebf41219ea4f277a22cabbcaeeb142",
+      "sentAt": "2026-10-02T07:01:17.022Z",
+      "block": "37579362",
+      "status": "success",
+      "gasUsed": "100883",
+      "at": "2026-10-02T07:01:18.000Z"
+    }
+  ]
 }
