@@ -549,7 +549,7 @@ function sessionChecks(F, res, label) {
  *  runner), the plan file put back to the version the plan stage committed
  *  (a terminated job commits nothing), `between` (e.g. the day's mark), then
  *  day7 dispatched again. */
-async function killedThenRerun(env, F, label, at, { between = null } = {}) {
+async function killedThenRerun(env, F, label, at, { between = null, rerunStage = 'day7' } = {}) {
   await revert(F.snap);
   F.snap = await snapshot();
   savePlan(F.planFile, loadPlan(F.savedPlan));
@@ -562,7 +562,7 @@ async function killedThenRerun(env, F, label, at, { between = null } = {}) {
   const fillsAtKill = await fillsSince(F.vault, fromBlock);
   savePlan(F.planFile, loadPlan(F.savedPlan));
   if (between) await between();
-  const r2 = run(env, 'basket-recon.mjs', recon(F.index, 'day7', F.planFile, extra), `day7 — ${label} (re-run)`);
+  const r2 = run(env, 'basket-recon.mjs', recon(F.index, rerunStage, F.planFile, rerunStage === 'verify' ? [] : extra), `${rerunStage} — ${label} (re-run)`);
   const plan = loadPlan(F.planFile);
   const fills = await fillsSince(F.vault, fromBlock);
   const v = await readVault(reader, F.vault);
@@ -653,6 +653,13 @@ async function stopResume(env, F) {
       fs.renameSync(`${pendingFile}.executed`, pendingFile);
       savePlan(F.planFile, loadPlan(F.savedPlan));
     }
+  }
+  {
+    // ⑧d a later UTC day: auctions/day7 refuse the old plan before reading anything; verify (dry run) records first.
+    const res = await killedThenRerun(env, F, 'stopped, verify records it', { point: 'before-fill', seq: late.seq }, { rerunStage: 'verify' });
+    const adopted = res.plan.fills.filter((f) => f.adopted);
+    check('⑧d a dry-run verify on the old plan records the stopped job\'s fills from the chain (a later UTC day\'s first step), and fails its weight checks (the session is not finished)', res.r1.status === 137 && res.fillsAtKill.length > 0 && adopted.length === res.fillsAtKill.length && res.r2.status !== 0 && /verify: \d+ check\(s\) failed/.test(res.r2.out), `recorded ${adopted.length}/${res.fillsAtKill.length}; ${(res.r2.out.match(/verify: [^\n]*/) ?? [`exit ${res.r2.status}`])[0]}`, '⑧');
+    savePlan(F.planFile, loadPlan(F.savedPlan));
   }
 }
 
