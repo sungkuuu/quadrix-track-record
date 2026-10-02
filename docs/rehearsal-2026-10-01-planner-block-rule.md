@@ -463,3 +463,16 @@ sent outside the fork.
 A first attempt of this run stopped at ⑧a with the kill hook unparsed (a literal newline written
 into the generated hook; fixed in `0feca94`): the killed run exited at once and its re-run was a
 plain session. That attempt's baseline and ⑨ passed with the numbers above.
+
+### Second review, Triens on the final code
+
+Commit `cf99e26` (with the plan note on untraded names, `406955f`), fork block 37569547, the same
+flags as the qAI run. **54 PASS / 0 FAIL**, 354 s local. Baseline: 8 auctions, AERO 0.673% against
+the book's 0.672% (closest to its bound AERO +0.0003 pt, bound 0.0016 pt), BTC and working capital
+untouched; sleeves against the book: working capital −0.0161 pt, BTC −0.0096 pt, Quality +0.0257 pt.
+⑧b killed with auction 4 (#5) open: re-run cancels it, 8 fills for 8 planned. ⑧c after the mark
+moved working capital's reference: the resume plan without `--reweight-block` plans 0 auctions and its
+note reads "11 name(s) of the book are not traded … the largest gap … AERO −0.1060 pt … plan again
+with --reweight-block"; with the flag, 4 auctions over the 9 Quality names, BTC and working capital
+untouched, verify passes. ⑧d: the dry-run verify records the 4 fills. (Triens has no removal, so ⑧a
+does not apply.) Every Triens plan prints the note, for BTC and working capital.
