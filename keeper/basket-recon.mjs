@@ -1317,7 +1317,10 @@ export async function stageAuctions(ctx) {
 export async function stageFinalize(ctx) {
   const { plan, log } = ctx;
   const v = await vaultNow(ctx);
-  await reconcileSession(ctx, v);
+  // An unrecorded fill is held to the HALT rules here too: once recorded it
+  // is no longer "unrecorded", so the auctions stage that runs after this one
+  // would not see it again.
+  await reconcileSession(ctx, v, { halt: true });
   const inRem = v.assets.filter((a) => a.inRemoval);
   if (inRem.length === 0) { log('no asset is in removal — nothing to finalize'); return; }
   let blocked = 0;
@@ -1346,8 +1349,11 @@ export async function stageVerify(ctx) {
   const { plan, log } = ctx;
   const v = await vaultNow(ctx);
   // verify writes plan.verify in any mode; it records what the chain shows
-  // an earlier run did (fills, finalized removals) the same way.
-  await reconcileSession(ctx, v, { write: true });
+  // an earlier run did (fills, finalized removals) the same way — and, as the
+  // auctions stage does, HALTs (after recording) on an adopted fill that
+  // breaks the fill policy: a verify that recorded it silently, dry run
+  // included, would leave nothing for the auctions stage to HALT on.
+  await reconcileSession(ctx, v, { write: true, halt: true });
   const fails = [];
   const check = (ok, msg) => { log(`  ${ok ? 'ok  ' : 'FAIL'} ${msg}`); if (!ok) fails.push(msg); };
   check(v.pendingRegistryChange === ZERO32, `no pending registry change (${v.pendingRegistryChange === ZERO32 ? 'none' : v.pendingRegistryChange})`);

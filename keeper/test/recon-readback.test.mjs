@@ -365,6 +365,19 @@ test('fills: under the fair policy an adopted fill outside the fair window HALTs
   assert.equal(loadPlan(f).fills.length, 1, 'recorded before the HALT');
 });
 
+test('fills: verify (dry run too) and finalize hold an adopted fill to the same HALT rules — once recorded, the auctions stage would not see it again', async () => {
+  for (const [stage, live] of [[stageVerify, false], [stageFinalize, true]]) {
+    const chain = newChain();
+    const pend = await priced(chain);
+    const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, trades: [T1] }), `plan-${stage.name}.json`);
+    earlierFill(chain, { sell: AAA, buy: ASTER, amount: 100n * 10n ** 8n, elapsed: 60n }); // factor 10190: above the window
+    const n0 = chain.sent.length;
+    await assert.rejects(stage(ctxFor(chain, f, { live })), /HALT: adopted fill .* factor 10190/, stage.name);
+    if (stage === stageVerify) assert.equal(loadPlan(f).fills.length, 1, 'verify records it before the HALT');
+    assert.equal(chain.sent.length, n0, `${stage.name} sends nothing after the HALT`);
+  }
+});
+
 test('fills: two planned trades with the fill\'s pair → REFUSED (record it by hand); a fill of no planned pair → adopted-<id>', async () => {
   const chain = newChain();
   const pend = await priced(chain);
