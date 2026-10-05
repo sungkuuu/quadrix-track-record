@@ -298,7 +298,18 @@ const readNow = (ctx, what, contract, at = null) => readAt(ctx, what, (r) => r.r
  *  only while the node lacks that block — a revert is final, as before. */
 async function simulate(ctx, params) {
   if (ctx.floor === 0n) return ctx.pc.simulateContract(params);
-  const { value } = await retryRead(async () => ctx.pc.simulateContract({ ...params, blockNumber: await blockAtLeast(ctx.pc, ctx.floor) }), {
+  const { value } = await retryRead(async () => {
+    const blockNumber = await blockAtLeast(ctx.pc, ctx.floor);
+    const out = await ctx.pc.simulateContract({ ...params, blockNumber });
+    // A function without a return value: the public node (op-reth) answers
+    // eth_call at a block it has not got with null — no error — and viem
+    // reads null as that function's empty return, so the call would pass
+    // without having run (measured 2026-10-02 and 2026-10-05). At the same
+    // block eth_estimateGas errors "block not found" on such a node, reverts
+    // when the call reverts, and answers a number only when the call ran.
+    if (out.result === undefined) await ctx.pc.estimateContractGas({ ...params, blockNumber });
+    return out;
+  }, {
     what: `simulation of ${params.functionName} at a block ≥ ${ctx.floor}`,
     retryIf: (e) => notYetReason(e) != null,
   });

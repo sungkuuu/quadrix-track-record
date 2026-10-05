@@ -644,3 +644,20 @@ test('call(): a simulation after a write runs at a block ≥ the last receipt �
   assert.equal(chain.head.state.refPrice[AAA.toLowerCase()], (REF_AAA * 128n) / 100n);
   await assert.rejects(call(ctx, { who: 'keeper', to: V, functionName: 'setRefPrice', args: [AAA, REF_AAA * 2n], gas: 1n, what: 'post 3' }), (e) => isRefused(e) && /NavMoveTooLarge/.test(e.message));
 });
+
+test('call(): a node that answers a void function\'s simulation with null at a block it has not got (the public op-reth node) cannot pass a call that reverts — nothing is sent', async () => {
+  const chain = newChain();
+  await priced(chain);
+  const f = planOn(chain);
+  const ctx = ctxFor(chain, f);
+  await call(ctx, { who: 'keeper', to: V, functionName: 'setRefPrice', args: [AAA, REF_AAA], gas: 1n, what: 'post 1' });
+  chain.lagModes = ['null'];
+  chain.lagReads = 2;
+  chain.lagNow(2);
+  const n = chain.sent.length;
+  await assert.rejects(call(ctx, { who: 'keeper', to: V, functionName: 'setRefPrice', args: [AAA, REF_AAA * 2n], gas: 1n, what: 'post 2' }), (e) => isRefused(e) && /NavMoveTooLarge/.test(e.message));
+  assert.equal(chain.sent.length, n, 'the reverting call was not sent');
+  chain.lagNow(2);
+  await call(ctx, { who: 'keeper', to: V, functionName: 'setRefPrice', args: [AAA, (REF_AAA * 110n) / 100n], gas: 1n, what: 'post 3' });
+  assert.equal(chain.head.state.refPrice[AAA.toLowerCase()], (REF_AAA * 110n) / 100n);
+});

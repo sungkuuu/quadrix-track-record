@@ -39,6 +39,9 @@ function revert(reason) {
   return e;
 }
 
+/** Vault and mock functions without a return value (what viem decodes from an empty answer). */
+const VOID_FUNCTIONS = new Set(['setRefPrice', 'cancelAuction', 'finalizeRemoval', 'executeRegistryChange', 'announceRegistryChange', 'faucet', 'setNav']);
+
 export class FakeChain {
   constructor({ vault, owner, keeper = owner, assets = [], t0 = 1_790_000_000n, startBlock = 1000n } = {}) {
     this.vault = getAddress(vault);
@@ -300,11 +303,32 @@ export class FakeChain {
       },
       async simulateContract(p) {
         const m = self.nodeFor('simulateContract');
-        const b = self.at(p.blockNumber, m, p.functionName);
+        self.lastSimulateMode = m;
+        const req = { request: { abi: p.abi, address: p.address, args: p.args, functionName: p.functionName, account: p.account, ...(p.blockNumber != null ? { blockNumber: p.blockNumber } : {}) }, result: undefined };
+        // 'null': op-reth at a block it has not got answers eth_call null, and
+        // viem reads that as the empty return of a function without outputs —
+        // the call "passes" without having run (a function with outputs errors).
+        if (m === 'null' && p.blockNumber != null && BigInt(p.blockNumber) > self.head.number - 1n) {
+          if (VOID_FUNCTIONS.has(p.functionName)) return req;
+          throw zeroData(p.functionName);
+        }
+        const b = self.at(p.blockNumber, m === 'null' ? 'stale' : m, p.functionName);
         const st = clone(b.state);
         const sim = { number: b.number + 1n, timestamp: b.timestamp + 1n };
         self.apply(st, sim, p.account, p);
         return { request: { abi: p.abi, address: p.address, args: p.args, functionName: p.functionName, account: p.account, ...(p.blockNumber != null ? { blockNumber: p.blockNumber } : {}) }, result: undefined };
+      },
+      // eth_estimateGas: a node without the block errors "block not found"
+      // (op-reth, measured 2026-10-05); with it, the call runs — a revert
+      // throws, a success answers a number. It shares simulateContract's lag
+      // (the same node answers both), without using up a lagging answer.
+      async estimateContractGas(p) {
+        const lagging = self.lastSimulateMode != null && self.lastSimulateMode !== 'ok';
+        if (lagging && p.blockNumber != null && BigInt(p.blockNumber) > self.head.number - 1n) throw rpcError(`block not found: 0x${BigInt(p.blockNumber).toString(16)}`);
+        const b = self.at(p.blockNumber, 'ok', p.functionName);
+        const st = clone(b.state);
+        self.apply(st, { number: b.number + 1n, timestamp: b.timestamp + 1n }, p.account, p);
+        return 100_000n;
       },
       async waitForTransactionReceipt({ hash }) {
         if (self.receiptFails > 0) { self.receiptFails--; throw new Error('Timed out while waiting for transaction'); }
