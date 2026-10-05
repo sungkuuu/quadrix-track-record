@@ -458,6 +458,26 @@ test('sizing references: day7 refuses before it sends execute when a reference m
   assert.notEqual(chain.head.state.pending, ZERO32, 'the change is still pending');
 });
 
+test('reference guard: day7 refuses before it sends execute when a reference is more than 5% from the plan\'s market price; nothing is sent and the change stays pending', async () => {
+  const chain = newChain();
+  await announced(chain);
+  // The plan was made hours after the day's mark: AAA's market price is 6% above its reference on chain.
+  // The plan sized at the chain reference (chainRefAtPlan), so the sizing check alone passes.
+  const offMark = (pctAbove) => (p) => ({
+    ...p,
+    registry: p.registry.map((r) => ({ ...r, chainRefAtPlan: r.planRefPrice, planRefPrice: r.symbol === 'AAA' ? ((BigInt(r.planRefPrice) * BigInt(100 + pctAbove)) / 100n).toString() : r.planRefPrice })),
+    announce: { pendingHash: chain.head.state.pending, tuple: p.announceTuple }, trades: [T1, T2],
+  });
+  const f = planOn(chain, offMark(6));
+  const n = chain.sent.length;
+  await assert.rejects(requireSizingBeforeExecute(ctxFor(chain, f)), (e) => isRefused(e) && /AAA: chain reference .* is 5\.66% from the plan's .*nothing was sent and the registry change is still pending/.test(e.message));
+  assert.equal(chain.sent.length, n, 'nothing sent');
+  assert.notEqual(chain.head.state.pending, ZERO32, 'the change is still pending');
+  // 4% off is inside the guard: not refused.
+  await requireSizingBeforeExecute(ctxFor(chain, planOn(chain, offMark(4), 'plan-inside.json')));
+  assert.equal(chain.sent.length, n, 'a check sends nothing');
+});
+
 test('sizing references: a day7 re-run after execute is not refused before the auctions stage, which records the earlier run\'s fill and cancels its open auction BEFORE it refuses the moved reference', async () => {
   const chain = newChain();
   const pend = await priced(chain);

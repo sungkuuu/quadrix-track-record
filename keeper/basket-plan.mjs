@@ -435,6 +435,24 @@ export function untradedGapNote(targets) {
 }
 
 /**
+ * The names whose reference on chain is further from the day's market price
+ * than the executor's guard allows (policy.refDriftTolBps, the setting in
+ * force — no new value), as a note for the operator: the executor will refuse
+ * this plan until the next daily mark. Pure; null when every name is inside.
+ */
+export function referenceGuardNote(registry, marketRef, tolBps) {
+  const off = [];
+  for (const r of registry) {
+    const m = marketRef[r.symbol];
+    if (!(r.refPrice > 0n) || !(m > 0n)) continue;
+    const bps = (Math.abs(Number(r.refPrice) - Number(m)) / Number(m)) * 10_000;
+    if (bps > tolBps) off.push(`${r.symbol} ${(bps / 100).toFixed(2)}%`);
+  }
+  if (off.length === 0) return null;
+  return `reference guard: ${off.join(', ')} from the day's market price, more than the executor's ${(tolBps / 100).toFixed(2)}% — the executor will refuse this plan; do not dispatch day7: wait for the next daily mark, then plan again`;
+}
+
+/**
  * Which names the rulebook says to trade, and the auctions that do it.
  * Pure over the rows given; exported so the executor can recompute residual
  * trades from live balances with the same rule.
@@ -894,6 +912,12 @@ export async function buildPlan(o) {
   for (const n of plan0.notes) log(`  ${n}`);
   const gapNote = untradedGapNote(plan0.targets);
   if (gapNote) log(`  NOTE ${gapNote}`);
+  // The executor refuses a session while a chain reference is more than
+  // refDriftTolBps from the day's market price. Say so here, where nothing
+  // has been sent: found by day7 only at its auctions stage, the registry
+  // change is already executed by then.
+  const guardNote = referenceGuardNote(registry, marketRef, policy.refDriftTolBps);
+  if (guardNote) log(`  NOTE ${guardNote}`);
 
   const plan = {
     schema: 'basket-recon-plan/1',
@@ -940,6 +964,7 @@ export async function buildPlan(o) {
       ...(o.reweightBlock ? ['--reweight-block: every block traded to the book although no registry change is pending in this plan (a session resumed after its registry change was executed)'] : []),
       ...plan0.notes,
       ...(gapNote ? [gapNote] : []),
+      ...(guardNote ? [guardNote] : []),
       'The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference.',
       ...(weightOnly ? ['nothing to announce (weight-only change): the registry is unchanged, so no announcement is made — auctions only'] : []),
       ...(announceTuple || weightOnly ? [] : [`announce tuple incomplete: ${adds.filter((a) => !a.address).map((a) => a.symbol).join(',') || 'addresses ok'}${decisionSha256 ? '' : '; decisionSha256 null (anchor the decision document first)'}`]),

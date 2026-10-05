@@ -588,7 +588,27 @@ export async function requireSizingBeforeExecute(ctx) {
     ctx.log('no registry change pending (executed already, or none in this plan): the auctions stage checks the plan\'s references after it records what an earlier run did');
     return;
   }
+  // The auctions stage refuses a reference more than --ref-drift-tol from the
+  // day's market price. Found only there, the change is already executed and
+  // the first references posted, the session has not started, and a plan made
+  // after that no longer sees the adds. So the same check is made here, while
+  // the change is still pending and nothing has been sent.
+  await requireRefsNearMarket(ctx, v, 'nothing was sent and the registry change is still pending: wait for the next daily mark, make the plan again, then run day7');
   requireRefsAsPlanned(ctx, v);
+}
+
+/** References must be today's marks: this script never moves one. A chain
+ *  reference more than --ref-drift-tol away from the plan's market price
+ *  (planRefPrice; an add's first reference) refuses the session. */
+async function requireRefsNearMarket(ctx, v, then = 're-mark with the daily keeper (paper-index.mjs) first; this script does not move references') {
+  const { plan, o } = ctx;
+  const bySym = await assetIndex(ctx, v);
+  for (const [sym, a] of Object.entries(bySym)) {
+    const planRef = plan.registry.find((r) => r.symbol === sym)?.planRefPrice ?? plan.adds.find((r) => r.symbol === sym)?.firstRefPrice;
+    if (planRef == null) continue;
+    const d = Math.abs(Number(a.refPrice) - Number(planRef)) / Number(planRef);
+    if (d > o.refDriftTol) throw new Refused(`${sym}: chain reference ${a.refPrice} is ${pct(d)} from the plan's ${planRef} (> ${pct(o.refDriftTol)}) — ${then}`);
+  }
 }
 
 function requirePlanFresh(ctx) {
@@ -1373,13 +1393,7 @@ export async function stageAuctions(ctx) {
     if (!isB) throw new Refused(`bidder ${ctx.bidderAddr} is not whitelisted (isBidder false, biddingOpen false) — owner setBidder first`);
   }
   // References must be today's marks: this script never moves one.
-  const bySym = await assetIndex(ctx, v);
-  for (const [sym, a] of Object.entries(bySym)) {
-    const planRef = plan.registry.find((r) => r.symbol === sym)?.planRefPrice ?? plan.adds.find((r) => r.symbol === sym)?.firstRefPrice;
-    if (planRef == null) continue;
-    const d = Math.abs(Number(a.refPrice) - Number(planRef)) / Number(planRef);
-    if (d > o.refDriftTol) throw new Refused(`${sym}: chain reference ${a.refPrice} is ${pct(d)} from the plan's ${planRef} (> ${pct(o.refDriftTol)}) — re-mark with the daily keeper (paper-index.mjs) first; this script does not move references`);
-  }
+  await requireRefsNearMarket(ctx, v);
   // A re-run first records what an earlier run did and cancels what it left
   // open — before the sizing check below, so that a run refused for a moved
   // reference still leaves the earlier run's fills in this plan's record.
