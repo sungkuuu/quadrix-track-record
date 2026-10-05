@@ -45,8 +45,11 @@ const id = path.basename(abs, '.md');
 // An anchor cannot be undone. A generated draft (keeper/gen-recon-decision.mjs)
 // carries a DRAFT marker, a TO FILL comment and, before the mocks exist,
 // "_to be deployed_" in place of addresses; none of them may be anchored.
+// A hand-written draft marks its unfilled values TO FILL / TO-FILL-… in the
+// body: with the comment lines removed those passed the first two patterns
+// (post-review 2026-10-05, A1 M1), so the marker is refused anywhere.
 const text = body.toString('utf8');
-const unfinished = [/<!--\s*DRAFT/i, /<!--\s*TO FILL/i, /_to be deployed_/].filter((re) => re.test(text));
+const unfinished = [/<!--\s*DRAFT/i, /<!--\s*TO FILL/i, /_to be deployed_/, /\bTO[- ]FILL\b/].filter((re) => re.test(text));
 if (unfinished.length) {
   throw new Error(`${rel} is not final (${unfinished.map(String).join(', ')}) — remove the draft lines and fill what they list before anchoring`);
 }
