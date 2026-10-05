@@ -599,6 +599,10 @@ export async function requireSizingBeforeExecute(ctx) {
     ctx.log('no registry change pending (executed already, or none in this plan): the auctions stage checks the plan\'s references after it records what an earlier run did');
     return;
   }
+  // What first-prices and the auctions stage would refuse once execute has
+  // run, read now (post-review 2026-10-05, A2 N1): the roles, a name without
+  // a reference, each add's first-price gate.
+  await requireStagesWouldStart(ctx, v);
   // The auctions stage refuses a reference more than --ref-drift-tol from the
   // day's market price. Found only there, the change is already executed and
   // the first references posted, the session has not started, and a plan made
@@ -606,6 +610,40 @@ export async function requireSizingBeforeExecute(ctx) {
   // the change is still pending and nothing has been sent.
   await requireRefsNearMarket(ctx, v, 'nothing was sent and the registry change is still pending: wait for the next daily mark, make the plan again, then run day7');
   requireRefsAsPlanned(ctx, v);
+  ctx.log(`before execute: signer is the keeper, bidder ${ctx.bidderAddr} may fill, every registry name priced, ${ctx.plan.adds.length} first price(s) pass the two-source gate, every reference within ${pct(ctx.o.refDriftTol)} of the day's market price${ctx.plan.trades.length ? ' and equal to the one the plan sized at' : ''}`);
+}
+
+/**
+ * day7, while the change is still pending: everything first-prices and the
+ * auctions stage would refuse that can be known before execute — the
+ * signer's roles, a name already in the registry without a reference (the
+ * auctions stage's "unpriced"), and for each add: in the announced tuple
+ * (first-prices' "not in the registry"), then the first-price gate with the
+ * decimals read from the mock. After execute a refusal there leaves the
+ * registry changed with unpriced or untraded names. Reads only; nothing here
+ * is a new setting — the stages keep their own checks for a re-run.
+ */
+async function requireStagesWouldStart(ctx, v) {
+  const { plan, o } = ctx;
+  const stop = (m) => new Refused(`${m} — checked before execute: nothing was sent and the registry change is still pending`);
+  if (ctx.keeperAddr !== v.keeper) throw stop(`setRefPrice/openAuction are keeper-only; keeper is ${v.keeper}, signer is ${ctx.keeperAddr}`);
+  if (!v.biddingOpen) {
+    const isB = await readNow(ctx, 'isBidder', { address: plan.vault, abi: VAULT_ABI, functionName: 'isBidder', args: [ctx.bidderAddr] });
+    if (!isB) throw stop(`bidder ${ctx.bidderAddr} is not whitelisted (isBidder false, biddingOpen false)`);
+  }
+  const unpriced = v.assets.filter((a) => a.refPrice === 0n);
+  if (unpriced.length) throw stop(`unpriced registry assets ${unpriced.map((a) => a.address).join(', ')} — every fill reverts PriceUnset, and first-prices posts only the adds`);
+  const t = tuple(plan);
+  for (const add of plan.adds) {
+    if (add.address && !t.adds.includes(getAddress(add.address))) throw stop(`${add.symbol} ${add.address} is not an add of the announced tuple — execute would not put it in the registry`);
+  }
+  const withAddress = plan.adds.filter((a) => a.address);
+  const decs = await batchNow(ctx, 'decimals of the entering mocks', withAddress.map((a) => ({ address: a.address, abi: ERC20_ABI, functionName: 'decimals' })));
+  for (const add of plan.adds) {
+    const i = withAddress.indexOf(add);
+    const why = firstPriceRefusal(add, i >= 0 ? Number(decs[i]) : null, o);
+    if (why) throw stop(why);
+  }
 }
 
 /** References must be today's marks: this script never moves one. A chain
@@ -863,6 +901,19 @@ async function adoptFirstPrice(ctx, add, target, on) {
   log(`  ${add.symbol}: reference already ${target} on chain — recorded in the plan (adopted, tx ${txHash ?? 'not found'}); nothing sent`);
 }
 
+/** Why the plan's first price of `add` may not be posted (the gate of the
+ *  first-prices stage: decimals, two sources, the sized price), or null. */
+export function firstPriceRefusal(add, onchainDecimals, o) {
+  if (!add.address) return `${add.symbol}: no mock address in the plan`;
+  if (onchainDecimals !== add.decimals) return `${add.symbol}: ${onchainDecimals} decimals on chain, plan says ${add.decimals}`;
+  if (!(add.priceB > 0)) return `${add.symbol}: no second-source price — a band-free first post needs two independent sources`;
+  const diff = Math.abs(add.priceA - add.priceB) / add.priceA;
+  if (diff > o.firstPriceTol) return `${add.symbol}: sources disagree by ${pct(diff)} (A ${add.priceA}, B ${add.priceB}) > ${pct(o.firstPriceTol)}`;
+  const target = toRefPrice(add.priceA, add.decimals);
+  if (target !== big(add.firstRefPrice)) return `${add.symbol}: plan firstRefPrice ${add.firstRefPrice} != toRefPrice(${add.priceA}, ${add.decimals}) = ${target}`;
+  return null;
+}
+
 export async function stageFirstPrices(ctx) {
   const { plan, log, o } = ctx;
   requirePlanFresh(ctx);
@@ -875,12 +926,9 @@ export async function stageFirstPrices(ctx) {
     if (!add.address) throw new Refused(`${add.symbol}: no mock address in the plan`);
     const on = v.assets.find((x) => x.address === add.address);
     if (!on) throw new Refused(`${add.symbol} ${add.address} is not in the registry — execute first`);
-    if (on.decimals !== add.decimals) throw new Refused(`${add.symbol}: ${on.decimals} decimals on chain, plan says ${add.decimals}`);
-    if (!(add.priceB > 0)) throw new Refused(`${add.symbol}: no second-source price — a band-free first post needs two independent sources`);
-    const diff = Math.abs(add.priceA - add.priceB) / add.priceA;
-    if (diff > o.firstPriceTol) throw new Refused(`${add.symbol}: sources disagree by ${pct(diff)} (A ${add.priceA}, B ${add.priceB}) > ${pct(o.firstPriceTol)}`);
+    const why = firstPriceRefusal(add, on.decimals, o);
+    if (why) throw new Refused(why);
     const target = toRefPrice(add.priceA, add.decimals);
-    if (target !== big(add.firstRefPrice)) throw new Refused(`${add.symbol}: plan firstRefPrice ${add.firstRefPrice} != toRefPrice(${add.priceA}, ${add.decimals}) = ${target}`);
     if (on.refPrice === target) {
       if (!plan.firstPrices.some((f) => getAddress(f.address) === getAddress(add.address))) { await adoptFirstPrice(ctx, add, target, on); continue; }
       log(`  ${add.symbol}: reference already ${target} — skipped`);
@@ -1535,6 +1583,26 @@ export async function stageVerify(ctx) {
   log(`verify: all checks passed${plan.verify.pending.length ? ` (PENDING: ${plan.verify.pending.join(', ')})` : ''}`);
 }
 
+// ---------------------------------------------------------------------- day7
+/** The seventh-day session: execute → first prices → auctions → finalize →
+ *  verify. Every check that can refuse the session and can be made while the
+ *  change is pending runs first (requirePlanFresh, requireSizingBeforeExecute),
+ *  so a refused session sends nothing and leaves the change pending. */
+export async function runDay7(ctx) {
+  const run = async (stage, fn) => { ctx.o.stage = stage; ctx.log(`— ${stage} —`); await fn(ctx); };
+  // first-prices and auctions refuse a plan not generated today; check it
+  // BEFORE execute is sent, or a stale plan executes and then stops.
+  requirePlanFresh(ctx);
+  // Read through readAt: a re-run whose plan records sent transactions
+  // reads at a block ≥ the last of them (settleSent raised ctx.floor).
+  await requireSizingBeforeExecute(ctx);
+  await run('execute', stageExecute);
+  await run('first-prices', stageFirstPrices);
+  await run('auctions', stageAuctions);
+  await run('finalize', stageFinalize);
+  await run('verify', stageVerify);
+}
+
 // ---------------------------------------------------------------------- main
 async function main() {
   const o = parseArgs(process.argv.slice(2));
@@ -1544,7 +1612,6 @@ async function main() {
   // signer still has a transaction in flight.
   await settleSent(ctx);
   if (ctx.live) await requireNothingPending(ctx);
-  const run = async (stage, fn) => { ctx.o.stage = stage; ctx.log(`— ${stage} —`); await fn(ctx); };
   switch (o.stage) {
     case 'announce': return stageAnnounce(ctx);
     case 'execute': return stageExecute(ctx);
@@ -1552,19 +1619,7 @@ async function main() {
     case 'auctions': return stageAuctions(ctx);
     case 'finalize': return stageFinalize(ctx);
     case 'verify': return stageVerify(ctx);
-    case 'day7':
-      // first-prices and auctions refuse a plan not generated today; check it
-      // BEFORE execute is sent, or a stale plan executes and then stops.
-      requirePlanFresh(ctx);
-      // Read through readAt: a re-run whose plan records sent transactions
-      // reads at a block ≥ the last of them (settleSent raised ctx.floor).
-      await requireSizingBeforeExecute(ctx);
-      await run('execute', stageExecute);
-      await run('first-prices', stageFirstPrices);
-      await run('auctions', stageAuctions);
-      await run('finalize', stageFinalize);
-      await run('verify', stageVerify);
-      return;
+    case 'day7': return runDay7(ctx);
     default: throw new Error(`unknown stage ${o.stage}`);
   }
 }

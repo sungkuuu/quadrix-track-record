@@ -453,6 +453,25 @@ export function referenceGuardNote(registry, marketRef, tolBps) {
 }
 
 /**
+ * The entering names whose first price the executor's gate refuses
+ * (policy.firstPriceTolBps, the setting in force — no new value): no mock
+ * address, no second-source price, or the two sources further apart than the
+ * gate allows (|A − B| / A, as the executor computes it). Pure; null when
+ * every add passes. The executor makes the same check before execute.
+ */
+export function firstPriceGateNote(adds, tolBps) {
+  const off = [];
+  for (const a of adds) {
+    if (!a.address) { off.push(`${a.symbol} no mock address`); continue; }
+    if (!(a.priceB > 0)) { off.push(`${a.symbol} no second-source price`); continue; }
+    const bps = (Math.abs(a.priceA - a.priceB) / a.priceA) * 10_000;
+    if (bps > tolBps) off.push(`${a.symbol} sources ${(bps / 100).toFixed(2)}% apart`);
+  }
+  if (off.length === 0) return null;
+  return `first-price gate: ${off.join(', ')} — more than the executor's ${(tolBps / 100).toFixed(2)}% or missing; the executor will refuse this plan before execute; do not dispatch day7`;
+}
+
+/**
  * Which names the rulebook says to trade, and the auctions that do it.
  * Pure over the rows given; exported so the executor can recompute residual
  * trades from live balances with the same rule.
@@ -918,6 +937,10 @@ export async function buildPlan(o) {
   // change is already executed by then.
   const guardNote = referenceGuardNote(registry, marketRef, policy.refDriftTolBps);
   if (guardNote) log(`  NOTE ${guardNote}`);
+  // …and, for a plan that carries a pending change, the first-price gate on
+  // the adds, which day7 also checks before it sends execute.
+  const gateNote = carried ? firstPriceGateNote(adds, policy.firstPriceTolBps) : null;
+  if (gateNote) log(`  NOTE ${gateNote}`);
 
   const plan = {
     schema: 'basket-recon-plan/1',
@@ -965,6 +988,7 @@ export async function buildPlan(o) {
       ...plan0.notes,
       ...(gapNote ? [gapNote] : []),
       ...(guardNote ? [guardNote] : []),
+      ...(gateNote ? [gateNote] : []),
       'The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference.',
       ...(weightOnly ? ['nothing to announce (weight-only change): the registry is unchanged, so no announcement is made — auctions only'] : []),
       ...(announceTuple || weightOnly ? [] : [`announce tuple incomplete: ${adds.filter((a) => !a.address).map((a) => a.symbol).join(',') || 'addresses ok'}${decisionSha256 ? '' : '; decisionSha256 null (anchor the decision document first)'}`]),

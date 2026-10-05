@@ -13,9 +13,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { getAddress } from 'viem';
-import { savePlan, loadPlan, toRefPrice, readVault } from '../basket-plan.mjs';
+import { savePlan, loadPlan, toRefPrice, readVault, referenceGuardNote, firstPriceGateNote } from '../basket-plan.mjs';
 import { READ_TIMING } from '../readback.mjs';
-import { stageAnnounce, stageExecute, stageFirstPrices, stageAuctions, stageFinalize, stageVerify, settleSent, requireNothingPending, reconcileSession, runTrade, call, requireSizingBeforeExecute } from '../basket-recon.mjs';
+import { stageAnnounce, stageExecute, stageFirstPrices, stageAuctions, stageFinalize, stageVerify, settleSent, requireNothingPending, reconcileSession, runTrade, call, requireSizingBeforeExecute, runDay7 } from '../basket-recon.mjs';
 import { FakeChain, ZERO32 } from './fake-chain.mjs';
 
 READ_TIMING.stepMs = 2; // the bound stays 30 s of fake waits; each wait is 2 ms here
@@ -660,4 +660,74 @@ test('call(): a node that answers a void function\'s simulation with null at a b
   chain.lagNow(2);
   await call(ctx, { who: 'keeper', to: V, functionName: 'setRefPrice', args: [AAA, (REF_AAA * 110n) / 100n], gas: 1n, what: 'post 3' });
   assert.equal(chain.head.state.refPrice[AAA.toLowerCase()], (REF_AAA * 110n) / 100n);
+});
+
+// ------------- 2026-10-05 guard fix: what first-prices and the auctions stage refuse, checked before execute (A2 N1)
+const beforeExecute = (re) => (e) => isRefused(e) && re.test(e.message) && /checked before execute: nothing was sent and the registry change is still pending/.test(e.message);
+const pendingPlan = (chain, mutate = (p) => p, name = 'plan.json') => planOn(chain, (p) => mutate(sized({ ...p, announce: { pendingHash: chain.head.state.pending, tuple: p.announceTuple }, trades: [T1, T2] })), name);
+
+test('day7 before execute (A2 N1): roles, an unpriced name, an add outside the tuple and each add\'s first-price gate are refused while the change is pending; nothing is sent', async () => {
+  const cases = [
+    ['the two sources of an entering name disagree', (p) => ({ ...p, adds: [{ ...p.adds[0], priceB: 1.3 }] }), null, /ASTER: sources disagree by 8\.33%/],
+    ['no second-source price', (p) => ({ ...p, adds: [{ ...p.adds[0], priceB: null }] }), null, /ASTER: no second-source price/],
+    ['the plan sized the first price to other decimals than the mock has', (p) => ({ ...p, adds: [{ ...p.adds[0], decimals: 9, firstRefPrice: toRefPrice(1.2, 9).toString() }] }), null, /ASTER: 8 decimals on chain, plan says 9/],
+    ['a first reference not sized from source A', (p) => ({ ...p, adds: [{ ...p.adds[0], firstRefPrice: (REF_ASTER + 1n).toString() }] }), null, /ASTER: plan firstRefPrice .* != toRefPrice/],
+    ['an add outside the announced tuple', (p) => ({ ...p, adds: [{ ...p.adds[0], address: getAddress('0x3333333333333333333333333333333333333333') }] }), null, /ASTER 0x3333333333333333333333333333333333333333 is not an add of the announced tuple/],
+    ['the bidder is not whitelisted', (p) => p, (c) => { c.head.state.bidders = {}; }, /is not whitelisted/],
+    ['a name in the registry without a reference', (p) => p, (c) => { c.head.state.refPrice[BBB.toLowerCase()] = 0n; }, new RegExp(`unpriced registry assets ${BBB}`)],
+  ];
+  for (const [what, mutate, chainEdit, re] of cases) {
+    const chain = newChain();
+    await announced(chain);
+    const f = pendingPlan(chain, mutate);
+    chainEdit?.(chain);
+    const n = chain.sent.length;
+    await assert.rejects(requireSizingBeforeExecute(ctxFor(chain, f)), beforeExecute(re), what);
+    assert.equal(chain.sent.length, n, `${what}: nothing sent`);
+    assert.notEqual(chain.head.state.pending, ZERO32, `${what}: the change is still pending`);
+  }
+  // the signer is not the keeper
+  const chain = newChain();
+  await announced(chain);
+  const ctx = ctxFor(chain, pendingPlan(chain));
+  ctx.keeperAddr = getAddress('0x4444444444444444444444444444444444444444');
+  await assert.rejects(requireSizingBeforeExecute(ctx), beforeExecute(/keeper-only; keeper is .*, signer is 0x4444/));
+  // a good plan passes, sends nothing, and says what it checked
+  const ok = ctxFor(chain, pendingPlan(chain, (p) => p, 'plan-ok.json'));
+  const n = chain.sent.length;
+  await requireSizingBeforeExecute(ok);
+  assert.equal(chain.sent.length, n);
+  assert.ok(ok.lines.some((l) => /^before execute: signer is the keeper, .* 1 first price\(s\) pass the two-source gate, every reference within 5\.00% .* and equal to the one the plan sized at/.test(l)));
+  // once executed, the check stands aside: the stages make their own
+  const c2 = newChain();
+  const pend = await executed(c2);
+  const f2 = planOn(c2, (p) => sized({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, adds: [{ ...p.adds[0], priceB: 1.3 }] }), 'plan-exec.json');
+  await requireSizingBeforeExecute(ctxFor(c2, f2));
+});
+
+test('runDay7 (the day7 stage itself): a plan the first-price gate refuses sends nothing and leaves the change pending; a good plan runs the session with the same calls as the stages one by one', async () => {
+  const chain = newChain();
+  chain.head.state.shares = {}; // the fake has no redeem: verify skips its simulation
+  await announced(chain);
+  const n = chain.sent.length;
+  const bad = pendingPlan(chain, (p) => ({ ...p, adds: [{ ...p.adds[0], priceB: 1.3 }] }), 'plan-bad.json');
+  await assert.rejects(runDay7(ctxFor(chain, bad)), beforeExecute(/ASTER: sources disagree by 8\.33%/));
+  assert.equal(chain.sent.length, n, 'execute was not sent');
+  assert.notEqual(chain.head.state.pending, ZERO32, 'the change is still pending');
+  const good = pendingPlan(chain, (p) => p, 'plan-good.json');
+  const ctx = ctxFor(chain, good);
+  await runDay7(ctx);
+  assert.deepEqual(chain.sent.slice(n).map((x) => x.functionName), ['executeRegistryChange', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'finalizeRemoval']);
+  assert.deepEqual(loadPlan(good).verify.fails, []);
+  assert.ok(ctx.lines.some((l) => /^before execute: signer is the keeper/.test(l)));
+});
+
+test('planner notes (pure): the 5% reference guard and the first-price gate, at the settings in force', () => {
+  const reg = [{ symbol: 'AAA', refPrice: 100n }, { symbol: 'BBB', refPrice: 100n }, { symbol: 'NEW', refPrice: 0n }];
+  assert.equal(referenceGuardNote(reg, { AAA: 104n, BBB: 96n }, 500), null);
+  assert.match(referenceGuardNote(reg, { AAA: 106n, BBB: 100n }, 500), /^reference guard: AAA 5\.66% from the day's market price, more than the executor's 5\.00%/);
+  const add = { symbol: 'ASTER', address: ASTER, priceA: 1.2, priceB: 1.205 };
+  assert.equal(firstPriceGateNote([add], 200), null);
+  assert.match(firstPriceGateNote([{ ...add, priceB: 1.236 }], 200), /^first-price gate: ASTER sources 3\.00% apart/);
+  assert.match(firstPriceGateNote([{ ...add, priceB: null }, { ...add, symbol: 'X', address: null }], 200), /ASTER no second-source price, X no mock address/);
 });
