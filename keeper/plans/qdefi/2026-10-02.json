@@ -1,0 +1,609 @@
+{
+  "schema": "basket-recon-plan/1",
+  "index": "qdefi",
+  "ticker": "qDEFI",
+  "date": "2026-10-02",
+  "generatedAt": "2026-10-02T06:55:52.769Z",
+  "chainId": 91342,
+  "rpc": "https://sepolia-rpc.giwa.io",
+  "vault": "0x88D3b5f638fE0d331797C612a5496bD8f0491FD4",
+  "block": {
+    "number": "37579029",
+    "timestamp": "1790924145"
+  },
+  "keeperRun": {
+    "id": "36975907975",
+    "workflow": "basket-reconstitution"
+  },
+  "sources": {
+    "book": "keeper/state-qdefi.json",
+    "pending": "keeper/pending-registry-qdefi.json",
+    "priceA": "coingecko (fetched, cached as keeper/cache/cg-markets-top500-2026-10-02.json)",
+    "priceB": "coinpaprika (fetched, cached as keeper/cache/cp-tickers-2026-10-02.json)",
+    "recordRow": {
+      "seq": 14,
+      "hash": "1c222b5341dd03f0322f3916c07fb6cb5d9cf2224ec3ee9883a7a30b9c4916c9"
+    },
+    "rulebook": {
+      "path": "keeper/rulebooks/qdefi.json",
+      "sha256": "bac255203a00ceb7e0935ffd0c14c2c5d731afd58270db71d801b64e433deadd"
+    },
+    "mocks": "keeper/mocks/2026-10-01.json",
+    "decisions": "trackrecord/decisions.jsonl"
+  },
+  "vaultState": {
+    "owner": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+    "keeper": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+    "assetCount": 15,
+    "totalSupply": "1015492443819601108140757",
+    "navPerShare": "1314162",
+    "pendingRegistryChange": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "pendingRegistryEta": "0",
+    "maxRefAge": "3600",
+    "maxFillLossBps": "100",
+    "dailyLossBudgetBps": "300",
+    "biddingOpen": false,
+    "auctionCount": "0",
+    "premiumBps": "200",
+    "registryDelay": "604800"
+  },
+  "registry": [
+    {
+      "i": 0,
+      "symbol": "HYPE",
+      "symbolSource": "rulebook",
+      "address": "0x08F6F33B572e480898dfE9F8dE66372183C33000",
+      "decimals": 10,
+      "balance": "46011191103729",
+      "refPrice": "8970000000",
+      "refPriceUpdatedAt": "1790920382",
+      "inRemoval": false,
+      "planRefPrice": "9009000000",
+      "priceA": 90.09,
+      "priceB": 90.15594941252691,
+      "disagreementBps": 7
+    },
+    {
+      "i": 1,
+      "symbol": "LINK",
+      "symbolSource": "rulebook",
+      "address": "0x842009C22152D5D26593db93Ca6664e4a61D667d",
+      "decimals": 10,
+      "balance": "204976766937975",
+      "refPrice": "1446000000",
+      "refPriceUpdatedAt": "1790920387",
+      "inRemoval": false,
+      "planRefPrice": "1442000000",
+      "priceA": 14.42,
+      "priceB": 14.44263136142641,
+      "disagreementBps": 16
+    },
+    {
+      "i": 2,
+      "symbol": "UNI",
+      "symbolSource": "rulebook",
+      "address": "0xECc53491f29eFf3fc5B000d5C6367CD7D86c532B",
+      "decimals": 9,
+      "balance": "17099720270818",
+      "refPrice": "9150000000",
+      "refPriceUpdatedAt": "1790920389",
+      "inRemoval": false,
+      "planRefPrice": "9170000000",
+      "priceA": 9.17,
+      "priceB": 9.177577334837595,
+      "disagreementBps": 8
+    },
+    {
+      "i": 3,
+      "symbol": "AAVE",
+      "symbolSource": "rulebook",
+      "address": "0x0d55244F54CDdF665705fA6114504414097C6162",
+      "decimals": 11,
+      "balance": "42256674305812",
+      "refPrice": "1809400000",
+      "refPriceUpdatedAt": "1790920394",
+      "inRemoval": false,
+      "planRefPrice": "1851100000",
+      "priceA": 185.11,
+      "priceB": 185.4644159500329,
+      "disagreementBps": 19
+    },
+    {
+      "i": 4,
+      "symbol": "ONDO",
+      "symbolSource": "rulebook",
+      "address": "0x83615E8756B6818Fa22bFE53FDa61Ec0215E3bDF",
+      "decimals": 8,
+      "balance": "13356281791864",
+      "refPrice": "5045540000",
+      "refPriceUpdatedAt": "1790920396",
+      "inRemoval": false,
+      "planRefPrice": "5057890000",
+      "priceA": 0.505789,
+      "priceB": 0.5060081849695126,
+      "disagreementBps": 4
+    },
+    {
+      "i": 5,
+      "symbol": "MORPHO",
+      "symbolSource": "rulebook",
+      "address": "0x00D05c5FE9B145DE447d9440F95eEFcaD61804c2",
+      "decimals": 9,
+      "balance": "18875652755099",
+      "refPrice": "2590000000",
+      "refPriceUpdatedAt": "1790920398",
+      "inRemoval": false,
+      "planRefPrice": "2620000000",
+      "priceA": 2.62,
+      "priceB": 2.62513979837626,
+      "disagreementBps": 20
+    },
+    {
+      "i": 6,
+      "symbol": "SKY",
+      "symbolSource": "rulebook",
+      "address": "0x4e0C8d1d03679852A230C20cFAF050B679a03d26",
+      "decimals": 7,
+      "balance": "6403726144463",
+      "refPrice": "8440900000",
+      "refPriceUpdatedAt": "1790920403",
+      "inRemoval": false,
+      "planRefPrice": "8424400000",
+      "priceA": 0.084244,
+      "priceB": 0.08426388161529351,
+      "disagreementBps": 2
+    },
+    {
+      "i": 7,
+      "symbol": "ENA",
+      "symbolSource": "rulebook",
+      "address": "0xf7bCBD24Bb216D3F54DF55e3C8A9cb94d2aA794f",
+      "decimals": 8,
+      "balance": "27789615941966",
+      "refPrice": "2487900000",
+      "refPriceUpdatedAt": "1790920405",
+      "inRemoval": false,
+      "planRefPrice": "2472460000",
+      "priceA": 0.247246,
+      "priceB": 0.24731118253025994,
+      "disagreementBps": 3
+    },
+    {
+      "i": 8,
+      "symbol": "JST",
+      "symbolSource": "rulebook",
+      "address": "0x5eA3Ad21048BA8a3C429D0B0f67A0860cD7e2e17",
+      "decimals": 8,
+      "balance": "22358356897048",
+      "refPrice": "1295270000",
+      "refPriceUpdatedAt": "1790920410",
+      "inRemoval": false,
+      "planRefPrice": "1300200000",
+      "priceA": 0.13002,
+      "priceB": 0.13010843824892832,
+      "disagreementBps": 7
+    },
+    {
+      "i": 9,
+      "symbol": "JUP",
+      "symbolSource": "rulebook",
+      "address": "0xBe527e2a4E222b8dd08e5CfAf4161D82A4C45fdB",
+      "decimals": 8,
+      "balance": "9085093473597",
+      "refPrice": "3328480000",
+      "refPriceUpdatedAt": "1790920412",
+      "inRemoval": false,
+      "planRefPrice": "3325900000",
+      "priceA": 0.33259,
+      "priceB": 0.3330991996150487,
+      "disagreementBps": 15
+    },
+    {
+      "i": 10,
+      "symbol": "CAKE",
+      "symbolSource": "rulebook",
+      "address": "0x490DA6844e2500f1e122eC1a6Ca2E70383a93A03",
+      "decimals": 9,
+      "balance": "8734636324704",
+      "refPrice": "2610000000",
+      "refPriceUpdatedAt": "1790920417",
+      "inRemoval": false,
+      "planRefPrice": "2610000000",
+      "priceA": 2.61,
+      "priceB": 2.6148992057194125,
+      "disagreementBps": 19
+    },
+    {
+      "i": 11,
+      "symbol": "ETHFI",
+      "symbolSource": "rulebook",
+      "address": "0x0cc621d8c525E0096fdF3cE2177C65dEAd9FD7C2",
+      "decimals": 8,
+      "balance": "2644122901957",
+      "refPrice": "7332050000",
+      "refPriceUpdatedAt": "1790920419",
+      "inRemoval": false,
+      "planRefPrice": "7330590000",
+      "priceA": 0.733059,
+      "priceB": 0.7343228703956562,
+      "disagreementBps": 17
+    },
+    {
+      "i": 12,
+      "symbol": "AERO",
+      "symbolSource": "rulebook",
+      "address": "0xb5EFDC24BD58aAb5d6929C155705919b1062fa9B",
+      "decimals": 8,
+      "balance": "2707560844013",
+      "refPrice": "7870430000",
+      "refPriceUpdatedAt": "1790920424",
+      "inRemoval": false,
+      "planRefPrice": "7937920000",
+      "priceA": 0.793792,
+      "priceB": 0.7950549416616118,
+      "disagreementBps": 16
+    },
+    {
+      "i": 13,
+      "symbol": "CRV",
+      "symbolSource": "rulebook",
+      "address": "0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6",
+      "decimals": 8,
+      "balance": "4279229590348",
+      "refPrice": "3783900000",
+      "refPriceUpdatedAt": "1790920426",
+      "inRemoval": false,
+      "planRefPrice": "3787020000",
+      "priceA": 0.378702,
+      "priceB": 0.3794483960123928,
+      "disagreementBps": 20
+    },
+    {
+      "i": 14,
+      "symbol": "PYTH",
+      "symbolSource": "rulebook",
+      "address": "0x196fb515cdd98b2C84FE60A2F53588af75Ea13F5",
+      "decimals": 7,
+      "balance": "2166967503723",
+      "refPrice": "7614700000",
+      "refPriceUpdatedAt": "1790920428",
+      "inRemoval": false,
+      "planRefPrice": "7661400000",
+      "priceA": 0.076614,
+      "priceB": 0.0765852815002249,
+      "disagreementBps": 4
+    }
+  ],
+  "adds": [
+    {
+      "symbol": "ASTER",
+      "address": "0xF96360330E54E861b4B95FaA023A77dAdDcf6511",
+      "decimals": 8,
+      "decimalsSource": "onchain 0xF96360330E54E861b4B95FaA023A77dAdDcf6511 (mASTER)",
+      "priceA": 0.751796,
+      "priceB": 0.7532434141179266,
+      "disagreementBps": 19,
+      "firstRefPrice": "7517960000",
+      "firstRefPriceB": "7532434141",
+      "targetUnits": 6.41358392555199
+    }
+  ],
+  "removes": [
+    {
+      "symbol": "CRV",
+      "address": "0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6",
+      "decimals": 8,
+      "balance": "4279229590348",
+      "inRemoval": false
+    }
+  ],
+  "decisionSha256": "c460b0d8442320dd68064896973576ffd1e076a7e38f6a4085c502edfe4cfdf8",
+  "decisionId": "2026-10-02-qdefi-basket-reconstitution",
+  "decisionFile": "trackrecord/decisions/2026-10-02-qdefi-basket-reconstitution.md",
+  "announceTuple": {
+    "adds": [
+      "0xF96360330E54E861b4B95FaA023A77dAdDcf6511"
+    ],
+    "removes": [
+      "0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6"
+    ],
+    "decisionSha256": "0xc460b0d8442320dd68064896973576ffd1e076a7e38f6a4085c502edfe4cfdf8"
+  },
+  "carried": null,
+  "policy": {
+    "tolerancePoints": 5,
+    "capMaxWeight": 0.35,
+    "qualityCap": null,
+    "sleeve": false,
+    "duration": 1800,
+    "minTradeUsd": 1,
+    "fill": "fair",
+    "firstPriceTolBps": 200,
+    "refDriftTolBps": 500
+  },
+  "targets": [
+    {
+      "symbol": "HYPE",
+      "targetWeight": 0.301545977463622,
+      "tradeTargetWeight": 0.3092127505609354,
+      "currentWeight": 0.3092127505609354,
+      "driftPoints": 0.8,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "LINK",
+      "targetWeight": 0.2150222375979337,
+      "tradeTargetWeight": 0.2204891535128547,
+      "currentWeight": 0.2204891535128547,
+      "driftPoints": 0.5,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "UNI",
+      "targetWeight": 0.11407010546922942,
+      "tradeTargetWeight": 0.11697031853773059,
+      "currentWeight": 0.11697031853773059,
+      "driftPoints": 0.3,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "AAVE",
+      "targetWeight": 0.05690345981333831,
+      "tradeTargetWeight": 0.05835022377288242,
+      "currentWeight": 0.05835022377288242,
+      "driftPoints": 0.1,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "ONDO",
+      "targetWeight": 0.049143766936444885,
+      "tradeTargetWeight": 0.05039324026502238,
+      "currentWeight": 0.05039324026502238,
+      "driftPoints": 0.1,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "MORPHO",
+      "targetWeight": 0.03597632139355262,
+      "tradeTargetWeight": 0.036891014763548245,
+      "currentWeight": 0.036891014763548245,
+      "driftPoints": 0.1,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "SKY",
+      "targetWeight": 0.03924508486773021,
+      "tradeTargetWeight": 0.040242880723890886,
+      "currentWeight": 0.040242880723890886,
+      "driftPoints": 0.1,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "ENA",
+      "targetWeight": 0.04998334394851546,
+      "tradeTargetWeight": 0.05125416350123115,
+      "currentWeight": 0.05125416350123115,
+      "driftPoints": 0.1,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "JST",
+      "targetWeight": 0.02114771905315064,
+      "tradeTargetWeight": 0.021685396985426472,
+      "currentWeight": 0.021685396985426472,
+      "driftPoints": 0.1,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "JUP",
+      "targetWeight": 0.02198123545916717,
+      "tradeTargetWeight": 0.022540104131221452,
+      "currentWeight": 0.022540104131221452,
+      "driftPoints": 0.1,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "CAKE",
+      "targetWeight": 0.01658436401627157,
+      "tradeTargetWeight": 0.017006019225577623,
+      "currentWeight": 0.017006019225577623,
+      "driftPoints": 0,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "ETHFI",
+      "targetWeight": 0.014100485778757825,
+      "tradeTargetWeight": 0.014458988052351969,
+      "currentWeight": 0.014458988052351969,
+      "driftPoints": 0,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "AERO",
+      "targetWeight": 0.015635022183144998,
+      "tradeTargetWeight": 0.01603253783499865,
+      "currentWeight": 0.01603253783499865,
+      "driftPoints": 0,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "CRV",
+      "targetWeight": 0,
+      "tradeTargetWeight": 0,
+      "currentWeight": 0.012088725543377674,
+      "driftPoints": 1.2,
+      "traded": true,
+      "reason": "remove"
+    },
+    {
+      "symbol": "PYTH",
+      "targetWeight": 0.012077420073713782,
+      "tradeTargetWeight": 0.012384482588950411,
+      "currentWeight": 0.012384482588950411,
+      "driftPoints": 0,
+      "traded": false,
+      "reason": null
+    },
+    {
+      "symbol": "ASTER",
+      "targetWeight": 0.03658345594542737,
+      "tradeTargetWeight": 0.012088725543377674,
+      "currentWeight": 0,
+      "driftPoints": -3.7,
+      "traded": true,
+      "reason": "add"
+    }
+  ],
+  "trades": [
+    {
+      "seq": 1,
+      "sell": "CRV",
+      "sellAddress": "0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6",
+      "buy": "ASTER",
+      "buyAddress": "0xF96360330E54E861b4B95FaA023A77dAdDcf6511",
+      "sellAmount": "4279229590348",
+      "sellValueUsd": 16205.528043239681,
+      "expectedBuyAtFair": "2155575188381",
+      "expectedBuyAtOpen": "2198686692149",
+      "duration": 1800,
+      "drain": true,
+      "reason": "remove → add"
+    }
+  ],
+  "expectedPostTradeWeights": [
+    {
+      "symbol": "HYPE",
+      "weight": 0.3092127505609351,
+      "targetWeight": 0.301545977463622
+    },
+    {
+      "symbol": "LINK",
+      "weight": 0.2204891535128545,
+      "targetWeight": 0.2150222375979337
+    },
+    {
+      "symbol": "UNI",
+      "weight": 0.11697031853773049,
+      "targetWeight": 0.11407010546922942
+    },
+    {
+      "symbol": "AAVE",
+      "weight": 0.05835022377288237,
+      "targetWeight": 0.05690345981333831
+    },
+    {
+      "symbol": "ONDO",
+      "weight": 0.050393240265022336,
+      "targetWeight": 0.049143766936444885
+    },
+    {
+      "symbol": "MORPHO",
+      "weight": 0.03689101476354822,
+      "targetWeight": 0.03597632139355262
+    },
+    {
+      "symbol": "SKY",
+      "weight": 0.04024288072389085,
+      "targetWeight": 0.03924508486773021
+    },
+    {
+      "symbol": "ENA",
+      "weight": 0.05125416350123111,
+      "targetWeight": 0.04998334394851546
+    },
+    {
+      "symbol": "JST",
+      "weight": 0.021685396985426455,
+      "targetWeight": 0.02114771905315064
+    },
+    {
+      "symbol": "JUP",
+      "weight": 0.022540104131221435,
+      "targetWeight": 0.02198123545916717
+    },
+    {
+      "symbol": "CAKE",
+      "weight": 0.01700601922557761,
+      "targetWeight": 0.01658436401627157
+    },
+    {
+      "symbol": "ETHFI",
+      "weight": 0.014458988052351959,
+      "targetWeight": 0.014100485778757825
+    },
+    {
+      "symbol": "AERO",
+      "weight": 0.016032537834998636,
+      "targetWeight": 0.015635022183144998
+    },
+    {
+      "symbol": "CRV",
+      "weight": 0,
+      "targetWeight": 0
+    },
+    {
+      "symbol": "PYTH",
+      "weight": 0.012384482588950401,
+      "targetWeight": 0.012077420073713782
+    },
+    {
+      "symbol": "ASTER",
+      "weight": 0.012088725543378516,
+      "targetWeight": 0.03658345594542737
+    }
+  ],
+  "notes": [
+    "The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference."
+  ],
+  "announce": {
+    "txHash": "0x10bdcf5d0957c06ef00f9ce63f5ce1f1b2221f73185b1dc40f56d4616b483798",
+    "block": "37579114",
+    "at": "2026-10-02T06:57:10.000Z",
+    "eta": "1791529030",
+    "etaIso": "2026-10-09T06:57:10.000Z",
+    "pendingHash": "0x0f21a7a873a077d858458472e5a25185b3f1c01c0adfa53f5ec1e74303825f75",
+    "tuple": {
+      "adds": [
+        "0xF96360330E54E861b4B95FaA023A77dAdDcf6511"
+      ],
+      "removes": [
+        "0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6"
+      ],
+      "decisionSha256": "0xc460b0d8442320dd68064896973576ffd1e076a7e38f6a4085c502edfe4cfdf8"
+    },
+    "decisionId": "2026-10-02-qdefi-basket-reconstitution",
+    "signer": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902"
+  },
+  "execute": null,
+  "firstPrices": [],
+  "fills": [],
+  "finalize": [],
+  "verify": null,
+  "sent": [
+    {
+      "what": "announce",
+      "call": "announceRegistryChange([0xF96360330E54E861b4B95FaA023A77dAdDcf6511], [0x0581Ba8a63d787b4A39ed898445b1bFdde84bdF6], 0xc460b0d8442320dd68064896973576ffd1e076a7e38f6a4085c502edfe4cfdf8)",
+      "to": "0x88D3b5f638fE0d331797C612a5496bD8f0491FD4",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x10bdcf5d0957c06ef00f9ce63f5ce1f1b2221f73185b1dc40f56d4616b483798",
+      "sentAt": "2026-10-02T06:57:09.861Z",
+      "block": "37579114",
+      "status": "success",
+      "gasUsed": "82142",
+      "at": "2026-10-02T06:57:10.000Z"
+    }
+  ]
+}

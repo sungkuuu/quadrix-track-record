@@ -1,12 +1,15 @@
 # Vault design checklist
 
-Working version. The name is provisional.
+Confirmed on 2026-10-02. The name is provisional.
 
-The order in which a vault is to be built. Run it once, top to bottom; each step calls items from the robustness
-catalogue ([`robustness-tests.md`](robustness-tests.md)). The result goes into one run record per vault or amendment.
-The rule from 2026-10-01 is that a new vault or a rule amendment is not anchored or deployed without that record; it
-is a rule, not a mechanism (§5). No run record has been completed yet, and the vaults that exist today were built
-before this checklist (see the column "Where it has been run").
+The order in which a vault is built. Run it once, top to bottom; each step calls items from the robustness catalogue
+([`robustness-tests.md`](robustness-tests.md)). The two checklists always run together, and the result goes into one
+run record per vault or amendment. From 2026-10-01 a new vault or a rule amendment is not anchored or deployed without
+that record. That is a rule; the check that would enforce it runs as a report only for now (§5). No run record has been
+completed yet, and the vaults that exist today were built before this checklist (see the column "Where it has been run").
+
+Seventeen former robustness items were procedures rather than tests. On 2026-10-01 they were merged into the steps that
+do the same thing (column "Absorbed former R-IDs"); the old IDs remain as aliases ([`robustness-tests.md`](robustness-tests.md) §3-2).
 
 ## 1. How to use it
 
@@ -15,33 +18,47 @@ before this checklist (see the column "Where it has been run").
 - **Who decides.** *Data*: the output of a decision rule registered before the run. *The operator*: Quadrix decides.
   *Definition*: not subject to testing, and labelled as such (universe, data source, excluded asset classes). Prices
   (fees) are decided by the operator.
+- **Judgment, with the reason published.** The decision rule's output is the default. A value that differs from it goes
+  in only when the test was ambiguous, in one of two ways: *no best* — no variant met the pre-registered "best"
+  condition; or *fallback output* — the output came from the fallback (simplicity) order. The dominance rule of D10
+  still applies: the value is one of the tested variants and is not dominated in the same grid. The reason says why that
+  value, not who chose it, and it is published in the rulebook's judgment appendix and in the anchored decision (§6).
+  When the test is not ambiguous, the decision rule's output goes in.
+- **An absent rule is decided by data too.** "No band", "no buffer" and the like go in only when a test chose them:
+  "none" is run as one variant of the grid, and the absence is chosen when it is best. It is cited like any other
+  value (§6).
 - A step's output stops at "applying the decision rule gives …". It is an input to a decision, not the decision.
+- Numbers are re-measured from chain, API or git at the time of writing, from primary sources only (issuer documents,
+  verified source code, on-chain reads). Every number in a document has a source or is marked "unconfirmed". This applies
+  to every step (formerly R58).
 - **Where it has been run.** *Standard*: done the same way in more than one product or study. *Partial*: only part of it
   has been done (the missing part is named). *Once*: done in one place only. *Not yet*: the step has never been done at
   that point in the process.
+- **Absorbed former R-IDs.** What that former robustness item did, its pass criterion and where it had been run are now
+  part of this step. A document that cites the old ID is read as citing this step.
 
 ## 2. Steps
 
-| ID | Step | What it produces | Pass criterion | Who decides | Robustness items called | Where it has been run |
-|---|---|---|---|---|---|---|
-| D01 | Product hypothesis and question | One paragraph at the head of the rulebook: what exposure; the one question this vault answers; benchmarks (BTC, ETH, the closest existing product); the conditions under which it will not be built | The question is written so that numbers can refute it. The rulebook states whether the product's standard is "beat the market" or "track the category". If a similar product exists, R03 is measured | The operator | R03 | Standard for the conditions under which a product will not be built (every rulebook has them). Whether the general standard is "beat the market" or "track the category" is not yet settled |
-| D02 | Holdability on GIWA | A holdability table per candidate asset: GIWA-native / canonical bridge / not holdable; issuer powers; reserves and redemption (C1, C2) | Zero third-party-bridge or privately wrapped assets. A vault can hold at least the rulebook's minimum number of names (five so far). A paper index carries an information column plus a count of unconfirmed items | Definition (GIWA-native and canonical bridge only); exceptions: the operator | R08 | Partial: one full census of BTC representations; sector indexes carry an information column only |
-| D03 | Universe definition | The source pair in one line, the rule for excluded asset classes, the mapping table, and a check of the five conditions for an eligible source | Both sources are independent, public, machine-readable, have history, and publish how they edit. Today's basket is the intersection. If only one source can be used for the backtest, that is disclosed and R61 is run | Definition (adopted by the operator) | R05 · R10 · R61 | Standard — qDEFI, qREV, qAI. Keeping the raw source responses is not implemented (U02) |
-| D04 | Full parameter inventory and classification | The skeleton of the citation table: a P-ID for each value, its class (to be tested / definition / price), and whether a point-in-time input exists | Every value that will go into the rule is one row. Definition and price rows carry the operator's decision source. A numeric value is never classed as a definition | Definitions and prices: the operator; the rest: data | R01 · R02 · R36 | Not yet as a step before launch; so far only as an audit after launch |
-| D05 | Data | Committed input snapshots, `MANIFEST.json` (sha256, endpoint and fetch date per file), the fetch scripts, an integrity table, and the eligible count on each reconstitution date | A re-run without network gives the same output. Names that later died are included (point in time). If the data is too large to commit: sha256, the refetch command, and the result of a byte comparison | Data | R04 · R06 · R07 · R09 · R10 · R11 · R59 · R61 | Partial — qX20 snapshots and the qBTC2X / qETH2X hourly bars only; not yet for the other index studies |
-| D06 | Pre-registration | The registration section of the study README (the 15 fields in §3), committed and pushed; the registration commit hash; the list of P-IDs this study decides | The registration commit is an ancestor of every result commit. Policy values and the decision rule are fixed after the operator confirms them. After registration nothing is edited; changes are appended as a list | The operator confirms the design | R12 · R13 · R34 · R35 · R37 · R51 · R55 | Standard (since 2026-09-29) |
-| D07 | Checks and smoke run | A checks section: reproduction of the previous version, closed forms, sanity bounds, random-number comparison. Smoke runs use throwaway seeds only | If any required check fails, the main run does not happen | Data | R13 · R19 · R38 · R39 | Standard for leverage; partial for indexes |
-| D08 | Run | Grid and Monte Carlo result files, shards, `MANIFEST.sha256`, `DONE` | A `DONE` commit exists. Two runs are byte-identical. Every ● item for the product type is "run", or "not applicable" with a reason. Heavy runs go to cloud sessions | Data | R04 · R06 · R07 · R14–R18 · R20–R33 · R40 · R51 · R60 · R62 | Standard |
-| D09 | Independent verification | An independent verification report made from a clean checkout by a verifier other than the author; a comparison with an independent reimplementation; the review record (number of corrections) | Registration precedence confirmed; deterministic steps re-run and match; recombined results byte-identical. The final review is by a reviewer other than the author | Data (the verifier) | R39 · R40 · R41 · R42 | Partial — an independent re-run has been done for one leverage study; not yet required for every study |
-| D10 | Selection | A selection table per parameter: the decision rule's output, P, median, firing count, standard errors to the threshold, the value to enter | Only the decision rule's output goes into the rule. If the result is "indistinguishable", the value first in the registered Occam order. If the fallback picks a dominated variant, it is not a pass → a new pre-registration. A value that fired zero times does not count as tested | Data → adopted by the operator. If the operator picks a value other than the output: R36 label and a decision document (whether this route is permitted is not yet settled) | R24 · R34 · R35 · R36 · R37 · R60 | Standard. One fallback issue in a leverage study is open (U18) |
-| D11 | Rulebook | The rulebook, its appendix "parameter citation table", the keeper rule JSON, and the provenance file | The citation check passes: every value has a citation or a definition / price label. Rulebook = keeper JSON = harness. A limitations section. The public-wording rules are met | The citation check (designed, not implemented — U25) | R01 · R02 · R36 · R54 · R55 · R58 | Rulebook: standard. Citation table: not yet |
-| D12 | Page block and CSVs | Data for the "How far these rules were tested" block (what was tested, what was not, files); CSVs under `/methodology/<product>/`; the list of what is not published | The block equals the run record. Every file behind a button exists and is byte-identical to the research folder. Sentences are checked line by line. Staging → preview → operator confirmation | The operator (it is published) | R53 · R54 · R56 · R63 | Not yet: the block is being built. CSV publication: partial |
-| D13 | Paper index first | The keeper leg, `keeper/rulebooks/<index>.json`, dry-run logs, the record chain | Zero mismatches over at least two dry runs. Research ↔ keeper equivalence. Fails closed on every failure path. Vault and third-party money only after the record | The operator confirms (the inception anchor is D16) | R02 · R05 · R48 · R49 · R50 | Standard — qDEFI, qREV, qAI, qDUO, qTRI |
-| D14 | Keeper and operating assumptions | A table of operating assumptions: (a) the execution interval the rule assumes, against the measured interval; (b) missed-run and delay alerts; (c) behaviour when degraded; (d) keys and permissions per role, read from chain | The run environment guarantees the assumed interval, or the rulebook states what happens when it is exceeded. An alert catches "did not run at all". Addresses and policy values per role equal the design table | Data (measured); key structure: the operator | R28 · R49 · R50 · R64 · U03 · U24 | Failing closed on degraded data: standard. The interval and the roles: measured once, after deployment. Not yet as a step before launch |
-| D15 | Security gate | Verdicts from the invariant register; incident-pattern replay and adversarial proof-of-concept results for new code and new external dependencies; an audit plan (tooling, external) | Zero regressions against the baseline. An action for every "contrary to the document" and "not implemented". An action and a schedule for every confirmed break. No new code → "not applicable" with a reason. Before mainnet: external audit, bug bounty, formal verification of the core invariants | Data (tests); acceptance of residual risk: the operator | R08 · R44 · R45 · R46 · R47 · R64 · U01 · U08 · U19 | Once, after deployment. Not yet as a gate before launch |
-| D16 | Inception decision and anchor | A decision document: effective date; pins (rulebook commit and sha256, keeper JSON sha256, keeper commit); a "Tested, and not tested" section; limitations | Two independent reviews, a rehearsal, and the operator's confirmation of the text. The files are on main. Anchored one at a time. The gate report passes. Zero untested values among the values introduced or changed | The operator (the text) | R49 · R52 · R57 | Two reviews, rehearsal and hash pinning: standard. "Tested, and not tested" section and gate report: not yet |
-| D17 | Deployment and site | Testnet deployment (chain operation), page cards and badges, headline numbers | Chain operations: two reviews and a rehearsal. Staging → preview → local write-API test at least twice → main → production recheck. No operator wallet address in the site's client bundle. Zero verifier failures | The operator confirms | R53 · R56 | Standard |
-| D18 | Post-launch rule audit | An audit record: citation table re-checked, firing counts updated, the register of untested values, corrections | Every untested value and every mismatch has a test order or an action. A rule that is not best under test is removed at the next amendment | Data → the operator | R01 · R02 · R57 · R60 | Once as a full audit, once as a scope review. Proposed cadence: before every rule amendment, once per reconstitution quarter, and immediately when a mismatch is found |
+| ID | Step | What it produces | Pass criterion | Who decides | Robustness items called | Absorbed former R-IDs | Where it has been run |
+|---|---|---|---|---|---|---|---|
+| D01 | Product hypothesis and question | One paragraph at the head of the rulebook: what exposure; the one question this vault answers; benchmarks (BTC, ETH, the closest existing product); the conditions under which it will not be built | The question is written so that numbers can refute it. The rulebook states whether the product's standard is "beat the market" or "track the category". If a similar product exists, R03 is measured | The operator | R03 | — | Standard for the conditions under which a product will not be built (every rulebook has them). Whether the general standard is "beat the market" or "track the category" is not yet settled |
+| D02 | Holdability on GIWA | A holdability table per candidate asset: GIWA-native / canonical bridge / not holdable; issuer powers; reserves and redemption (C1, C2) | Zero third-party-bridge or privately wrapped assets. A vault can hold at least the rulebook's minimum number of names (five so far). A paper index carries an information column plus a count of unconfirmed items | Definition (GIWA-native and canonical bridge only); exceptions: the operator | R08 | — | Partial: one full census of BTC representations; sector indexes carry an information column only |
+| D03 | Universe definition | The source pair in one line, the rule for excluded asset classes, the mapping table, and a check of the five conditions for an eligible source | Both sources are independent, public, machine-readable, have history, and publish how they edit. Today's basket is the intersection. If only one source can be used for the backtest, that is disclosed and R61 is run | Definition (adopted by the operator) | R05 · R10 · R61 | — | Standard — qDEFI, qREV, qAI. Keeping the raw source responses is not implemented (U02) |
+| D04 | Full parameter inventory and classification | The skeleton of the citation table: every value pulled from the rulebook, the keeper JSON, the keeper code constants and the research; a P-ID for each value, its class (to be tested / definition / price), and whether a point-in-time input exists | Every value that will go into the rule is one row of the citation table. Definitions are only universe, data source and excluded asset classes; prices are only fees; each of those rows carries the operator's decision source. A numeric value is never classed as a definition. A numeric value that differs from the decision rule's output is written only as a judgment, and only when the test was ambiguous (§1); when its reason is a purpose other than return (concentration, drawdown budget, representativeness), the purpose metric (largest BTC weight, effective N, etc.) and its numbers are put in the results. An absence ("none") is a row too, and is to be tested | Definitions and prices: the operator; the rest: data | R02 | R01 · R36 | Not yet as a step before launch; as an audit after launch, standard (qX20, qDEFI, qREV, qAI, qDUO, qTRI, N1Q). Definition and price labels: standard |
+| D05 | Data | Committed input snapshots, `MANIFEST.json` (sha256, endpoint and fetch date per file), the fetch scripts, an integrity table, and the eligible count on each reconstitution date | A re-run without network gives the same output. Names that later died are included (point in time). If the data is too large to commit: sha256, the refetch command, and the result of a byte comparison | Data | R04 · R06 · R07 · R09 · R10 · R11 · R59 · R61 | — | Partial — qX20 snapshots and the qBTC2X / qETH2X hourly bars only; not yet for the other index studies |
+| D06 | Pre-registration | The registration section of the study README (the 15 fields in §3), committed and pushed; the registration commit hash; the list of P-IDs this study decides. A measurement study without a decision rule also fixes its design and limitations first | The run happens only after the registration commit is pushed. The registration commit is an ancestor of every result commit, and its hash is in the README. Policy values and the decision rule are fixed after the operator confirms them. After registration nothing is edited; changes are appended as a `git diff <registration> HEAD` list. A defective rule is fixed only by pre-registering a new version. Fields 9 and 11–14 follow §3 | The operator confirms the design | — | R12 · R13 · R34 · R35 · R37 · R55 | Standard (since 2026-09-29) — qX20, qDEFI, qBTC2X, qETH2X. The seed rule and the Occam guard: partial (§3, fields 9 and 12) |
+| D07 | Checks and smoke run | A checks section: reproduction of the previous version, closed forms, sanity bounds, random-number comparison. Smoke runs use throwaway seeds only | If any required check fails, the main run does not happen. Seeds follow D06 field 9 | Data | R19 · R38 · R39 | — | Standard for leverage; partial for indexes |
+| D08 | Run | Grid and Monte Carlo result files, shards, `MANIFEST.sha256`, `DONE` / `FAILED`, a PID file | A `DONE` commit and the manifest exist. Two runs are byte-identical. Every ● item for the product type is "run", or "not applicable" with a reason. Heavy runs go to cloud sessions. Long runs are split into deterministic, idempotent shards, each written to `.tmp` and then moved, committed and pushed shard by shard; a restart skips finished shards | Data | R04 · R06 · R07 · R14–R18 · R20–R33 · R40 · R60 · R62 | R51 | Standard. The long-run discipline from the fourth leverage version (qBTC2X, qETH2X) |
+| D09 | Independent verification | An independent verification report in which a verifier other than the author re-runs, from a clean checkout, the pre-registration order, the deterministic steps and the recombination; a comparison with an independent reimplementation; the review record (number of corrections) | Registration precedence confirmed; deterministic steps re-run and match; recombined results byte-identical. The verification report is merged with the results. Every output is reviewed by a reviewer other than its author before it is used, and the final review compares the whole diff with the sources and with fresh measurements. The review record is in the merge commit or the document | Data (the verifier) | R39 · R40 | R41 · R42 | Staged review: standard. Independent re-verification: partial — done for one leverage study, by verifiers from a single model family (other vendors and external AI audit products are U04). Required now for leverage, for other types when applicable; not yet required for every study |
+| D10 | Selection | A selection table per parameter: the decision rule's output, P, median, firing count, standard errors to the threshold, the value to enter. One paragraph on selection effects in the results document | The decision rule (D06 field 11) is applied mechanically to the headline scenario and written as "applying the decision rule gives …". The decision rule's output goes into the rule; if the result is "indistinguishable", the value first in the registered Occam order. A value that differs from the output goes in only as a judgment, when the test was ambiguous (§1), with the rule output, the test that shows the ambiguity and the reason in the rulebook's judgment appendix and in the decision. An absence goes in the same way: "none" is in the grid and the decision rule picks it. If the variant the fallback picks is dominated in the same grid, write "not a pass" and pre-register a new version; a dominated variant is not put into the rule. A value that fired zero times does not count as tested. The results document has one paragraph on selection effects (D06 field 13) | Data → adopted by the operator. A judgment, with the reason published, only when the test was ambiguous | R24 · R60 | R34 · R35 · R37 (applied here; fixed in D06) | Standard — qX20, qDEFI, qBTC2X, qETH2X. The Occam guard: partial (§3, field 12). One fallback issue in a leverage study is open (U18) |
+| D11 | Rulebook | The rulebook, its appendix "parameter citation table", a judgment appendix when any value is a judgment, the keeper rule JSON, and the provenance file | The citation check passes (§6): every value has a citation or a definition / price label. The D04 inventory is pulled again and compared with the table. Rulebook = keeper JSON = harness. A limitations section (the one fixed before the results, D06 field 14). Every number has a source or "unconfirmed". The public-wording rules are met | The citation check (runs as a report only for now — U25) | R02 · R54 | — | Rulebook: standard. Citation table: not yet |
+| D12 | Page block and CSVs | Data for the "How far these rules were tested" block (what was tested, what was not, files); grid and Monte Carlo CSVs under `/methodology/<product>/`; the list of what is not published | The block equals the run record. Every file button in the block is a real file, and public copies are byte-identical to the research folder. The list of what is not published is in the block. Sentences are checked line by line. Staging → preview → operator confirmation (deployed as in D17) | The operator (it is published) | R54 · R56 | R63 | Not yet: the block is being built. CSV publication: partial — outputs of several studies are published under `/methodology/`, without the block that lists what is not |
+| D13 | Paper index first | The keeper leg, `keeper/rulebooks/<index>.json`, dry-run logs, the record chain (the keeper runs the rule daily and anchors a record line) | Zero mismatches over at least two dry runs. Research ↔ keeper equivalence. Fails closed on every failure path. The inception decision is anchored (as in D16) and the first record line exists. Gaps in the record are not filled. Vault and third-party money only after the record. Leverage starts at stage A (paper level plus a marked vault) | The operator confirms (the inception anchor is D16) | R02 · R05 · R49 · R50 | R48 | Standard — qDEFI, qREV, qAI, qDUO, qTRI |
+| D14 | Keeper and operating assumptions | A table of operating assumptions: (a) the execution interval the rule assumes, against the measured interval; (b) missed-run and delay alerts; (c) behaviour when degraded; (d) keys and permissions per role, read from chain | The run environment guarantees the assumed interval, or the rulebook states what happens when it is exceeded. An alert catches "did not run at all". Addresses and policy values per role equal the design table | Data (measured); key structure: the operator | R28 · R49 · R50 · R64 · U03 · U24 | — | Failing closed on degraded data: standard. The interval and the roles: measured once, after deployment. Not yet as a step before launch |
+| D15 | Security gate | Verdicts from the invariant register; incident-pattern replay and adversarial proof-of-concept results for new code and new external dependencies; an audit plan (tooling, external) | Zero regressions against the baseline. An action for every "contrary to the document" and "not implemented". An action and a schedule for every confirmed break. No new code → "not applicable" with a reason. Before mainnet: external audit, bug bounty, formal verification of the core invariants | Data (tests); acceptance of residual risk: the operator | R08 · R44 · R45 · R46 · R47 · R64 · U01 · U08 · U19 | — | Once, after deployment. Not yet as a gate before launch |
+| D16 | Inception decision and anchor | A decision document: effective date; pins (rulebook commit and sha256, keeper JSON sha256, keeper commit); a "Tested, and not tested" section with the judgments and their reasons; limitations | Two independent reviews, a rehearsal and the operator's confirmation of the text, with the record of both reviews and the passed rehearsal kept. Before anchoring, the files are confirmed on main. Anchored one at a time. The gate report passes. Zero untested values among the values introduced or changed. A wrong anchored sentence is corrected by an anchored correction (D18) | The operator (the text) | R49 | R52 | Two reviews, rehearsal and hash pinning: standard. "Tested, and not tested" section and gate report: not yet |
+| D17 | Deployment and site | Testnet deployment (chain operation), page cards and badges, headline numbers | Chain operations: two reviews and a rehearsal. Staging → preview → local write-API test at least twice → main → production recheck once the deployment of that commit has finished. No operator wallet address in the site's client bundle. Zero verifier failures | The operator confirms | R56 | R53 | Standard |
+| D18 | Post-launch rule audit | An audit record: the citation table re-checked (the D04 inventory pulled again), firing counts updated, the register of untested values, corrections. Corrections are standing: an error gets a before/after table and the affected outputs in a rulebook appendix; a wrong anchored sentence gets an anchored correction; a gap in the record stays a gap | Every untested value and every mismatch has a test order or an action. A rule that is not best under test is removed at the next amendment. Every correction has an appendix entry, and an anchored sentence has a correction document | Data → the operator | R02 · R60 | R57 | Once as a full audit, once as a scope review. Corrections: standard (qX20). Cadence: proposed — before every rule amendment, once per reconstitution quarter, and immediately when a mismatch is found; not yet settled |
 
 Public files that show some of these steps done: the qX20 committed monthly snapshots and their manifest (D05) —
 <https://quadrix.finance/methodology/qx20/snapshots/MANIFEST.json>; a decision rule fixed and committed before the
@@ -55,42 +72,45 @@ results, with its checks and selection (D06, D07, D10) — <https://quadrix.fina
 
 ## 3. Required fields of a pre-registration (D06)
 
-| # | Field |
-|---|---|
-| 1 | Hypothesis and question (the P-IDs this study decides) |
-| 2 | Inventory: values in force, their source, whether a point-in-time input exists |
-| 3 | Data and sha256; what is point in time and what is a proxy |
-| 4 | Everything run before the registration |
-| 5 | Engine and settings (current settings / previous harness settings) |
-| 6 | Grid (combinations left out, and why) |
-| 7 | Windows and benchmarks (BTC, ETH) |
-| 8 | Cost scenarios and the headline scenario |
-| 9 | Monte Carlo specification: sampling unit, block length, number of paths, seeds and overlap check, common random numbers, seam rule |
-| 10 | Checks (if any fails, no run) |
-| 11 | Decision rule: the conditions for "best", the headline scenario |
-| 12 | Occam order and guard: simplicity order per parameter, definition of dominance, a dominated fallback is not a pass |
-| 13 | Selection-effect disclosure (a target chosen after seeing results; a rule chosen on the same sample) |
-| 14 | Limitations (written before the results, not edited after) |
-| 15 | Run plan: shards, expected time, cloud, wording rule ("applying the decision rule gives …") |
+| # | Field | Former R-ID |
+|---|---|---|
+| 1 | Hypothesis and question (the P-IDs this study decides) | — |
+| 2 | Inventory: values in force, their source, whether a point-in-time input exists | — |
+| 3 | Data and sha256; what is point in time and what is a proxy | — |
+| 4 | Everything run or seen before the registration (disclosed) | R12 |
+| 5 | Engine and settings (current settings / previous harness settings) | — |
+| 6 | Grid (combinations left out, and why) | — |
+| 7 | Windows and benchmarks (BTC, ETH) | — |
+| 8 | Cost scenarios and the headline scenario | — |
+| 9 | Monte Carlo specification: sampling unit, block length, number of paths, seeds and overlap check, common random numbers, seam rule. **Seeds**: a new version (a re-test) uses a new seed base and checks for overlap; a follow-up comparison of the same question deliberately reuses the earlier study's seeds and paths, for a paired comparison; the registration says which. Smoke and benchmark runs use throwaway seeds only. **Pass**: the seed base and the overlap check, or "deliberately identical paths", are in the registration (indexes and allocations when they use Monte Carlo, leverage always). Partial: the new seed base, overlap check and throwaway seeds are used in the leverage studies only; the index studies deliberately share one seed base | R13 |
+| 10 | Checks (if any fails, no run) | — |
+| 11 | Decision rule: the conditions for "best", the headline scenario; the verdict is taken on the headline scenario only. Example — index: "best" if P(grid best) > 0.5 at L = 6 with tiered costs and the median at L = 3 and L = 12 exceeds the current value; leverage: within the eligible set (R25–R27), P > 0.5 at every L and in at least 4 of 7 scenarios. **Pass**: the verdict comes out mechanically (applied in D10) | R34 |
+| 12 | Occam order and guard: the simplicity order per parameter, the definition of dominance, and "a dominated fallback is not a pass", fixed at registration. Partial: the order and the guard differed between studies — a median guard (qX20 rank buffer, qDEFI), a dominance guard P < 0.25 (qX20 cap), no guard in one leverage study, where the fallback picked a dominated variant for BTC (open, U18); the simplicity order for N also differed (10 → 30 in one study; in qDEFI "fewer is not simpler") | R35 |
+| 13 | Selection-effect disclosure: the "as is" result of a rule chosen on the same sample is optimistic; a target chosen after a failure carries a multiple-target selection effect. **Pass**: one paragraph in the results document (D10) | R37 |
+| 14 | Limitations, written before the results and not edited after: what the model lacks (intra-bar paths, oracle price differing from the exchange price used, slippage, the placeholder liquidation threshold, Monte Carlo seams, length of history, the policy value k, the possibility of total loss). **Pass**: the registration commit has a limitations section. Standard for leverage from the third version; in qDEFI the limitations section was written after the results, and only the data limitations were fixed at registration | R55 |
+| 15 | Run plan: shards, expected time, cloud, wording rule ("applying the decision rule gives …") | — (the long-run discipline is D08, formerly R51) |
 
 ## 4. Differences by product type
 
 | Type | Steps that change |
 |---|---|
 | Index | D03 required (sector indexes). In D08, at least one of R21 and R23, plus R17, R18, R32 |
-| Allocation | D03 is the definition of the sleeve assets. The ratios also go through D06–D10. In D08, R23 |
-| Leverage | D02 covers collateral and borrowed assets. D05 includes R59. In D08, R20, R22, R25–R29, R33. D13 starts at stage A (paper level plus a marked vault). The interval guarantee in D14 is a launch condition |
-| Discretionary | D04, D11, D12 and D14–D18 apply. How D05–D10 apply is not yet defined |
+| Allocation | D03 is the definition of the sleeve assets. The ratios (60/40, 30/40/30) also go through D06–D10. qDUO's 60/40 was set from a drawdown budget; a ratio that differs from the decision rule's output must meet the condition for a judgment (§1: the test was ambiguous). In D08, R23 |
+| Leverage | D02 covers collateral and borrowed assets. D05 includes R59. In D08, R20, R22, R25–R29, R33. Independent re-verification in D09 is required. D13 starts at stage A (paper level plus a marked vault). The interval guarantee in D14 is a launch condition |
+| Discretionary | D04 and D11–D18 apply. In D09 the staged review applies, and independent re-verification when applicable. How D05–D08 and D10 apply is not yet defined; it is to be revisited |
 
 ## 5. Where the process stops
 
 | Point | What stops it when missing | How it is meant to stop | In place? |
 |---|---|---|---|
-| D06 → D08 | The pre-registration commit | A check that the registration commit is an ancestor of the first commit of each result file | No — designed (U25) |
-| D09 → D10 | The independent verification report | The selection table cannot be cited while the run record names no verifier and no report | No — designed (U25) |
-| D11 | A value without a citation | The citation check fails and the commit is refused | No — designed (U25) |
+| D06 → D08 | The pre-registration commit | A check that the registration commit is an ancestor of the first commit of each result file | Reported, not enforced (U25) |
+| D09 → D10 | The independent verification report | The selection table cannot be cited while the run record names no verifier and no report | Reported, not enforced (U25) |
+| D11 | A value without a citation | The citation check fails and the commit is refused | Reported, not enforced (U25) |
 | D12 | A file behind a page button | The first step of the site build fails | Yes, for the download files on candidate pages |
-| D16 | The gate report or the run record | The anchoring workflow refuses the decision | No — designed (U25) |
+| D16 | The gate report or the run record | The anchoring workflow refuses the decision | No — the anchoring workflow does not run the check yet |
+
+The citation check is implemented and runs as a report only: it lists what it finds and refuses nothing. It is to be
+wired into commits, CI and anchoring once the existing rulebooks carry their citation tables; none does yet.
 
 ## 6. The citation table
 
@@ -102,12 +122,12 @@ text carries its P-ID (for example `[P07]`). P-IDs are unique within a rulebook 
 | P-ID | Unique within the rulebook | every row |
 | Parameter and value | Name and value in force, with units | every row |
 | Basis | One word from the vocabulary below | every row |
-| Tests | The R-IDs run, and the study folder | tested, partly tested |
-| Result file and sha256 | The result file that set the value, with its full sha256 | tested, partly tested |
-| Pre-registration | The registration commit hash | tested |
-| Selection | "Rule output", or "operator decision (differs from the output)" | tested |
-| Decision source | The decision document ID or date | definition, price, operator decision |
-| Run record | The checklist run record | tested, partly tested |
+| Tests | The R-IDs run, and the study folder | tested, partly tested, absent |
+| Result file and sha256 | The result file that set the value, with its full sha256 | tested, partly tested, absent |
+| Pre-registration | The registration commit hash | tested, absent |
+| Selection | "Rule output" or "judgment (reason published)" (below) | tested, absent |
+| Decision source | The decision document ID or date. For a judgment, the decision that publishes its reason | definition, price, judgment |
+| Run record | The checklist run record | tested, partly tested, absent |
 | Keeper location | The keeper JSON path, or the code constant | when the keeper uses the value |
 
 **Basis vocabulary**
@@ -118,8 +138,22 @@ text carries its P-ID (for example `[P07]`). P-IDs are unique within a rulebook 
 | partly tested | A backtest only, or run without pre-registration. Cannot be used for a new or changed value |
 | definition | Universe, data source, excluded asset classes. Cannot be used for a numeric value |
 | price | Fees |
-| absent | The rule does not exist (no band, no hysteresis). Not a value, so nothing to cite. Whether this exemption stands is not yet settled |
+| absent | A test chose "none" (no band, no hysteresis). Cited exactly like a tested value. A "none" that was put in without a test is labelled "not tested", or "partly tested" if it had a backtest only |
 | not tested | Never tested. Allowed only for values in force before 2026-10-01 |
+
+**Selection vocabulary** (tested and absent rows)
+
+| Selection | Meaning |
+|---|---|
+| Rule output | The output of the pre-registered decision rule (D06 field 11) on the headline scenario, as it is. When the result is "indistinguishable", the value the registered Occam order gives is also the rule output |
+| Judgment (reason published) | A value that differs from the output. Only when the test was ambiguous: *no best* — no variant met the pre-registered "best" condition; or *fallback output* — the output came from the fallback (simplicity) order. The value is one of the tested variants and is not dominated in the same grid (D10) |
+
+**Judgment appendix.** A rulebook with at least one judgment carries a second appendix, "Judgment record", after the
+citation table: one row per judgment, with the P-ID, the decision rule's output, which of the two kinds of ambiguity it
+was, the result document and line that show it, the value used, and the reason — why that value, in terms of a purpose
+metric and its numbers, not who chose it. The same rows appear in the anchored decision. The citation check flags a judgment
+without an ambiguity of one of the two kinds, without the cited result line, without a reason, or without the decision
+(it reports only for now, §5).
 
 A provenance file per index (`keeper/rulebooks/<index>.provenance.json`), carrying the same rows for the keeper JSON, is
 planned; it does not exist yet. The keeper JSON files already pinned by anchored decisions are not changed.
