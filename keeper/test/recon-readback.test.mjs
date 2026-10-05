@@ -731,3 +731,21 @@ test('planner notes (pure): the 5% reference guard and the first-price gate, at 
   assert.match(firstPriceGateNote([{ ...add, priceB: 1.236 }], 200), /^first-price gate: ASTER sources 3\.00% apart/);
   assert.match(firstPriceGateNote([{ ...add, priceB: null }, { ...add, symbol: 'X', address: null }], 200), /ASTER no second-source price, X no mock address/);
 });
+
+test('auctions stage re-run after execute (A1 L4): with a reference moved more than 5% since the plan, the earlier run\'s fill is recorded and its open auction cancelled BEFORE the guard refuses', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, (p) => ({ ...p, announce: { pendingHash: pend, tuple: p.announceTuple }, execute: { txHash: '0xearlier' }, trades: [T1, T2] }));
+  const { fillTx } = earlierFill(chain, { sell: AAA, buy: ASTER, amount: 100n * 10n ** 8n });
+  chain.send(OWNER, { address: V, functionName: 'openAuction', args: [CRV, BBB, 4_000n * 10n ** 8n, 1800n] });
+  const orphan = chain.head.state.auctions.length - 1;
+  chain.send(OWNER, { address: V, functionName: 'setRefPrice', args: [BBB, (REF_BBB * 106n) / 100n] }); // a hand re-mark, 6%
+  chain.lagReads = 3;
+  const ctx = ctxFor(chain, f);
+  await requireSizingBeforeExecute(ctx); // nothing pending: stands aside
+  await assert.rejects(stageAuctions(ctx), (e) => isRefused(e) && /BBB: chain reference .* from the plan's/.test(e.message));
+  const p = loadPlan(f);
+  assert.deepEqual(p.fills.map((x) => [x.seq, x.fillTx, x.adopted]), [[1, fillTx, true]], 'the earlier fill is in the record');
+  assert.equal(chain.head.state.auctions[orphan].open, false, 'the orphan was cancelled');
+  assert.equal(chain.sent.at(-1).functionName, 'cancelAuction', 'nothing opened');
+});

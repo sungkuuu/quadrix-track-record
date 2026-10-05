@@ -1451,12 +1451,12 @@ export async function stageAuctions(ctx) {
     const isB = await readNow(ctx, 'isBidder', { address: plan.vault, abi: VAULT_ABI, functionName: 'isBidder', args: [ctx.bidderAddr] });
     if (!isB) throw new Refused(`bidder ${ctx.bidderAddr} is not whitelisted (isBidder false, biddingOpen false) — owner setBidder first`);
   }
+  // A re-run first records what an earlier run did and cancels what it left
+  // open — before the reference checks below, so that a run refused for a
+  // moved reference still leaves the earlier run's fills in this plan's record.
+  const adopted = await reconcileSession(ctx, v, { cancelOrphans: true, halt: true });
   // References must be today's marks: this script never moves one.
   await requireRefsNearMarket(ctx, v);
-  // A re-run first records what an earlier run did and cancels what it left
-  // open — before the sizing check below, so that a run refused for a moved
-  // reference still leaves the earlier run's fills in this plan's record.
-  const adopted = await reconcileSession(ctx, v, { cancelOrphans: true, halt: true });
   requireRefsAsPlanned(ctx, v);
   log(`${plan.trades.length} planned auction(s); ${plan.fills.length} already filled; fill policy ${o.fill}; every reference within ${pct(o.refDriftTol)} of the plan${plan.trades.length ? ' and equal to the one the plan sized at' : ''}`);
   if (plan.trades.length === 0) {
