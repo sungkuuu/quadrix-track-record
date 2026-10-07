@@ -1,0 +1,100 @@
+name: leverage-dryrun
+
+# Replays a leverage series (qBTC2X, qETH2X) from Binance bars in CI — by hand
+# from the Actions tab, never scheduled — and recomputes it with
+# scripts/verify.mjs. Output: keeper/dryrun/ as an artifact.
+#
+#   node keeper/leverage-index.mjs --index <i> --dry-run --replay FROM..TO \
+#        [--throwaway-check n:T] [--throwaway-level bp:pct]
+#
+# It NEVER commits, anchors or touches a vault: permissions are contents:
+# read, KEEPER_PK is not passed (a step fails if one is in the environment),
+# and a dry run neither reads a key nor sends a transaction. Throwaway values
+# stand in for the empty tested values; every line they produce carries
+# "rehearsal": "THROWAWAY n=… T=…" and fails verify.mjs without
+# --allow-rehearsal. Inputs reach the shell through `env:` and are checked.
+on:
+  workflow_dispatch:
+    inputs:
+      index:
+        description: 'qbtc2x | qeth2x'
+        required: true
+        type: choice
+        options: [qbtc2x, qeth2x]
+      replay:
+        description: 'FROM..TO (FROM = the replayed inception date, TO = the last line date), e.g. 2020-03-10..2020-03-13'
+        required: true
+        default: '2020-03-10..2020-03-13'
+      throwaway_check:
+        description: 'Optional n:T standing in for the empty tested values, e.g. 120:2.2 (labelled THROWAWAY on every line)'
+        required: false
+        default: ''
+      throwaway_level:
+        description: 'Optional costBp:ratePct standing in for an empty level.primary, e.g. 30:6'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Its own group, not keeper-key: nothing here signs, and a pending run in
+# keeper-key would displace a pending keeper run.
+concurrency:
+  group: leverage-dryrun
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      INDEX: ${{ inputs.index }}
+      REPLAY: ${{ inputs.replay }}
+      TCHECK: ${{ inputs.throwaway_check }}
+      TLEVEL: ${{ inputs.throwaway_level }}
+    steps:
+      - name: Guard — valid inputs, no signing key
+        run: |
+          set -euo pipefail
+          printf '%s' "$REPLAY" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.\.[0-9]{4}-[0-9]{2}-[0-9]{2}$' || { echo "::error::replay must be FROM..TO"; exit 1; }
+          if [ "$TCHECK" != "" ] && ! printf '%s' "$TCHECK" | grep -Eq '^[0-9]+:[0-9]+(\.[0-9]+)?$'; then echo "::error::throwaway_check must be n:T"; exit 1; fi
+          if [ "$TLEVEL" != "" ] && ! printf '%s' "$TLEVEL" | grep -Eq '^[0-9]+(\.[0-9]+)?:[0-9]+(\.[0-9]+)?$'; then echo "::error::throwaway_level must be bp:pct"; exit 1; fi
+          if [ "${KEEPER_PK:-}" != "" ]; then echo "::error::KEEPER_PK is set — a dry run must not be able to sign"; exit 1; fi
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Replay
+        run: |
+          set -o pipefail
+          args=(--index "$INDEX" --dry-run --replay "$REPLAY")
+          if [ "$TCHECK" != "" ]; then args+=(--throwaway-check "$TCHECK"); fi
+          if [ "$TLEVEL" != "" ]; then args+=(--throwaway-level "$TLEVEL"); fi
+          node keeper/leverage-index.mjs "${args[@]}" 2>&1 | tee replay.log
+
+      - name: Recompute with verify.mjs
+        run: |
+          set -o pipefail
+          node scripts/verify.mjs --dir keeper/dryrun --series "$INDEX" --recompute-only --allow-rehearsal 2>&1 | tee verify.log
+
+      - name: Tripwire — nothing outside keeper/dryrun/ changed
+        if: ${{ !cancelled() }}
+        run: |
+          changed=$(git status --porcelain --untracked-files=no -- . ':(exclude)keeper/dryrun' || true)
+          if [ "$changed" != "" ]; then echo "::error::tracked files changed outside keeper/dryrun/:"; echo "$changed"; exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: leverage-dryrun-${{ inputs.index }}-${{ github.run_id }}
+          path: |
+            keeper/dryrun/
+            replay.log
+            verify.log
+          retention-days: 30

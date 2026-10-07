@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       simulate:
-        description: 'trip one check on purpose: stale | anchor | keeper | gas'
+        description: 'trip one check on purpose: stale | anchor | keeper | gas | series-missing | series-stale | series-anchor'
         required: false
         default: ''
 

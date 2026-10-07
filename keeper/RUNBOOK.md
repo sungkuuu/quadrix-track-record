@@ -589,6 +589,105 @@ with three additions specific to this leg:
 | `quality seats: 4/10` on Triens | fewer names passed the screen than the rulebook's viability floor of 5 | nothing operational — the level is still recorded. It is a signal for the owner: the rule says a product would not be launched on that quarter. |
 | `sleeve reset: … outside the 5-point tolerance` | the quarterly reset traded | expected on a reconstitution day after a large move. The line prints every sleeve's target, drifted weight and gap before it decides. |
 
+## Leverage stage A — qBTC2X / qETH2X (qBTC2X from 2026-10-08, once its inception decision is anchored; qETH2X held)
+
+qETH2X is held (owner, 2026-10-06): it does not open on 2026-10-08, its step in
+`paper-index` is switched off (`if: false`), and no vault is deployed for it.
+Its rulebook, JSON and draft decision stay in the repository; opening it later
+is its own inception decision and a commit that switches the step back on.
+
+`keeper/leverage-index.mjs` computes a synthetic daily-reset 2x level from
+Binance spot 1-minute bars (aggregated to 15-minute bars), one line per closed
+UTC day, and marks a testnet vault after the anchor. It runs as two steps of
+the `paper-index` workflow (after qAI, before the qX20 mark), with the same
+key, schedule and `keeper-key` group. Its rulebooks
+(`keeper/rulebooks/qbtc2x.json`, `qeth2x.json`) hold the values the inception
+decisions pin: check interval and trigger (120 minutes and 2.2 for qBTC2X, 30
+minutes and 2.3 for qETH2X) and the level's cost convention (30 bp a trade,
+4.5% a year on the debt). A changed JSON no longer matches its decision; the
+leg then refuses (exit 2).
+
+Until the inception decision `2026-10-08-<index>-paper-inception` is in
+`trackrecord/decisions.jsonl`, and before 2026-10-08 00:00 UTC, every run says
+`NOT IN FORCE` and exits 0, writing nothing. The first run after that writes
+the genesis line (level 100). A line dated D holds the bars of UTC day D − 1;
+it is written only after D 00:00 UTC on both the runner's clock and Binance's.
+Once the series has a line, a mismatch with the decision is a refusal (exit 2):
+a started series never stops silently.
+
+**Order inside a run** (same as every paper leg): line → anchor → vault marks.
+Each new line is first recomputed by `scripts/verify.mjs --recompute-only`, a
+separate implementation that also checks the line's rule against the rulebook
+JSON; if it disagrees nothing is appended (exit 1). There is no state file:
+the last line's `book` is the state. A day the job missed is written by the
+next run from the same bars and marked `late`.
+
+**Dry runs** (keyless, labelled on every line they write):
+
+```bash
+node keeper/leverage-index.mjs --index qbtc2x --dry-run --replay 2020-03-10..2020-03-13 \
+     --throwaway-check 120:2.2 --throwaway-level 30:4.5          # writes keeper/dryrun/
+node scripts/verify.mjs --dir keeper/dryrun --series qbtc2x --recompute-only --allow-rehearsal
+```
+
+or the `leverage-dryrun` workflow (keyless, `contents: read`).
+
+**Dispatching by hand** (the opening day and after): one keeper-key workflow at
+a time. A run checks out main as it is when it starts, but a run created while
+another is queued can still meet the other's push: dispatch the next anchor or
+`paper-index` run only after the previous run's commit is on main, never while
+a scheduled `paper-index` run is waiting, and never with "Re-run jobs".
+
+**Lines on main before anything goes on chain** (the keeper-clock layout, G2,
+if it is merged): run the leg once without `--anchor` and without the key —
+it writes the lines only — push them, then run it again with
+`--anchor --no-new-lines` and the key: it anchors every line that has no
+anchor entry, in order, then marks; it computes no line and calls no
+exchange, so a day that ends between the two runs is not written and
+anchored unpushed. (`scripts/anchor-pending.mjs` anchors only a series' LAST
+line; a leverage run that caught up several days needs this path instead.)
+
+**The vault** (`keeper/deploy-mark-vault.mjs`, workflow `mark-vault-setup`,
+dry run unless `live` + `EXECUTE`): a QuadrixIndexVault deployed with deposit
+cap 0. Its address goes to `keeper/leverage-vaults.json`; the leg marks it
+when that entry has an address and a `gate`. The gate is `{"mode":"step"}`
+(owner, 2026-10-05): contract-bounded steps, never stopping on size. The leg
+marks only a vault whose `symbol()` is the index's ticker. There is no unpause
+action in `mark-vault-setup`: a pause stays until a workflow change.
+
+**Freshness** (`scripts/watchdog-series.mjs`, check 5 of the six-hourly
+watchdog): it reads only the outputs, so it also catches a job that never ran.
+
+### What can go wrong in the leverage leg
+
+| Symptom | What it means | What to do |
+| --- | --- | --- |
+| `REFUSED: check.minutes …` / `check.trigger` / `level.primary`, exit 2 | a tested value or the cost convention is empty or outside the grid | nothing to re-run. The values come from the sixth test's result file and an owner decision; the rulebook is pinned by the inception decision, so a change is a new decision. |
+| `NOT IN FORCE: …`, exit 0 | the inception decision the rulebook names is not in the ledger yet, or it is before the inception date — and the series has no line yet | expected until the inception decision is anchored. |
+| `REFUSED: the inception decision … is anchored, but …`, exit 2 (before the genesis line) | the decision is anchored (irreversible) but the files do not satisfy it: the rulebook JSON no longer hashes to the sha256 the decision contains, the ledger entry has another date, or the document is missing | nothing was read or written; the genesis line is due and will not be written. Restore `keeper/rulebooks/<index>.json` to the exact bytes the decision pins (git history), or, if the pinned bytes are wrong, anchor a postponement decision — never edit the anchored decision. The day(s) missed are written by the next run from the same bars, marked `late`. |
+| `REFUSED: … already holds N line(s), so the series has started — NOT IN FORCE: …`, exit 2 | the series has lines, but the rulebook JSON no longer hashes to the value its inception decision pins (or the ledger entry changed) | nothing was read or written. Revert the edit to `keeper/rulebooks/<index>.json`: a pinned value changes only by a new decision. The days missed meanwhile are written by the next run from the same bars, marked `late`. |
+| `… not final (no closed 1-minute bar at or after …)` | the UTC day has not ended on Binance yet | nothing. The next run writes it. A day is never written early. |
+| `line D not written: the runner's clock … is before DT00:00Z` | the runner's clock says the day has not begun (a source answering from the future is not followed) | nothing. |
+| `Binance says <day> has not ended …, but the runner's clock is … more than a day later — the source is stuck`, exit 1 | Binance's clock or bars are stuck a day behind | nothing written. Check https://data-api.binance.vision/api/v3/time by hand; the next run continues, and the missed day is written `late`. |
+| `Binance (data-api.binance.vision) failed while … <day>: fetch failed` / `HTTP 503` / `no complete answer within 60 s`, exit 1 | Binance unreachable, failing, or answering too slowly (each request is cut at 60 s, four tries) | nothing written for that day or later. The next run continues from the last line and writes the missed day `late`. No other exchange stands in. |
+| `--anchor requested but KEEPER_PK is not set — lines are written unanchored`, exit 0 | the step ran without the key secret | the lines are written and committed without anchors; no failure issue opens. The watchdog reports `has no anchor txHash` within six hours. Restore the secret; the next run with the key anchors the unanchored lines first, in order. |
+| `Binance BTCUSDT <day>: 1439 of 1,440 1-minute bars … halted` | a gap in Binance's bars, or a short answer — the two cannot be told apart | nothing on the day; the series waits (no later day is written either). If a second fetch still shows the gap and Binance announced maintenance, add `{id, index, day, sha256, missing, note, confirmedAt}` to `keeper/leverage-gaps.json` with the sha256 the halt line printed and an `id` of its own (e.g. `qbtc2x-2026-10-12`) — a commit to the public repository, so an owner confirmation. The keeper then computes that day from the bars that exist and records `gaps` and `gapAccepted`. Never fill bars. |
+| `keeper/leverage-gaps.json: the accepted gap of … has no "id"`, exit 1 | the entry above was added without `id` | add the `id`; nothing was written. |
+| `two fetches of the same day differ` | Binance answered differently twice in a row | nothing; the next run fetches again. |
+| `independent recompute … rejected line …` | the keeper and `verify.mjs` disagree on a line | read the FAIL lines it prints. If they name the rulebook JSON or the gap entry, fix that file (it does not match the decision). Otherwise stop the step (comment it out, commit) and report: one of the two implementations is wrong, and nothing was appended. |
+| `vault marks FAILED after line #N was written and anchored` | a `setNav` reverted or the read-back disagreed | the line and the anchor are on disk and committed. The next run continues from the vault's `navPerShare`. If it repeats, check the vault's `keeper()` against the key. |
+| `vault … is "qETH2X", not qBTC2X — keeper/leverage-vaults.json names the wrong vault` | the registry entry points at another vault | nothing was marked. Correct the address in `keeper/leverage-vaults.json` from `keeper/mark-vaults.jsonl` (a public commit). |
+| `vault … cannot reach navPerShare … the contract's 25% bound rounds to zero` | the vault sits at navPerShare 3 or below and the line is not a model liquidation | nothing was sent; the vault cannot be moved by any key. It needs a new vault, which is its own decision. |
+| watchdog: `<index>: no record-<index>.jsonl …h after its inception` | the opening day passed 16 h ago with no genesis line | read the last `paper-index` run's two leverage steps: `NOT IN FORCE` means the decision is not in `decisions.jsonl` on main (check the anchor run's commit); a refusal means the JSON or ledger does not match the decision. |
+| watchdog: `<index>: stale — latest line is D …` | no new line 40 h after D 00:00 UTC (a series ended by a model liquidation is not reported) | read the last `paper-index` run; if it did not run, dispatch it once (see "Dispatching by hand"). The missed days are written `late`. |
+| watchdog: `<index>: line seq N (D) has no anchor txHash` | a line was written without the key, or the anchor failed after it | the next run with the key anchors it first. If it persists, check the `KEEPER_PK` secret and the keeper's gas. |
+| `REFUSED: a deployment of qbtc2x on chain 91342 was already sent (tx …)` from `mark-vault-setup` / `deploy-mark-vault.mjs` | an earlier deploy was sent (it is in `keeper/mark-vaults.jsonl`) but its address never reached `keeper/leverage-vaults.json` — the run died waiting for the receipt, or the read-back disagreed | do not deploy again. Look the transaction up on the explorer: if it created the vault, write that address (and `deployTx`, `block`) into the registry after the same read-back checks by hand; if it failed or is to be dropped, append `{"index","chainId","tx","status":"abandoned","note"}` to `keeper/mark-vaults.jsonl` (a commit to the public repository). |
+| `MARK HALTED: … beyond the ±15% gate` | only with `gate: {"mode":"halt"}` | a person compares the line's level with Binance and decides; the halt gate has no override flag — changing the gate is the owner's decision. |
+| `<ticker> <day>: MODEL LIQUIDATION NOT WRITTEN — the bar HH:MM UTC has a low of … at which debt ÷ collateral is …`, exit 1 | the day's bars would end the series (LTV at a bar low ≥ the LLTV placeholder). A model-liquidation line waits for a person (owner, 2026-10-06) | nothing was written for that day or later, nothing anchored, the vault not marked (it keeps its last price; deposits and redemptions still settle at it). The failure issue opens and every later run halts the same way. Compare the low of the 1-minute bar the message names with other venues' 1-minute bars for the same minutes and with Binance's web chart. **If the low is real:** add `{id, index, day, sha256, liquidation: {bar, ltvLow}, note, confirmedAt}` to `keeper/leverage-gaps.json` with the values the message printed and an `id` of its own (e.g. `qbtc2x-2026-10-12-liquidation`) — a commit to the public repository, so an owner confirmation. The next run writes the level-0 line naming that id (`liquidationAccepted`), anchors it, steps the vault to its floor and pauses deposits. **If the low is not real:** add nothing. The series stays halted: the code to continue from a corrected book is not written, and continuing needs an anchored correction decision. |
+| `keeper/leverage-gaps.json: the accepted model liquidation of … has no "id"`, exit 1 | the entry above was added without `id` | add the `id`; nothing was written. |
+| a line with `liquidated` | the model's total loss, accepted by a person (`liquidationAccepted` names the entry) | the series has ended: the vault is stepped to its floor (3 units) and, if the keeper is its owner, paused, in the run that wrote the line. Nothing is written after it. No key can raise the vault from its floor. A new series is a new decision. |
+| `REVISED qbtc2x <date>` from `verify.mjs --refetch-bars` | Binance now serves different bars for a recorded day | the line's bars are the record; nothing is rewritten. Note it here; a correction notice is a decision. |
+
 ## CoinGecko access — blocked endpoint, optional key, fallback (2026-09-29)
 
 From the 2026-09-29 run, the keyless CoinGecko `coins/markets` endpoint answers

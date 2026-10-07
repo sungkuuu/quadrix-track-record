@@ -1,0 +1,4 @@
+{
+  "_doc": "Days that halt a leverage series until a person accepts them. (1) Days with fewer than 1,440 Binance 1-minute bars that a person has confirmed as exchange gaps (maintenance notice, a second fetch): keeper/leverage-index.mjs computes such a day only when the canonical 1-minute text it fetches hashes to the sha256 of an entry here; the missing bars are never filled. Entry: {id, index, day (the UTC day of the bars), sha256, missing: [{from, to, minutes}], note, confirmedAt}. (2) Days whose bars end the series in a model liquidation, accepted after a person has checked the low against other venues' bars (owner, 2026-10-06): the level-0 line is written only when an entry names that day, its sha256 and the liquidation the keeper printed. Entry: {id, index, day, sha256, liquidation: {bar, ltvLow}, note, confirmedAt}. A commit to this file in the public repository is an owner confirmation.",
+  "accepted": []
+}

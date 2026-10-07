@@ -1,0 +1,148 @@
+name: mark-vault-setup
+
+# The testnet mark vault of a leverage series (qBTC2X, qETH2X), by hand from
+# the Actions tab. Never scheduled.
+#
+#   deploy         keeper/deploy-mark-vault.mjs — QuadrixIndexVault (the qX20
+#                  tracking vault's contract, checked against chain) with
+#                  deposit cap 0: nobody can deposit until open-deposits.
+#                  Writes the address to keeper/leverage-vaults.json and
+#                  leaves its mark gate as it is: {"mode":"step"} (owner,
+#                  2026-10-05), so the daily leg marks the vault from seq 1.
+#   open-deposits  setDepositCap(cap) — owner only.
+#   pause          setDepositsPaused(true) — owner only.
+#
+# Every transaction is appended to keeper/mark-vaults.jsonl as soon as it is
+# sent, before any read. When the vault owner is the owner's own wallet rather
+# than KEEPER_PK, open-deposits and pause are done from that wallet, not here.
+#
+# DRY RUN BY DEFAULT: nothing is sent unless `live` is ticked AND `confirm`
+# is the word EXECUTE. Same `keeper-key` concurrency group as every other
+# workflow that signs with KEEPER_PK. Inputs reach the shell through `env:`
+# and are checked — never interpolated into a `run:` line.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'deploy | open-deposits | pause'
+        required: true
+        type: choice
+        options: [deploy, open-deposits, pause]
+      index:
+        description: 'qbtc2x | qeth2x'
+        required: true
+        type: choice
+        options: [qbtc2x, qeth2x]
+      manager:
+        description: 'deploy: constructor manager_ (becomes owner and keeper)'
+        required: false
+        default: ''
+      cap:
+        description: 'open-deposits: the new deposit cap, 6-decimal mUSD units (1000000000000 = 1,000,000 mUSD)'
+        required: false
+        default: ''
+      live:
+        description: 'Send transactions (otherwise dry run). Also needs confirm = EXECUTE.'
+        type: boolean
+        default: false
+      confirm:
+        description: 'Type EXECUTE to allow a live run'
+        required: false
+        default: ''
+
+permissions:
+  contents: write # commits keeper/mark-vaults.jsonl and keeper/leverage-vaults.json to main
+
+concurrency:
+  group: keeper-key
+  cancel-in-progress: false
+
+env:
+  TASK: ${{ inputs.task }}
+  INDEX: ${{ inputs.index }}
+  MANAGER_IN: ${{ inputs.manager }}
+  CAP_IN: ${{ inputs.cap }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      # Review r2: this workflow signs and its refusals read files committed by
+      # earlier runs (keeper/leverage-vaults.json, keeper/mark-vaults.jsonl). A
+      # run that waited in the keeper-key queue, or a "Re-run jobs" of a failed
+      # run, checks out the commit the run was created at — a tree WITHOUT the
+      # "sent" line the failed run committed — and would deploy a second vault.
+      # So: main only, and main as it is when the job starts.
+      - name: Run only on main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::mark-vault-setup runs only on main (dispatched on $GITHUB_REF)"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Decide dry run or live
+        id: mode
+        env:
+          LIVE: ${{ inputs.live }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$LIVE" = "true" ] && [ "$CONFIRM" = "EXECUTE" ]; then
+            echo "flags=--live --confirm EXECUTE" >> "$GITHUB_OUTPUT"
+            echo "::notice::LIVE — transactions will be sent from the keeper key"
+          elif [ "$LIVE" = "true" ]; then
+            echo "::error::live was ticked but confirm is not EXECUTE — refusing rather than running live by accident"
+            exit 1
+          else
+            echo "flags=" >> "$GITHUB_OUTPUT"
+            echo "::notice::DRY RUN — nothing is sent"
+          fi
+
+      - name: ${{ inputs.task }} ${{ inputs.index }}
+        env:
+          MODE_FLAGS: ${{ steps.mode.outputs.flags }}
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+        run: |
+          set -o pipefail
+          args=(--index "$INDEX" --action "$TASK")
+          if [ "$TASK" = "deploy" ]; then
+            if ! printf '%s' "$MANAGER_IN" | grep -Eq '^0x[0-9a-fA-F]{40}$'; then echo "::error::manager must be an address"; exit 1; fi
+            args+=(--manager "$MANAGER_IN")
+          fi
+          if [ "$TASK" = "open-deposits" ]; then
+            if ! printf '%s' "$CAP_IN" | grep -Eq '^[0-9]+$'; then echo "::error::cap must be an integer"; exit 1; fi
+            args+=(--cap "$CAP_IN")
+          fi
+          node keeper/deploy-mark-vault.mjs "${args[@]}" $MODE_FLAGS 2>&1 | tee setup.log
+
+      - name: Commit the vault log and registry
+        # Runs even after a failed step: a transaction that was sent is in
+        # keeper/mark-vaults.jsonl and must reach main.
+        if: ${{ !cancelled() }}
+        run: |
+          git config user.name "qx-mark-vault"
+          git config user.email "keeper@quadrix.finance"
+          for p in keeper/mark-vaults.jsonl keeper/leverage-vaults.json; do [ -e "$p" ] && git add "$p"; done
+          git diff --cached --quiet || git commit -m "mark-vault-setup: $TASK $INDEX $(date -u +%Y-%m-%d)"
+          git pull --rebase origin main
+          git push
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        env:
+          MODE_LABEL: ${{ steps.mode.outputs.flags != '' && 'LIVE' || 'dry run' }}
+        run: |
+          {
+            echo "## mark-vault-setup — $TASK $INDEX · $MODE_LABEL"
+            echo
+            echo '```'
+            tail -n 60 setup.log 2>/dev/null || echo '(no log)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

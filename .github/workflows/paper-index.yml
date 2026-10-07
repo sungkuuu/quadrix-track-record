@@ -5,6 +5,9 @@ name: paper-index
 # Daily at 00:25 UTC, after the N1Q record at 00:10; manual dispatch kept for reruns.
 # Barbell and Triens: in force since their anchored inception decisions of
 # 2026-09-22 (trackrecord/decisions/2026-09-22-{barbell,triens}-paper-inception.md).
+# qBTC2X (leverage stage A): from 2026-10-08, once its inception decision is
+# anchored; until then the leg reports NOT IN FORCE and exits 0. qETH2X is held
+# (owner, 2026-10-06): its step below does not run.
 on:
   workflow_dispatch:
   schedule:
@@ -22,7 +25,12 @@ jobs:
   record:
     runs-on: ubuntu-latest
     steps:
+      # main as it is when this run STARTS: a run that waited in the keeper-key queue must see the lines the
+      # run before it pushed, or it writes and anchors the same day again (red team F08). Do not dispatch by
+      # hand while a scheduled run is queued; never "Re-run jobs" (it re-runs the old commit's steps).
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -101,6 +109,53 @@ jobs:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
           COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
+      # ------------------------------------------------------------------
+      # Leverage stage A — qBTC2X and qETH2X (keeper/leverage-index.mjs).
+      # The level is computed from Binance spot bars of every CLOSED UTC day
+      # since the last line (a late run writes the same level and marks the
+      # line `late`), one line per UTC day, independently recomputed by
+      # scripts/verify.mjs before it is appended, anchored as
+      # `qxpi-<index>:`, and only then the testnet mark vault follows
+      # (keeper/leverage-vaults.json; skipped while its address is null).
+      # Same KEEPER_PK, same `keeper-key` group, same schedule: no new key,
+      # scheduler or concurrency group.
+      #
+      # The guard is in the leg, not here: it writes nothing and exits 0
+      # ("NOT IN FORCE") until the inception decision
+      # 2026-10-08-<index>-paper-inception is in trackrecord/decisions.jsonl
+      # and pins keeper/rulebooks/<index>.json, and until 2026-10-08T00:00Z.
+      # An ANCHORED decision that the rulebook JSON no longer matches is a
+      # refusal (exit 2): restore the JSON to the pinned bytes.
+      # qBTC2X opens on 2026-10-08. qETH2X is held (owner, 2026-10-06): it
+      # does not open on that day, its step is switched off below, and turning
+      # it on needs its own inception decision.
+      # ------------------------------------------------------------------
+      - name: qBTC2X — compute the closed UTC days since the last line, anchor, mark
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        # A step time limit fails only this step; "Commit records" below still runs and the five paper series keep
+        # their day (red team F09). Each Binance request is cut at 60 s with four tries; a normal run takes under
+        # a few minutes, a model liquidation's 46 marks a few more.
+        timeout-minutes: 20
+        run: |
+          set -o pipefail
+          node keeper/leverage-index.mjs --index qbtc2x --anchor 2>&1 | tee pi-qbtc2x.log
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
+      - name: qETH2X — held (owner, 2026-10-06), not run
+        # Held: ETH 2x does not open on 2026-10-08. `false` keeps the step from running whatever the leg's own guard
+        # says; switching it back on is a commit with its own inception decision.
+        if: ${{ false }}
+        # A step time limit fails only this step; "Commit records" below still runs and the five paper series keep
+        # their day (red team F09). Each Binance request is cut at 60 s with four tries; a normal run takes under
+        # a few minutes, a model liquidation's 46 marks a few more.
+        timeout-minutes: 20
+        run: |
+          set -o pipefail
+          node keeper/leverage-index.mjs --index qeth2x --anchor 2>&1 | tee pi-qeth2x.log
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
       - name: qX20 — mark the basket vault from keeper/state.json (no record append)
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
@@ -144,7 +199,11 @@ jobs:
           # is staged on its own: one pathspec that matches nothing makes the
           # `git add` above stage nothing at all. Never fatal — the records
           # above must still be committed.
-          for f in keeper/pending-registry-*.json keeper/plans keeper/cg-snapshot; do
+          # The leverage series (keeper/leverage-index.mjs) are absent until
+          # their inception lines, so they are staged the same way.
+          for f in keeper/pending-registry-*.json keeper/plans keeper/cg-snapshot \
+                   trackrecord/record-qbtc2x.jsonl trackrecord/anchors-qbtc2x.jsonl keeper/marks-qbtc2x.jsonl \
+                   trackrecord/record-qeth2x.jsonl trackrecord/anchors-qeth2x.jsonl keeper/marks-qeth2x.jsonl; do
             if [ -e "$f" ]; then git add -- "$f" || echo "::warning::could not stage $f"; fi
           done
           git diff --cached --quiet || git commit -m "paper-index: $(date -u +%Y-%m-%d)"
@@ -163,7 +222,8 @@ jobs:
           set -uo pipefail
           {
             echo "The paper-index run failed. A missed day is simply absent from"
-            echo "record-{qrev,qdefi}.jsonl — it is never backfilled."
+            echo "record-{qrev,qdefi,barbell,triens,qai}.jsonl — it is never backfilled."
+            echo "qBTC2X and qETH2X write a missed day late, from that day's bars."
             echo
             echo "- run: $RUN_URL"
             echo
@@ -178,6 +238,10 @@ jobs:
             tail -n 40 pi-triens.log 2>/dev/null || echo '(no output — failed before the Triens step ran)'
             echo '--- qAI ---'
             tail -n 40 pi-qai.log 2>/dev/null || echo '(no output — failed before the qAI step ran)'
+            echo '--- qBTC2X ---'
+            tail -n 40 pi-qbtc2x.log 2>/dev/null || echo '(no output — failed before the qBTC2X step ran)'
+            echo '--- qETH2X ---'
+            tail -n 40 pi-qeth2x.log 2>/dev/null || echo '(held — the qETH2X step does not run)'
             echo '--- qX20 basket mark ---'
             tail -n 40 pi-qx20.log 2>/dev/null || echo '(no output — failed before the qX20 step ran)'
             echo '```'

@@ -38,7 +38,15 @@ record, `qxpi-<index>:` for the index records), and re-hashes every decision
 document against the hash committed on chain. qX20 is not a hash chain: each
 daily close is checked against the keeper's own `setNav` transaction instead.
 Exit code 0 means every check passed. `--series <name>` restricts it to one
-(`dry`, `live`, `qrev`, `qdefi`, `qai`, `barbell`, `triens`, `qx20`).
+(`dry`, `live`, `qrev`, `qdefi`, `qai`, `barbell`, `triens`, `qbtc2x`, `qeth2x`,
+`qx20`).
+
+For the two leverage series it also recomputes every line from its own bars and
+binds the rule each line states to `keeper/rulebooks/<index>.json` (the file
+whose sha256 the inception decision contains). What it does not check: that the
+bars are the ones Binance serves (`--refetch-bars` re-fetches them and prints
+`REVISED` for a difference; `--strict-source` makes that a failure), who sent an
+anchor, and the testnet vault marks.
 
 To check the copy served by the site instead of this one:
 
@@ -82,7 +90,7 @@ without trusting this repository.
 | `checklists/` | the vault design checklist and the robustness test checklist: the item IDs that vault pages and decision documents cite (working versions) |
 | `trackrecord/ots/*.ots` | OpenTimestamps proofs, one per record/decision hash (Bitcoin time proof) |
 | `scripts/ots-stamp.mjs` | stamps new hashes, upgrades pending proofs (runs daily in CI) |
-| `scripts/watchdog.mjs` | checks the published outputs for staleness, missing anchors and gas (scheduled every six hours in CI) |
+| `scripts/watchdog.mjs` | checks the published outputs for staleness, missing anchors and gas — the LIVE record, the qX20 marks, and the paper and leverage series (`scripts/watchdog-series.mjs`); scheduled every six hours in CI |
 | `docs/track-record-spec.md` | the rules the record is meant to follow; the status table at its top says which sections are implemented here |
 | `keeper/nav-marks.jsonl` | append-only ledger of every qX20 NAV mark posted since the keeper moved here on 2026-08-21; earlier marks exist only as on-chain events |
 | `keeper/update-nav.mjs` | the qX20 index keeper (scheduled every six hours in CI; see Timing) |
@@ -93,7 +101,12 @@ without trusting this repository.
 
 - **Append-only.** Corrections are new records; nothing is edited in place.
 - **No backfilling.** A day the pipeline missed stays missing, and a missing
-  benchmark price is recorded as missing. Gaps are part of the record.
+  benchmark price is recorded as missing. Gaps are part of the record. The
+  two leverage series (qBTC2X, qETH2X, from their inception decisions) are the
+  one exception: their level is computed from that day's closed exchange bars,
+  not from a price at run time, so a day the keeper missed is written late
+  from the same bars and the line is marked `late` (its anchor's block time
+  shows when it was written).
 - **The series never concatenate.** There are two: the closed `DRY_RUN`
   rehearsal (`record.jsonl`, 2026-08-13 → 08-30, empty book — its only content
   is proof that the recording infrastructure predates the capital) and the

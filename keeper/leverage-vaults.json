@@ -1,0 +1,17 @@
+{
+  "_doc": "Testnet mark vaults of the leverage series (QuadrixIndexVault, deployed with deposit cap 0 by keeper/deploy-mark-vault.mjs). Not part of the rulebook: a vault displays the level, it is not the rule. address null = no vault (marks skipped); gate null = the owner has not chosen the mark gate (marks skipped). gate {\"mode\":\"step\"} marks in steps inside the contract bound, never stopping on size; {\"mode\":\"halt\",\"pct\":15} stops the marks when the move exceeds pct and waits for a person.",
+  "qbtc2x": {
+    "chainId": 91342,
+    "address": null,
+    "gate": { "mode": "step" },
+    "deployTx": null,
+    "block": null
+  },
+  "qeth2x": {
+    "chainId": 91342,
+    "address": null,
+    "gate": { "mode": "step" },
+    "deployTx": null,
+    "block": null
+  }
+}

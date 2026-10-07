@@ -1,0 +1,46 @@
+{
+  "ticker": "qBTC2X",
+  "name": "BTC 2x",
+  "kind": "leverage-synthetic",
+  "status": "in force from 2026-10-08 once the inception decision 2026-10-08-qbtc2x-paper-inception is anchored (see decisions.jsonl) — stage A: a rules-only synthetic level of a daily-reset 2x book from Binance spot bars, one line per UTC day, and a testnet mark vault holding test dollars; nothing is borrowed, swapped or liquidated.",
+  "asOf": "2026-10-06",
+  "_doc": "Stage A rules for BTC 2x (keeper/leverage-index.mjs). The rulebook is rulebooks/qbtc2x.md in this repository; the inception decision pins this file's sha256. check.trigger is the output of the sixth pre-registered leverage test (site repository, research/leverage-params-v6, registration 8b355b7, results/results.csv.gz row trk_asset_outcome,BTC,A,own,all: best) within check.minutes = 120, an interval the owner set on 2026-10-01 before the one-minute measurement and which is counted as not tested (owner, 2026-10-06). The values hold for stage A only: a real borrowing book needs a new verdict against the real liquidation line. Changing any value after a decision pinned this file is a rule change: a new decision, never an edit.",
+  "underlying": {
+    "symbol": "BTCUSDT",
+    "source": "binance-spot-rest",
+    "host": "https://data-api.binance.vision",
+    "path": "/api/v3/klines",
+    "interval": "1m",
+    "barMinutes": 15,
+    "_doc": "Closed 1-minute bars of the UTC day, aggregated to 15-minute bars by the sixth test engine's --build rule; no fallback source; a day with fewer than 1,440 bars halts until a person accepts it in keeper/leverage-gaps.json."
+  },
+  "product": {
+    "target": 2,
+    "reset": "daily-00:00-utc",
+    "intradayReleverage": false,
+    "_doc": "Product definition (owner 2026-10-01): twice the UTC-day return of the underlying, leverage brought back to 2.0 at every 00:00 UTC close; between resets the trigger only reduces leverage."
+  },
+  "check": {
+    "minutes": 120,
+    "trigger": 2.2,
+    "_doc": "Sixth test output, owner track, n = 120 set by the owner on 2026-10-01 before the one-minute measurement; the free track also returns 120 minutes (fallback, with trigger 2.3): chosen BTC|2|daily|L>=T|n = BTC|2|daily|L>=2.2|120. Check times are every n minutes from 00:00 UTC (the one grid phase the test measured)."
+  },
+  "model": {
+    "lltv": 0.86,
+    "lltvNote": "placeholder — no market's value is confirmed; the tests count a liquidation at a bar low at this LTV as a total loss"
+  },
+  "level": {
+    "primary": { "costBp": 30, "ratePct": 4.5 },
+    "also": [],
+    "_doc": "The cost convention of the recorded level, set by the owner on 2026-10-05 (30 bp, 4.5% a year; the tests' headline is 6%): costBp per unit of traded notional, charged out of equity at each trade; at every 15-minute bar the debt is multiplied by (1 + ratePct / 100 / 365) ^ (elapsed minutes / 1440). level.also = further conventions recorded on the same line, each with its own book (none)."
+  },
+  "fees": {
+    "managementBps": 0,
+    "_doc": "A price, not a tested value (owner, 2026-10-05): no management fee in stage A. The level carries no fee and the testnet vault contract has no fee function; this key records the decision and drives nothing."
+  },
+  "genesisLevel": 100,
+  "inception": {
+    "date": "2026-10-08",
+    "decision": "2026-10-08-qbtc2x-paper-inception"
+  }
+}
