@@ -391,7 +391,7 @@ Checks:
 - PASS [spec §1.3] day7 refuses before execute when a reference moved after the plan (WC +0.1%); the change stays pending, nothing filled — REFUSED: reference(s) moved since the plan sized its auctions (WC 1000982315→1001983297) — regenerate the plan (keeper/basket-plan.mjs) after the mark, then run this stage
 
 
-## First review, re-run of qX20 on the merged code (2026-10-02, Opus 검수(Fable 한도))
+## First review, re-run of qX20 on the merged code (2026-10-02)
 
 The branch merged with main `9ee440d` (reads after a write, re-run reconciliation) and the review's
 fixes, commit `fa469f7`. One anvil fork of GIWA Sepolia at block 37563577, `rehearse-day7.mjs
