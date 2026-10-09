@@ -1,0 +1,687 @@
+{
+  "schema": "basket-recon-plan/1",
+  "index": "qai",
+  "ticker": "qAI",
+  "date": "2026-10-09",
+  "generatedAt": "2026-10-09T06:37:58.000Z",
+  "chainId": 91342,
+  "rpc": "https://sepolia-rpc.giwa.io",
+  "vault": "0x75B072e674AfAd13Ff0C2b75A8937656643cBE97",
+  "block": {
+    "number": "38182750",
+    "timestamp": "1791527866"
+  },
+  "keeperRun": {
+    "id": "37894506527",
+    "workflow": "basket-reconstitution"
+  },
+  "sources": {
+    "book": "keeper/state-qai.json",
+    "pending": "keeper/pending-registry-qai.json",
+    "priceA": "coingecko (fetched, cached as keeper/cache/cg-markets-top500-2026-10-09.json)",
+    "priceB": "coinpaprika (fetched, cached as keeper/cache/cp-tickers-2026-10-09.json)",
+    "recordRow": {
+      "seq": 17,
+      "hash": "2d7c40c84c02e4da484399845c7b0e51e16e0eba4c3a3e0196798db5a9c232cb"
+    },
+    "rulebook": {
+      "path": "keeper/rulebooks/qai.json",
+      "sha256": "6cd6d623a70c9d2a2b361c7cbb1876672d484e712d09bbaa914c2b44660c4b88"
+    },
+    "mocks": "keeper/mocks/2026-10-01.json",
+    "decisions": "trackrecord/decisions.jsonl"
+  },
+  "vaultState": {
+    "owner": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+    "keeper": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+    "assetCount": 10,
+    "totalSupply": "1023627746330970778936792",
+    "navPerShare": "853167",
+    "pendingRegistryChange": "0x0f3b9019caf4577fc84eebb6a3e133de1d8a2f85fd345bc26020e9b67fcd5443",
+    "pendingRegistryEta": "1791529151",
+    "maxRefAge": "3600",
+    "maxFillLossBps": "100",
+    "dailyLossBudgetBps": "300",
+    "biddingOpen": false,
+    "auctionCount": "0",
+    "premiumBps": "200",
+    "registryDelay": "604800"
+  },
+  "registry": [
+    {
+      "i": 0,
+      "symbol": "TAO",
+      "symbolSource": "rulebook",
+      "address": "0x44fF37Ef6Ff714E77630d715A0969db1977a7cEb",
+      "decimals": 11,
+      "balance": "109394498617315",
+      "refPrice": "2752500000",
+      "refPriceUpdatedAt": "1791527518",
+      "inRemoval": false,
+      "planRefPrice": "2759100000",
+      "chainRefAtPlan": "2752500000",
+      "priceA": 275.91,
+      "priceB": 275.8391732099339,
+      "disagreementBps": 3
+    },
+    {
+      "i": 1,
+      "symbol": "VVV",
+      "symbolSource": "rulebook",
+      "address": "0xf4A8b84D459B7Cf0cf586Dc87ea564b571E5aA1F",
+      "decimals": 10,
+      "balance": "54923923980606",
+      "refPrice": "2283000000",
+      "refPriceUpdatedAt": "1791527520",
+      "inRemoval": false,
+      "planRefPrice": "2293000000",
+      "chainRefAtPlan": "2283000000",
+      "priceA": 22.93,
+      "priceB": 22.881393713931494,
+      "disagreementBps": 21
+    },
+    {
+      "i": 2,
+      "symbol": "AKE",
+      "symbolSource": "rulebook",
+      "address": "0xe4e80bCa8D96bA5bDA3AC27F1D68eE7E49588fFc",
+      "decimals": 7,
+      "balance": "26082644680906",
+      "refPrice": "2785865000",
+      "refPriceUpdatedAt": "1791527522",
+      "inRemoval": false,
+      "planRefPrice": "2756659000",
+      "chainRefAtPlan": "2785865000",
+      "priceA": 0.02756659,
+      "priceB": 0.027685793396281074,
+      "disagreementBps": 43
+    },
+    {
+      "i": 3,
+      "symbol": "RENDER",
+      "symbolSource": "rulebook",
+      "address": "0x2eB321948717C2481a437Ea11CcAb052c433C51D",
+      "decimals": 9,
+      "balance": "59416751699758",
+      "refPrice": "1930000000",
+      "refPriceUpdatedAt": "1791527524",
+      "inRemoval": false,
+      "planRefPrice": "1920000000",
+      "chainRefAtPlan": "1930000000",
+      "priceA": 1.92,
+      "priceB": 1.9254667952005047,
+      "disagreementBps": 28
+    },
+    {
+      "i": 4,
+      "symbol": "VIRTUAL",
+      "symbolSource": "rulebook",
+      "address": "0x072b0BAB1397dE3b3193617ae3dD61a9c04Ea928",
+      "decimals": 8,
+      "balance": "7523495477345",
+      "refPrice": "7212670000",
+      "refPriceUpdatedAt": "1791527526",
+      "inRemoval": false,
+      "planRefPrice": "7223730000",
+      "chainRefAtPlan": "7212670000",
+      "priceA": 0.722373,
+      "priceB": 0.7204601034515111,
+      "disagreementBps": 26
+    },
+    {
+      "i": 5,
+      "symbol": "FET",
+      "symbolSource": "rulebook",
+      "address": "0xcb6aeA59876E3059F2f9518F421db8B1BDbb4972",
+      "decimals": 8,
+      "balance": "26367986135313",
+      "refPrice": "2217010000",
+      "refPriceUpdatedAt": "1791527528",
+      "inRemoval": false,
+      "planRefPrice": "2221910000",
+      "chainRefAtPlan": "2217010000",
+      "priceA": 0.222191,
+      "priceB": 0.2223361619539723,
+      "disagreementBps": 7
+    },
+    {
+      "i": 6,
+      "symbol": "UB",
+      "symbolSource": "rulebook",
+      "address": "0xacc4B3083f76888afE4C1a0FCc09a52d2f0Af329",
+      "decimals": 8,
+      "balance": "28360878480043",
+      "refPrice": "1410360000",
+      "refPriceUpdatedAt": "1791527530",
+      "inRemoval": false,
+      "planRefPrice": "1410180000",
+      "chainRefAtPlan": "1410360000",
+      "priceA": 0.141018,
+      "priceB": 0.14103568020571836,
+      "disagreementBps": 1
+    },
+    {
+      "i": 7,
+      "symbol": "GRASS",
+      "symbolSource": "rulebook",
+      "address": "0xf57E67f92679587fF8E09cC7634661aECDD708eF",
+      "decimals": 8,
+      "balance": "7742577748636",
+      "refPrice": "6319970000",
+      "refPriceUpdatedAt": "1791527532",
+      "inRemoval": false,
+      "planRefPrice": "6308840000",
+      "chainRefAtPlan": "6319970000",
+      "priceA": 0.630884,
+      "priceB": 0.6314399336331715,
+      "disagreementBps": 9
+    },
+    {
+      "i": 8,
+      "symbol": "GRT",
+      "symbolSource": "rulebook",
+      "address": "0x8BB34857ffF580158357102fa96bB0931e07E373",
+      "decimals": 7,
+      "balance": "12488521297475",
+      "refPrice": "2692365000",
+      "refPriceUpdatedAt": "1791527534",
+      "inRemoval": false,
+      "planRefPrice": "2692679000",
+      "chainRefAtPlan": "2692365000",
+      "priceA": 0.02692679,
+      "priceB": 0.026938385112570233,
+      "disagreementBps": 4
+    },
+    {
+      "i": 9,
+      "symbol": "AKT",
+      "symbolSource": "rulebook",
+      "address": "0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634",
+      "decimals": 8,
+      "balance": "3407247961427",
+      "refPrice": "7272150000",
+      "refPriceUpdatedAt": "1791527536",
+      "inRemoval": false,
+      "planRefPrice": "7283080000",
+      "chainRefAtPlan": "7272150000",
+      "priceA": 0.728308,
+      "priceB": 0.732509528173218,
+      "disagreementBps": 58
+    }
+  ],
+  "adds": [
+    {
+      "symbol": "NEAR",
+      "address": "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393",
+      "decimals": 9,
+      "decimalsSource": "onchain 0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393 (mNEAR)",
+      "priceA": 4.84,
+      "priceB": 4.84506551653417,
+      "disagreementBps": 10,
+      "firstRefPrice": "4840000000",
+      "firstRefPriceB": "4845065516",
+      "targetUnits": 5.308679140858859
+    },
+    {
+      "symbol": "ICP",
+      "address": "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16",
+      "decimals": 9,
+      "decimalsSource": "onchain 0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16 (mICP)",
+      "priceA": 3.02,
+      "priceB": 3.0210529968994595,
+      "disagreementBps": 3,
+      "firstRefPrice": "3020000000",
+      "firstRefPriceB": "3021052996",
+      "targetUnits": 2.902474265060145
+    }
+  ],
+  "removes": [
+    {
+      "symbol": "GRT",
+      "address": "0x8BB34857ffF580158357102fa96bB0931e07E373",
+      "decimals": 7,
+      "balance": "12488521297475",
+      "inRemoval": false
+    },
+    {
+      "symbol": "AKT",
+      "address": "0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634",
+      "decimals": 8,
+      "balance": "3407247961427",
+      "inRemoval": false
+    }
+  ],
+  "decisionSha256": "3b64c22574c29985fdb94d59013322ec6d5a7e4c29bf5a47265f939770c8fc41",
+  "decisionId": "2026-10-02-qai-basket-reconstitution",
+  "decisionFile": "trackrecord/decisions/2026-10-09-qai-basket-reconstitution.md",
+  "announceTuple": {
+    "adds": [
+      "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393",
+      "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16"
+    ],
+    "removes": [
+      "0x8BB34857ffF580158357102fa96bB0931e07E373",
+      "0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634"
+    ],
+    "decisionSha256": "0x3b64c22574c29985fdb94d59013322ec6d5a7e4c29bf5a47265f939770c8fc41"
+  },
+  "carried": {
+    "from": "keeper/plans/qai/2026-10-02.json",
+    "announce": {
+      "txHash": "0x3481256cd10e6bf2100dba163cd89523717e81e5f1cb3c426b9fbea35bf727d5",
+      "block": "37579235",
+      "at": "2026-10-02T06:59:11.000Z",
+      "eta": "1791529151",
+      "etaIso": "2026-10-09T06:59:11.000Z",
+      "pendingHash": "0x0f3b9019caf4577fc84eebb6a3e133de1d8a2f85fd345bc26020e9b67fcd5443",
+      "tuple": {
+        "adds": [
+          "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393",
+          "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16"
+        ],
+        "removes": [
+          "0x8BB34857ffF580158357102fa96bB0931e07E373",
+          "0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634"
+        ],
+        "decisionSha256": "0x3b64c22574c29985fdb94d59013322ec6d5a7e4c29bf5a47265f939770c8fc41"
+      },
+      "decisionId": "2026-10-02-qai-basket-reconstitution",
+      "signer": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902"
+    },
+    "announceTuple": {
+      "adds": [
+        "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393",
+        "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16"
+      ],
+      "removes": [
+        "0x8BB34857ffF580158357102fa96bB0931e07E373",
+        "0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634"
+      ],
+      "decisionSha256": "0x3b64c22574c29985fdb94d59013322ec6d5a7e4c29bf5a47265f939770c8fc41"
+    },
+    "decisionSha256": "3b64c22574c29985fdb94d59013322ec6d5a7e4c29bf5a47265f939770c8fc41"
+  },
+  "policy": {
+    "tolerancePoints": 5,
+    "capMaxWeight": 0.35,
+    "qualityCap": null,
+    "sleeve": false,
+    "duration": 1800,
+    "minTradeUsd": 1,
+    "fill": "fair",
+    "firstPriceTolBps": 200,
+    "refDriftTolBps": 500,
+    "blockOnRuleMarks": true,
+    "priceBasis": "chain refPrice; an add at its first reference (source A)"
+  },
+  "targets": [
+    {
+      "symbol": "TAO",
+      "bookUnits": 0.05917279543512536,
+      "targetWeight": 0.19090406061260654,
+      "tradeTargetWeight": 0.190904060613,
+      "currentWeight": 0.3445597953034854,
+      "driftPoints": 15.4,
+      "traded": true,
+      "reason": "drift 15.4pt"
+    },
+    {
+      "symbol": "VVV",
+      "bookUnits": 0.25137311078493685,
+      "targetWeight": 0.06726520699041037,
+      "tradeTargetWeight": 0.06726520699,
+      "currentWeight": 0.14348591113149053,
+      "driftPoints": 7.6,
+      "traded": true,
+      "reason": "drift 7.6pt"
+    },
+    {
+      "symbol": "AKE",
+      "bookUnits": 224.5892623150173,
+      "targetWeight": 0.07333559292501683,
+      "tradeTargetWeight": 0.073335592925,
+      "currentWeight": 0.08314832084911479,
+      "driftPoints": 1,
+      "traded": true,
+      "reason": "block: the book re-weighted every name of this block"
+    },
+    {
+      "symbol": "RENDER",
+      "bookUnits": 2.6997547052829747,
+      "targetWeight": 0.061072734760024255,
+      "tradeTargetWeight": 0.061072734760000004,
+      "currentWeight": 0.1312224086893109,
+      "driftPoints": 7,
+      "traded": true,
+      "reason": "drift 7.0pt"
+    },
+    {
+      "symbol": "VIRTUAL",
+      "bookUnits": 6.478240537916225,
+      "targetWeight": 0.05476699138019773,
+      "tradeTargetWeight": 0.054766991380000005,
+      "currentWeight": 0.06209512671212186,
+      "driftPoints": 0.7,
+      "traded": true,
+      "reason": "block: the book re-weighted every name of this block"
+    },
+    {
+      "symbol": "FET",
+      "bookUnits": 22.704624295865425,
+      "targetWeight": 0.05899941747289054,
+      "tradeTargetWeight": 0.058999417473,
+      "currentWeight": 0.06689388275571946,
+      "driftPoints": 0.8,
+      "traded": true,
+      "reason": "block: the book re-weighted every name of this block"
+    },
+    {
+      "symbol": "UB",
+      "bookUnits": 24.420640135317914,
+      "targetWeight": 0.04036944491912766,
+      "tradeTargetWeight": 0.040369444919,
+      "currentWeight": 0.045771110791044775,
+      "driftPoints": 0.5,
+      "traded": true,
+      "reason": "block: the book re-weighted every name of this block"
+    },
+    {
+      "symbol": "GRASS",
+      "bookUnits": 6.6668846658853855,
+      "targetWeight": 0.049385983920165466,
+      "tradeTargetWeight": 0.04938598392,
+      "currentWeight": 0.05599411473056137,
+      "driftPoints": 0.7,
+      "traded": true,
+      "reason": "block: the book re-weighted every name of this block"
+    },
+    {
+      "symbol": "GRT",
+      "bookUnits": 0,
+      "targetWeight": 0,
+      "tradeTargetWeight": 0,
+      "currentWeight": 0.03847571915037708,
+      "driftPoints": 3.8,
+      "traded": true,
+      "reason": "remove"
+    },
+    {
+      "symbol": "AKT",
+      "bookUnits": 0,
+      "targetWeight": 0,
+      "tradeTargetWeight": 0,
+      "currentWeight": 0.028353609886773858,
+      "driftPoints": 2.8,
+      "traded": true,
+      "reason": "remove"
+    },
+    {
+      "symbol": "NEAR",
+      "bookUnits": 5.308679140858859,
+      "targetWeight": 0.3011602095355175,
+      "tradeTargetWeight": 0.30116020953600003,
+      "currentWeight": 0,
+      "driftPoints": -30.1,
+      "traded": true,
+      "reason": "add"
+    },
+    {
+      "symbol": "ICP",
+      "bookUnits": 2.902474265060145,
+      "targetWeight": 0.10274035748404303,
+      "tradeTargetWeight": 0.10274035748400001,
+      "currentWeight": 0,
+      "driftPoints": -10.3,
+      "traded": true,
+      "reason": "add"
+    }
+  ],
+  "trades": [
+    {
+      "seq": 1,
+      "sell": "TAO",
+      "sellAddress": "0x44fF37Ef6Ff714E77630d715A0969db1977a7cEb",
+      "buy": "NEAR",
+      "buyAddress": "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393",
+      "sellAmount": "48784252502052",
+      "sellValueUsd": 134278.65501189814,
+      "expectedBuyAtFair": "27743523762789",
+      "expectedBuyAtOpen": "28298394238045",
+      "duration": 1800,
+      "drain": false,
+      "reason": "drift 15.4pt → add"
+    },
+    {
+      "seq": 2,
+      "sell": "VVV",
+      "sellAddress": "0xf4A8b84D459B7Cf0cf586Dc87ea564b571E5aA1F",
+      "buy": "NEAR",
+      "buyAddress": "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393",
+      "sellAmount": "29175966664623",
+      "sellValueUsd": 66608.7318953343,
+      "expectedBuyAtFair": "13762134689119",
+      "expectedBuyAtOpen": "14037377382902",
+      "duration": 1800,
+      "drain": false,
+      "reason": "drift 7.6pt → add"
+    },
+    {
+      "seq": 3,
+      "sell": "RENDER",
+      "sellAddress": "0x2eB321948717C2481a437Ea11CcAb052c433C51D",
+      "buy": "NEAR",
+      "buyAddress": "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393",
+      "sellAmount": "31763368766880",
+      "sellValueUsd": 61303.3017200784,
+      "expectedBuyAtFair": "12665971429769",
+      "expectedBuyAtOpen": "12919290858365",
+      "duration": 1800,
+      "drain": false,
+      "reason": "drift 7.0pt → add"
+    },
+    {
+      "seq": 4,
+      "sell": "GRT",
+      "sellAddress": "0x8BB34857ffF580158357102fa96bB0931e07E373",
+      "buy": "NEAR",
+      "buyAddress": "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393",
+      "sellAmount": "368107264455",
+      "sellValueUsd": 991.0791150643861,
+      "expectedBuyAtFair": "204768412204",
+      "expectedBuyAtOpen": "208863780449",
+      "duration": 1800,
+      "drain": false,
+      "reason": "remove → add"
+    },
+    {
+      "seq": 5,
+      "sell": "GRT",
+      "sellAddress": "0x8BB34857ffF580158357102fa96bB0931e07E373",
+      "buy": "ICP",
+      "buyAddress": "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16",
+      "sellAmount": "12120414033020",
+      "sellValueUsd": 32632.57852801189,
+      "expectedBuyAtFair": "10805489578812",
+      "expectedBuyAtOpen": "11021599370389",
+      "duration": 1800,
+      "drain": true,
+      "reason": "remove → add"
+    },
+    {
+      "seq": 6,
+      "sell": "AKT",
+      "sellAddress": "0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634",
+      "buy": "ICP",
+      "buyAddress": "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16",
+      "sellAmount": "3407247961427",
+      "sellValueUsd": 24778.01826269136,
+      "expectedBuyAtFair": "8204641808839",
+      "expectedBuyAtOpen": "8368734645016",
+      "duration": 1800,
+      "drain": true,
+      "reason": "remove → add"
+    },
+    {
+      "seq": 7,
+      "sell": "AKE",
+      "sellAddress": "0xe4e80bCa8D96bA5bDA3AC27F1D68eE7E49588fFc",
+      "buy": "ICP",
+      "buyAddress": "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16",
+      "sellAmount": "3078136674095",
+      "sellValueUsd": 8575.273225577666,
+      "expectedBuyAtFair": "2839494445556",
+      "expectedBuyAtOpen": "2896284334468",
+      "duration": 1800,
+      "drain": false,
+      "reason": "block: the book re-weighted every name of this block → add"
+    },
+    {
+      "seq": 8,
+      "sell": "FET",
+      "sellAddress": "0xcb6aeA59876E3059F2f9518F421db8B1BDbb4972",
+      "buy": "ICP",
+      "buyAddress": "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16",
+      "sellAmount": "3111811462351",
+      "sellValueUsd": 6898.917130146791,
+      "expectedBuyAtFair": "2284409645744",
+      "expectedBuyAtOpen": "2330097838659",
+      "duration": 1800,
+      "drain": false,
+      "reason": "block: the book re-weighted every name of this block → add"
+    },
+    {
+      "seq": 9,
+      "sell": "VIRTUAL",
+      "sellAddress": "0x072b0BAB1397dE3b3193617ae3dD61a9c04Ea928",
+      "buy": "ICP",
+      "buyAddress": "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16",
+      "sellAmount": "887882768710",
+      "sellValueUsd": 6404.005409391556,
+      "expectedBuyAtFair": "2120531592514",
+      "expectedBuyAtOpen": "2162942224365",
+      "duration": 1800,
+      "drain": false,
+      "reason": "block: the book re-weighted every name of this block → add"
+    },
+    {
+      "seq": 10,
+      "sell": "GRASS",
+      "sellAddress": "0xf57E67f92679587fF8E09cC7634661aECDD708eF",
+      "buy": "ICP",
+      "buyAddress": "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16",
+      "sellAmount": "913738288749",
+      "sellValueUsd": 5774.798572745018,
+      "expectedBuyAtFair": "1912184957863",
+      "expectedBuyAtOpen": "1950428657021",
+      "duration": 1800,
+      "drain": false,
+      "reason": "block: the book re-weighted every name of this block → add"
+    },
+    {
+      "seq": 11,
+      "sell": "UB",
+      "sellAddress": "0xacc4B3083f76888afE4C1a0FCc09a52d2f0Af329",
+      "buy": "ICP",
+      "buyAddress": "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16",
+      "sellAmount": "3347001782111",
+      "sellValueUsd": 4720.47743341807,
+      "expectedBuyAtFair": "1563071997821",
+      "expectedBuyAtOpen": "1594333437778",
+      "duration": 1800,
+      "drain": false,
+      "reason": "block: the book re-weighted every name of this block → add"
+    }
+  ],
+  "expectedPostTradeWeights": [
+    {
+      "symbol": "TAO",
+      "weight": 0.1909040606129986,
+      "targetWeight": 0.19090406061260654
+    },
+    {
+      "symbol": "VVV",
+      "weight": 0.06726520698999984,
+      "targetWeight": 0.06726520699041037
+    },
+    {
+      "symbol": "AKE",
+      "weight": 0.07333559292499908,
+      "targetWeight": 0.07333559292501683
+    },
+    {
+      "symbol": "RENDER",
+      "weight": 0.061072734759999386,
+      "targetWeight": 0.061072734760024255
+    },
+    {
+      "symbol": "VIRTUAL",
+      "weight": 0.05476699138000346,
+      "targetWeight": 0.05476699138019773
+    },
+    {
+      "symbol": "FET",
+      "weight": 0.05899941747300059,
+      "targetWeight": 0.05899941747289054
+    },
+    {
+      "symbol": "UB",
+      "weight": 0.04036944491900032,
+      "targetWeight": 0.04036944491912766
+    },
+    {
+      "symbol": "GRASS",
+      "weight": 0.04938598392000037,
+      "targetWeight": 0.049385983920165466
+    },
+    {
+      "symbol": "GRT",
+      "weight": 0,
+      "targetWeight": 0
+    },
+    {
+      "symbol": "AKT",
+      "weight": 0,
+      "targetWeight": 0
+    },
+    {
+      "symbol": "NEAR",
+      "weight": 0.30116020953599903,
+      "targetWeight": 0.3011602095355175
+    },
+    {
+      "symbol": "ICP",
+      "weight": 0.10274035748399928,
+      "targetWeight": 0.10274035748404303
+    }
+  ],
+  "notes": [
+    "block rule: every name of the basket is traded to its book weight (opened by TAO, VVV, RENDER, GRT, AKT, NEAR, ICP; 5 name(s) added: AKE, VIRTUAL, FET, UB, GRASS)",
+    "The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference."
+  ],
+  "announce": {
+    "txHash": "0x3481256cd10e6bf2100dba163cd89523717e81e5f1cb3c426b9fbea35bf727d5",
+    "block": "37579235",
+    "at": "2026-10-02T06:59:11.000Z",
+    "eta": "1791529151",
+    "etaIso": "2026-10-09T06:59:11.000Z",
+    "pendingHash": "0x0f3b9019caf4577fc84eebb6a3e133de1d8a2f85fd345bc26020e9b67fcd5443",
+    "tuple": {
+      "adds": [
+        "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393",
+        "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16"
+      ],
+      "removes": [
+        "0x8BB34857ffF580158357102fa96bB0931e07E373",
+        "0x05C6B7e4b96F15Dd30A5A75977F7645619eB8634"
+      ],
+      "decisionSha256": "0x3b64c22574c29985fdb94d59013322ec6d5a7e4c29bf5a47265f939770c8fc41"
+    },
+    "decisionId": "2026-10-02-qai-basket-reconstitution",
+    "signer": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902"
+  },
+  "execute": null,
+  "firstPrices": [],
+  "fills": [],
+  "finalize": [],
+  "verify": null
+}
