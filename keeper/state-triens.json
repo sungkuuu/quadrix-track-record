@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-10-08T06:19:50.100Z",
-  "level": 97.9524836341553,
+  "updatedAt": "2026-10-11T06:01:19.097Z",
+  "level": 97.59640526076494,
   "sleeves": {
     "monetary": {
       "units": {
@@ -9,8 +9,8 @@
     },
     "workingCapital": {
       "units": 46,
-      "unitValue": 1.0017389453433048,
-      "lastAccrual": "2026-10-08",
+      "unitValue": 1.0020658787256886,
+      "lastAccrual": "2026-10-11",
       "proxy": "DTB3"
     },
     "quality": {
@@ -43,19 +43,19 @@
   ],
   "stalePrices": {
     "BTC": {
-      "price": 82853,
+      "price": 82976,
       "runs": 0
     },
     "HYPE": {
-      "price": 87.4,
+      "price": 84.77,
       "runs": 0
     },
     "TRX": {
-      "price": 0.334977,
+      "price": 0.330277,
       "runs": 0
     },
     "SKY": {
-      "price": 0.079058,
+      "price": 0.076608,
       "runs": 0
     },
     "CAKE": {
@@ -63,23 +63,23 @@
       "runs": 0
     },
     "UNI": {
-      "price": 7.76,
+      "price": 7.52,
       "runs": 0
     },
     "BNB": {
-      "price": 769.27,
+      "price": 746.46,
       "runs": 0
     },
     "RAY": {
-      "price": 2.45,
+      "price": 2.3,
       "runs": 0
     },
     "PENDLE": {
-      "price": 2.24,
+      "price": 2.15,
       "runs": 0
     },
     "AERO": {
-      "price": 0.77783,
+      "price": 0.940095,
       "runs": 0
     }
   }
