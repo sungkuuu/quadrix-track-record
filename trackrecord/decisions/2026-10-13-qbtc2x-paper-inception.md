@@ -1,21 +1,22 @@
 <!-- DRAFT — NOT A DECISION. scripts/anchor-decision.mjs refuses this file while this box or any ⟦…⟧ is in it.
 TO FILL before anchoring (each one changes this file's sha256):
-  1. ⟦VAULT⟧ ⟦VAULT-tx⟧ — after the deployment (deposit cap 0), from keeper/leverage-vaults.json.
-  2. The checklist run record: R64 (roles read back at deployment) is not run, and the record cannot carry an anchor while a
-     ● item is not run — rerun it, then its sha256 and site commit below.
+  1. ⟦VAULT⟧ ⟦VAULT-tx⟧ — from keeper/leverage-vaults.json.
+  2. ⟦RECORD-HEAD⟧ (two places) and ⟦PROV-sha256⟧ — the record commit that holds the rulebook JSON, provenance, keeper,
+     verifier and gate report, and the provenance file's sha256 there.
   3. ⟦GATE-sha256⟧ — the final gate report, committed as rulebooks/qbtc2x.gate.json; the counts in the sentence "Its report …
-     reads "fail" with …" are those of the report-only run of 2026-10-06 and are replaced by the final report's. -->
+     reads "fail" with …" are those of the report-only run of 2026-10-06 and are replaced by the final report's.
+  4. The R64 clause under "Checks not run": R64 has run (checklist run record 2026-10-12.json). -->
 
-# qBTC2X synthetic level — inception, 2026-10-08
+# qBTC2X synthetic level — inception, 2026-10-13
 
-**Effective:** 2026-10-08 (UTC). **Series:** `trackrecord/record-qbtc2x.jsonl`, anchors `trackrecord/anchors-qbtc2x.jsonl`, calldata prefix `qxpi-qbtc2x:`.
+**Effective:** 2026-10-13 (UTC). **Series:** `trackrecord/record-qbtc2x.jsonl`, anchors `trackrecord/anchors-qbtc2x.jsonl`, calldata prefix `qxpi-qbtc2x:`.
 
 ## What starts today
 
 Stage A of BTC 2x (ticker qBTC2X): a rules-only level for a book that holds bitcoin against a stablecoin
 debt and is brought back to twice its equity at the end of every UTC day — the level of a **daily 2× of
-bitcoin's UTC-day return**. Genesis level 100 at the 00:00 UTC close of 2026-10-08. A line dated D holds the bars of UTC day D − 1:
-the genesis line, dated 2026-10-08, holds only the starting book, and the line dated 2026-10-09 is the
+bitcoin's UTC-day return**. Genesis level 100 at the 00:00 UTC close of 2026-10-13. A line dated D holds the bars of UTC day D − 1:
+the genesis line, dated 2026-10-13, holds only the starting book, and the line dated 2026-10-14 is the
 first day of returns. Nothing is borrowed, swapped or liquidated. The level is what the book's equity would have been, computed bar by bar from
 closed 15-minute bars built from Binance spot BTCUSDT one-minute bars, with no fallback source, by the
 keeper `keeper/leverage-index.mjs --index qbtc2x`. One line per UTC day, written once the day has ended,
@@ -28,18 +29,18 @@ its share price marked to this level (level ÷ 100) once a day, after the day's 
 keeper's daily run. It holds test dollars only — no bitcoin and no debt — and issues and redeems at the
 marked price. It displays the level; it is not the book. It runs the same contract as the qX20 tracking
 vault; that contract's comments describe qX20. Owner and keeper: the keeper key, as for the six testnet
-basket vaults. Deposits open only after the first mark (line 1) has been checked, by the owner, up to
+basket vaults. Deposits open only after the first mark (line 1) has been checked by a person, up to
 1,000,000 test dollars — the qX20 tracking vault's cap; an untested value.
 
 ## The rules in force (pinned)
 
-The rulebook is `rulebooks/qbtc2x.md` at commit `cb8058b56ad6a99330199f2204d168bdb191f015` of this
-repository (sha256 `395485a12b845a8058136e9fb9c65846937e3bbcbf690dcab10747cc1dbc8366`), as implemented in
-`keeper/rulebooks/qbtc2x.json` (sha256 `2406e11f66dc087c1f9f791ff370f78bda0039a02cb08e6a8b215091dfcb7d40`),
+The rulebook is `rulebooks/qbtc2x.md` at commit `076189cad4ce5e1fbc198a2c4b516bc6eed45fe0` of this
+repository (sha256 `1c70378532665b957ca1871ebf28eb4ce23c53fb4db2ec12966fcf12d167913d`), as implemented in
+`keeper/rulebooks/qbtc2x.json` (sha256 `ae8db495ba8bb9336aa598d8ef4ff36d51c7335cfe77de702ce74c525235ce88`),
 `keeper/leverage-index.mjs` (sha256 `1e2a1e6a7e13a623c4a52619e10127ddbd25061913eaa397cc07b09ceca258fb`) and
 `keeper/leverage-step.mjs` (sha256 `0266e0f339813591be3584cef41c5107533b83a2df1cd49aab5c68d4a0880e25`),
 recomputed by `scripts/verify.mjs` (sha256 `ecc5d13bee9ed0c83465502e8ad2a69a48128a99bff7b6bdc1d1cde0f216a992`),
-at commit `359ce0677995edf66bb91df3252186437c10e5e4` of this repository. In one paragraph:
+at commit `⟦RECORD-HEAD⟧` of this repository. In one paragraph:
 
 The book is bitcoin worth λ times its equity against a stablecoin debt of (λ − 1) times its equity. It is
 evaluated at the close of every 15-minute bar. At the last close of each UTC day (normally the bar that
@@ -206,11 +207,11 @@ real book to zero.
 
 ## Tested, and not tested (pinned)
 
-Parameter citation table: appendix P of `rulebooks/qbtc2x.md` at commit `cb8058b56ad6a99330199f2204d168bdb191f015`
-(sha256 `395485a12b845a8058136e9fb9c65846937e3bbcbf690dcab10747cc1dbc8366`); keeper provenance
-`keeper/rulebooks/qbtc2x.provenance.json` (sha256 `3deed4b00b39d7209f844c3f1dd63157122073768d0599c69f7ce548a91341fc`).
-Checklist run record: `docs/methodology/checklist-runs/qbtc2x/2026-10-05.json` (site repository, private;
-sha256 `3af514e8df497819a6fbdc768f0f11efe4307fe7f1e59d48fb3d00e03092b38b`). Gate report: `rulebooks/qbtc2x.gate.json` (sha256 `⟦GATE-sha256⟧`).
+Parameter citation table: appendix P of `rulebooks/qbtc2x.md` at commit `076189cad4ce5e1fbc198a2c4b516bc6eed45fe0`
+(sha256 `1c70378532665b957ca1871ebf28eb4ce23c53fb4db2ec12966fcf12d167913d`); keeper provenance
+`keeper/rulebooks/qbtc2x.provenance.json` (sha256 `⟦PROV-sha256⟧`).
+Checklist run record: `docs/methodology/checklist-runs/qbtc2x/2026-10-12.json` (site repository, private;
+sha256 `92546f141c431cb236aef14dc5b39bc08fadc60ecae3efab18b76fe45d5ddce6`). Gate report: `rulebooks/qbtc2x.gate.json` (sha256 `⟦GATE-sha256⟧`).
 
 | Basis | Count | Parameters |
 | --- | --- | --- |
@@ -245,13 +246,13 @@ sha256 `5cdd706e6ecb5fbc3bb7841634b7598657d173364c09b4860701fca3c3c2791e`; `docs
 sha256 `c1e2d12e97499f74afe4e78b6c78bcd949ff3bab1bb4a938e92633fd53c18a3b`; `docs/research/leverage/params-v6/stats.csv`
 sha256 `64ebb30b01f64bab14d58f28c7184839bbe3cdb08419d793f9efd7b0caa40a72` (site repository, branch
 `research/leverage-params-v6` at `c9bd7a2`; no published copy yet).
-Registration `docs/research/leverage/params-v6/README.md` sha256
-`eb7b50e5601b818f94381e78eff4e0972b1ab2ee65844a0ae8f05bbdfef20136`; independent check
+Registration, a copy of the registration fixed at `8b355b7`: `docs/research/leverage/params-v6/registration.md` sha256
+`4b4249961413b5303c0315aa4421cbbc3c7256d7d71d423b9a889270651f6e97`; independent check
 `docs/research/leverage/params-v6/verify-p2/summary.csv` sha256
 `2f64759ec40fcfcf5f5c70e68083c8ffc942fd7ba6d12f8b4de8ba216f546dcc`; third re-computation
-`docs/research/leverage/params-v6/final-review.md` sha256 `4db1ca7d5c3243d1416522dd927c63b531ff762713e5ced60676270df3a27d82`
-and its raw output `docs/research/leverage/params-v6/final-review/output.txt` sha256
-`1c1067874748d11679cb68cba573b97e43007ad490408500c9ac936f26de2b04`.
+`docs/research/leverage/params-v6/recomputation.md` sha256 `b48058d6229b488d3dd46b75f7faa1d078e9c283a03bed6addb08ecd3e392c46`
+and its raw output `docs/research/leverage/params-v6/recomputation/output.txt` sha256
+`41353be92dadca49f60233373de28b0abbce36bc381d6460b447a0639d9348a1` (the three copies at site commit `4cf8d26`).
 Checks not run for this product, and why: holdability of collateral and debt on GIWA (R08) — not
 applicable in stage A, required before stage B; security items R44–R46 — no new contract code, the vault is
 the qX20 tracking vault's contract (its eight existing tests pass); roles on chain (R64) — read back at
@@ -302,6 +303,7 @@ is not written yet.
 
 | Repository | HEAD at pinning |
 | --- | --- |
-| quadrix-track-record (rulebook, rulebook JSON, provenance, keeper, verifier) | `359ce0677995edf66bb91df3252186437c10e5e4` |
+| quadrix-track-record (rulebook, rulebook JSON, provenance, keeper, verifier) | `⟦RECORD-HEAD⟧` |
 | quadrix (site, private — research `docs/research/leverage/params-v6/` on `research/leverage-params-v6`) | `c9bd7a2` |
-| quadrix (site, private — checklist run record) | `99398b3ea6d90a31d5156f934f0a71eaa36bea62` |
+| quadrix (site, private — copies `registration.md`, `recomputation.md`, `recomputation/output.txt`, `stress-results.csv`) | `4cf8d268a020b773a636630011a1c02b9aa05f54` |
+| quadrix (site, private — checklist run record) | `4cf8d268a020b773a636630011a1c02b9aa05f54` |
