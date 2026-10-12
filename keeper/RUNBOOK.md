@@ -688,6 +688,20 @@ watchdog): it reads only the outputs, so it also catches a job that never ran.
 | a line with `liquidated` | the model's total loss, accepted by a person (`liquidationAccepted` names the entry) | the series has ended: the vault is stepped to its floor (3 units) and, if the keeper is its owner, paused, in the run that wrote the line. Nothing is written after it. No key can raise the vault from its floor. A new series is a new decision. |
 | `REVISED qbtc2x <date>` from `verify.mjs --refetch-bars` | Binance now serves different bars for a recorded day | the line's bars are the record; nothing is rewritten. Note it here; a correction notice is a decision. |
 
+## Retired testnet vaults — deposits closed
+
+Two GIWA Sepolia vaults are left out of the redeployment: qDV
+(`QuadrixVault`, `0xdf54c6b518335825947d90a941c706e26531a502`) and QBV v3
+(`QuadrixBasketVault`, `0xa908c180be8d58f223a220da98dd71db0f0be45d`). Their
+deposits close and their redemptions stay open. `keeper/close-old-vaults.mjs`
+(workflow `old-vaults-close`, dry run unless `live` + `EXECUTE`) calls
+`setDepositsPaused(true)` on qDV and `setPerTxCreateCap(0)` on QBV v3 (that
+deployment has no `openCreation()`), and appends each transaction to
+`keeper/old-vaults.jsonl` ("sent", then "mined" with the value before and
+after). A vault that already reads closed is skipped, so a re-run sends
+nothing. A "sent" line without a "mined" line: read the value on chain before
+re-running. There is no reopen action in the workflow.
+
 ## CoinGecko access — blocked endpoint, optional key, fallback (2026-09-29)
 
 From the 2026-09-29 run, the keyless CoinGecko `coins/markets` endpoint answers
