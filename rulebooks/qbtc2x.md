@@ -153,9 +153,10 @@ A단계 기록 줄은 그날의 15분봉 전부(시각 · 시가 · 고가 · �
 
 | 장애 | 정의 · 감지 | 동작 | 재개 조건 | 재개 뒤 첫 실행 |
 |---|---|---|---|---|
-| 가격 출처 정지 | 바이낸스 1분봉 API가 응답하지 않거나 하루의 1분봉이 1,440개보다 적다(§9-2). 키퍼가 받은 봉 수를 센다 | 그 날과 뒤 날의 줄을 쓰지 않는다. 시리즈 정지. 폴백 출처 없음(§8) | 사람이 거래소 공지 · 재조회로 공백을 확인하고 수락을 기록한다(`keeper/leverage-gaps.json`) | 있는 봉으로 계산하고 줄에 공백과 수락 기록을 적는다. 봉을 채워 넣지 않는다 |
-| 거래소 거래 중단 | BTCUSDT 거래 정지 · 점검으로 봉이 비거나 끊긴다. 감지는 위와 같다(봉 수) | 위와 같다 | 위와 같다 | 위와 같다 |
-| 체인 정지 · RPC 장애 | GIWA Sepolia 시퀀서나 RPC가 응답하지 않는다. 앵커 · 마크 트랜잭션이 실패하거나 영수증이 오지 않는다 | 레벨 계산은 체인 밖이므로 기록 줄은 쓴다. 앵커와 마크는 하지 않고 실행이 실패로 끝난다(실패 이슈). 줄을 지우지 않는다 | 체인이 블록을 다시 낸다 | 밀린 앵커를 줄 순서대로 하고, 마크는 앵커된 마지막 줄의 레벨로 한 번(§13 마크 순서). 늦은 줄은 `late` 표시가 남는다 |
+| 가격 출처 응답 없음 | 바이낸스 1분봉 API가 응답하지 않는다(요청마다 시간 제한), 또는 같은 날을 두 번 받은 결과가 다르다 | 그 날과 뒤 날의 줄을 쓰지 않고 실행이 실패로 끝난다(실패 이슈). 폴백 출처 없음(§8) | 바이낸스가 다시 응답한다. 사람의 확인은 필요 없다 | 밀린 날을 순서대로 그날의 봉으로 계산해 쓴다. 늦게 쓴 줄은 `late` 표시가 남는다(§7) |
+| 빠진 봉 | 하루의 1분봉이 1,440개보다 적다(§9-2). 키퍼가 받은 봉 수를 센다 | 그 날과 뒤 날의 줄을 쓰지 않는다. 시리즈 정지 | 사람이 거래소 공지 · 재조회로 공백을 확인하고 수락을 기록한다(`keeper/leverage-gaps.json`) | 있는 봉으로 계산하고 줄에 공백과 수락 기록을 적는다. 봉을 채워 넣지 않는다 |
+| 거래소 거래 중단 | BTCUSDT 거래 정지 · 점검으로 봉이 비거나 끊긴다. 감지는 빠진 봉과 같다(봉 수) | 빠진 봉과 같다 | 빠진 봉과 같다 | 빠진 봉과 같다 |
+| 체인 정지 · RPC 장애 | GIWA Sepolia 시퀀서나 RPC가 응답하지 않는다. 앵커 · 마크 트랜잭션이 실패하거나 영수증이 오지 않는다 | 그 실행이 쓴 줄은 남는다(지우지 않는다). 앵커와 마크는 하지 않고 실행이 실패로 끝난다(실패 이슈). 체인이 멈춘 동안 다음 실행은 밀린 앵커부터 하므로 새 줄을 쓰지 않는다 | 체인이 블록을 다시 낸다 | 밀린 앵커를 줄 순서대로 하고, 밀린 날의 줄을 쓰고 앵커한 뒤, 앵커된 마지막 줄의 레벨로 마크한다(§13 마크 순서). 늦게 쓴 줄은 `late` 표시가 남는다 |
 | 오라클 지연 | A단계에는 체인 오라클이 없다 — 레벨은 봉에서 계산하고, 볼트 가격은 키퍼가 레벨을 올린다(§13). 해당 없음 | — | — | — |
 | 틀린 가격 하나 | 1분봉 하나가 거래소의 실제 체결과 다르다. 저가가 청산선에 닿으면 §9-1이 잡는다(사람 확인 전에는 줄 없음). 청산에 닿지 않는 틀린 봉은 자동으로 잡지 못한다 — 독립 재계산(`scripts/verify.mjs`)은 같은 봉을 쓴다 | 청산: §9-1. 그 밖: 줄은 그대로 남는다(§9-3) | 청산: 사람이 다른 거래소의 같은 분 봉과 대조해 수락 또는 기각 | 수락이면 레벨 0 줄, 기각이면 시리즈는 멈춘 채 정정 결정문을 기다린다(§9-1) |
 
@@ -171,7 +172,7 @@ A단계 기록 줄은 그날의 15분봉 전부(시각 · 시가 · 고가 · �
 | (나) | 구성 자산의 발행사나 편입 후보에게서 받는 대가가 있는가 | 아니오 |
 | (다) | 우리의 다른 볼트가 이 상품의 거래 상대 · 차입자 · 유동성 공급자인가 | A단계: 아니오(차입 · 거래 없음). B단계: 우리의 다른 볼트가 빌려주는 구조는 검토 전이다. 하게 되면 결정문으로 먼저 공시한다 |
 | (라) | 규칙의 입력(가격 · 분류 · 지수)을 우리가 만드는가 | 입력(봉)은 거래소 공개 데이터이고 우리가 만들지 않는다. 레벨은 우리 키퍼가 계산한다 — 누구나 기록 줄의 봉과 sha256으로 같은 레벨을 다시 계산할 수 있다(§8, `scripts/verify.mjs`). 테스트넷 볼트의 가격은 우리 키퍼가 레벨을 올려 정한다(단일 출처, §13) |
-| (마) | 발행 · 운용 · 키퍼 · 앵커가 한 키인가 | 예. 체인 읽기(2026-10-12, 배포 뒤): 볼트 owner = keeper = 키퍼 키. 앵커 트랜잭션도 같은 키가 보낸다(R64) |
+| (마) | 발행 · 운용 · 키퍼 · 앵커가 한 키인가 | 예. 체인 읽기(2026-10-12, 배포 뒤): 볼트 owner = keeper = 키퍼 키. 앵커 트랜잭션도 같은 키가 보낸다(R64 · 앵커 트랜잭션의 보낸 주소) |
 | (바) | 편입 심사 대상과 사업 관계가 있는가 | 해당 없음(단일 자산, 편입 심사 없음) |
 
 완화 장치: ① 누구나 다시 계산 — 줄마다 봉 전부와 원문 sha256(§8). ② 변경은 결정문으로만 — 소급 없음(§10). ③ 키 분리 — owner · keeper · 앵커를 역할별 키로 나누는 것은 테스트넷 볼트 재배포 묶음에서 하고 결정문으로 공시한다. 그 전까지 한 키가 전 역할이라는 사실이 이 상품의 공시다.
@@ -227,7 +228,7 @@ qX20 §10과 같다. 이 규칙서의 모든 값(목표 · 기본 규칙 · 트�
 
 ## 부록 A — 6차 검정 결과 (이 규칙: 매일 리셋 + 120분 + λ ≥ 2.2)
 
-출처: 사이트 리포 브랜치 `research/leverage-params-v6`(머리 `c9bd7a2`) `docs/research/leverage/params-v6/` — 사전 등록 `registration.md`(고정 커밋 `8b355b7`의 사본), 결과 `results/results.csv.gz`, 판정 표 `results/verdicts.csv`, 표 `results/band-compare.csv` · `results/fixed-table.csv` · `results/ref45-windows.csv` · `results/ref45-mc-distribution.csv`, 정적 여유 `stats.csv`, 공시 값 정리 `recomputation.md` §4-2(사본 둘은 사이트 커밋 `4cf8d26`). sha256은 부록 C 끝. 모든 배수는 30bp · 연 6%(헤드라인) 위의 값이고 운용보수가 없다.
+출처: 사이트 리포 브랜치 `research/leverage-params-v6`(머리 `c9bd7a2`) `docs/research/leverage/params-v6/` — 사전 등록 `registration.md`(고정 커밋 `8b355b7`의 사본), 결과 `results/results.csv.gz`, 판정 표 `results/verdicts.csv`, 표 `results/band-compare.csv` · `results/fixed-table.csv` · `results/ref45-windows.csv` · `results/ref45-mc-distribution.csv`, 정적 여유 `stats.csv`, 공시 값 정리 `recomputation.md` §4-2(사본 둘은 사이트 커밋 `ad67f57`). sha256은 부록 C 끝. 모든 배수는 30bp · 연 6%(헤드라인) 위의 값이고 운용보수가 없다.
 
 **판정 규칙을 적용한 출력(헤드라인, 규칙 A = 규칙 B)**
 
@@ -330,7 +331,7 @@ qX20 §10과 같다. 이 규칙서의 모든 값(목표 · 기본 규칙 · 트�
 
 **A단계용 값이다.** 실제 차입(B단계) 전에는 실제 청산선으로 적격을 다시 계산하고(§5의 범위 밖이면 재판정), 오라클과 대조하고, 검사 간격을 보장하는 실행 환경(늦어도 50분)을 갖춘다.
 
-**파일**(사이트 리포 `research/leverage-params-v6` `c9bd7a2`, `docs/research/leverage/params-v6/` — `registration.md` · `recomputation.md` · `recomputation/`는 사이트 커밋 `4cf8d26`의 사본; 공개 사본은 아직 없다): `registration.md`(사전 등록 — 고정 커밋 `8b355b7`의 사본) sha256 `4b4249961413b5303c0315aa4421cbbc3c7256d7d71d423b9a889270651f6e97` · 엔진 `leverage-params-v6.mjs` sha256 `ceadadd3003fcbbb858a9b19adcbbc3db5873308c0f7705c68cb11b7d0c2fab3` · `results/results.csv.gz` sha256 `5cdd706e6ecb5fbc3bb7841634b7598657d173364c09b4860701fca3c3c2791e` · `results/verdicts.csv` sha256 `c1e2d12e97499f74afe4e78b6c78bcd949ff3bab1bb4a938e92633fd53c18a3b` · `results/band-compare.csv` sha256 `a14d3bad64e2a210c1e5f9b3afe8d25445b1bc7c76bd0e6da8825215abd779e4` · `stats.csv` sha256 `64ebb30b01f64bab14d58f28c7184839bbe3cdb08419d793f9efd7b0caa40a72` · `verify-p2/summary.csv` sha256 `2f64759ec40fcfcf5f5c70e68083c8ffc942fd7ba6d12f8b4de8ba216f546dcc` · `recomputation.md` sha256 `b48058d6229b488d3dd46b75f7faa1d078e9c283a03bed6addb08ecd3e392c46` · `recomputation/output.txt` sha256 `41353be92dadca49f60233373de28b0abbce36bc381d6460b447a0639d9348a1`. 마크 게이트: 사이트 리포 `research/contract-safety-stress`(`ce35a1c`, 사전 등록 `9048c30`)의 결과 표 — 사본 `docs/research/contract-safety-stress/results/stress-results.csv`(사이트 커밋 `4cf8d26`) sha256 `b33a61efb986f97e4b47283e2810d7273fddfcd7385aadbf40b3763472d29f6d`.
+**파일**(사이트 리포 `research/leverage-params-v6` `c9bd7a2`, `docs/research/leverage/params-v6/` — `registration.md` · `recomputation.md` · `recomputation/`는 사이트 커밋 `ad67f57`의 사본; 공개 사본은 아직 없다): `registration.md`(사전 등록 — 고정 커밋 `8b355b7`의 사본) sha256 `f9bf113c41666ea5490fbab8d7589cdf2279033e8ffa4f6d6d2565c2194bf1e7` · 엔진 `leverage-params-v6.mjs` sha256 `ceadadd3003fcbbb858a9b19adcbbc3db5873308c0f7705c68cb11b7d0c2fab3` · `results/results.csv.gz` sha256 `5cdd706e6ecb5fbc3bb7841634b7598657d173364c09b4860701fca3c3c2791e` · `results/verdicts.csv` sha256 `c1e2d12e97499f74afe4e78b6c78bcd949ff3bab1bb4a938e92633fd53c18a3b` · `results/band-compare.csv` sha256 `a14d3bad64e2a210c1e5f9b3afe8d25445b1bc7c76bd0e6da8825215abd779e4` · `stats.csv` sha256 `64ebb30b01f64bab14d58f28c7184839bbe3cdb08419d793f9efd7b0caa40a72` · `verify-p2/summary.csv` sha256 `2f64759ec40fcfcf5f5c70e68083c8ffc942fd7ba6d12f8b4de8ba216f546dcc` · `recomputation.md` sha256 `877014fa70ad4c5dda95f158112adc98c8ad2a7456c66037b5ee7b379f42fb9d` · `recomputation/output.txt` sha256 `41353be92dadca49f60233373de28b0abbce36bc381d6460b447a0639d9348a1`. 마크 게이트: 사이트 리포 `research/contract-safety-stress`(`ce35a1c`, 사전 등록 `9048c30`)의 결과 표 — 사본 `docs/research/contract-safety-stress/results/stress-results.csv`(사이트 커밋 `ad67f57`) sha256 `951bf4299ace3ca2d640e5486176d5f973134289c5ec825f63c8cd8b8569f68f`.
 
 ## 부록 R — 체크리스트 실행 기록 (요약)
 
