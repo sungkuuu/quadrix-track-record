@@ -429,13 +429,17 @@
         "address": "0xf57e67f92679587ff8e09cc7634661aecdd708ef",
         "decimals": 8
       },
-      "GRT": {
-        "address": "0x8bb34857fff580158357102fa96bb0931e07e373",
-        "decimals": 7
+      "ICP": {
+        "address": "0xae331a90c8ac9b7820ebe69f81d6808a8b6c4d16",
+        "decimals": 9
       },
       "AKT": {
         "address": "0x05c6b7e4b96f15dd30a5a75977f7645619eb8634",
         "decimals": 8
+      },
+      "NEAR": {
+        "address": "0x7e2ffbefc4597c37ee6168e94eba3064bb942393",
+        "decimals": 9
       }
     }
   }
