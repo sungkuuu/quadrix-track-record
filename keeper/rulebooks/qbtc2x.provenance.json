@@ -3,17 +3,17 @@
   "index": "qbtc2x",
   "rulebook": {
     "path": "rulebooks/qbtc2x.md",
-    "commit": "cb8058b56ad6a99330199f2204d168bdb191f015",
-    "sha256": "395485a12b845a8058136e9fb9c65846937e3bbcbf690dcab10747cc1dbc8366"
+    "commit": "076189cad4ce5e1fbc198a2c4b516bc6eed45fe0",
+    "sha256": "1c70378532665b957ca1871ebf28eb4ce23c53fb4db2ec12966fcf12d167913d"
   },
   "checklistRun": {
-    "path": "docs/methodology/checklist-runs/qbtc2x/2026-10-05.json",
-    "sha256": "3af514e8df497819a6fbdc768f0f11efe4307fe7f1e59d48fb3d00e03092b38b",
-    "repo": "site (private), commit 99398b3ea6d90a31d5156f934f0a71eaa36bea62"
+    "path": "docs/methodology/checklist-runs/qbtc2x/2026-10-12.json",
+    "sha256": "92546f141c431cb236aef14dc5b39bc08fadc60ecae3efab18b76fe45d5ddce6",
+    "repo": "site (private), commit 4cf8d268a020b773a636630011a1c02b9aa05f54"
   },
   "keeperJson": {
     "path": "keeper/rulebooks/qbtc2x.json",
-    "sha256": "2406e11f66dc087c1f9f791ff370f78bda0039a02cb08e6a8b215091dfcb7d40"
+    "sha256": "ae8db495ba8bb9336aa598d8ef4ff36d51c7335cfe77de702ce74c525235ce88"
   },
   "note": "Covers every numeric, boolean and rule-string leaf of the keeper JSON (gate.md §2) and the mark gate. The rows not held in the JSON (P02, P08, P09, P12, P13, P15, P16, P19–P23) are in appendix P of the rulebook.",
   "params": [
@@ -69,7 +69,7 @@
       "definitionKind": null,
       "inForceSince": null,
       "auditRef": null,
-      "exception": "simulation step of the test (README 「검정하지 않은 값」: shortest check 15 minutes)"
+      "exception": "simulation step of the test (registration.md 「검정하지 않은 값」: shortest check 15 minutes)"
     },
     {
       "id": "P04",
@@ -141,7 +141,7 @@
       "definitionKind": null,
       "inForceSince": null,
       "auditRef": null,
-      "exception": "owner-set condition, not tested (owner, 2026-10-06): the owner set the 120-minute interval on 2026-10-01, before the one-minute measurement; the sixth test chose the trigger within it (trk_asset_outcome,BTC,A,own,all: best); its registration listed the BTC check interval among the values it does not choose (README 「검정하지 않은 값」); the free track also returns 120 minutes, but as a fallback by simplicity (trk_asset_outcome,BTC,A,free,all: simplest -> L>=2.3|120, four non-dominated variants)"
+      "exception": "owner-set condition, not tested (owner, 2026-10-06): the owner set the 120-minute interval on 2026-10-01, before the one-minute measurement; the sixth test chose the trigger within it (trk_asset_outcome,BTC,A,own,all: best); its registration listed the BTC check interval among the values it does not choose (registration.md 「검정하지 않은 값」); the free track also returns 120 minutes, but as a fallback by simplicity (trk_asset_outcome,BTC,A,free,all: simplest -> L>=2.3|120, four non-dominated variants)"
     },
     {
       "id": "P06",
@@ -265,9 +265,9 @@
       "preregCommit": null,
       "resultFiles": [
         {
-          "path": "docs/research/contract-safety-stress/results/results.csv",
-          "sha256": "4a1fa7aee89108513b99e671b85b6e156ad5027793a5d93da07bc8a1cb232a22",
-          "repo": "site, branch research/contract-safety-stress @ ce35a1c (pre-registration 9048c30) — supporting evidence, not a test of this value"
+          "path": "docs/research/contract-safety-stress/results/stress-results.csv",
+          "sha256": "b33a61efb986f97e4b47283e2810d7273fddfcd7385aadbf40b3763472d29f6d",
+          "repo": "site, commit 4cf8d268a020b773a636630011a1c02b9aa05f54 — copy of the result table of research/contract-safety-stress @ ce35a1c (pre-registration 9048c30) — supporting evidence, not a test of this value"
         }
       ],
       "ruleOutput": null,

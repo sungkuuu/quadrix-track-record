@@ -3,13 +3,13 @@
   "index": "qeth2x",
   "rulebook": {
     "path": "rulebooks/qeth2x.md",
-    "commit": "cb8058b56ad6a99330199f2204d168bdb191f015",
-    "sha256": "a386239eaaa0b2674e7899177ae4811f9282ba6b06bcece4de36166ca765986f"
+    "commit": "076189cad4ce5e1fbc198a2c4b516bc6eed45fe0",
+    "sha256": "d64ed3b3199d77e9252a68c631f0202d6e590618ce584410a6b49f84b4636fb9"
   },
   "checklistRun": {
-    "path": "docs/methodology/checklist-runs/qeth2x/2026-10-05.json",
-    "sha256": "8b0c3c39a86c5601d64d0b3fbb913b1dd2c2a4ec03748d04c28206e92054c61d",
-    "repo": "site (private), commit 99398b3ea6d90a31d5156f934f0a71eaa36bea62"
+    "path": "docs/methodology/checklist-runs/qeth2x/2026-10-12.json",
+    "sha256": "b41c6609afa6f69bd8c7ec4789907d4128464e5d9c1f1603f0b55fb73e6b162c",
+    "repo": "site (private), commit 4cf8d268a020b773a636630011a1c02b9aa05f54"
   },
   "keeperJson": {
     "path": "keeper/rulebooks/qeth2x.json",
@@ -69,7 +69,7 @@
       "definitionKind": null,
       "inForceSince": null,
       "auditRef": null,
-      "exception": "simulation step of the test (README 「검정하지 않은 값」: shortest check 15 minutes)"
+      "exception": "simulation step of the test (registration.md 「검정하지 않은 값」: shortest check 15 minutes)"
     },
     {
       "id": "P04",
@@ -275,9 +275,9 @@
       "preregCommit": null,
       "resultFiles": [
         {
-          "path": "docs/research/contract-safety-stress/results/results.csv",
-          "sha256": "4a1fa7aee89108513b99e671b85b6e156ad5027793a5d93da07bc8a1cb232a22",
-          "repo": "site, branch research/contract-safety-stress @ ce35a1c (pre-registration 9048c30) — supporting evidence, not a test of this value"
+          "path": "docs/research/contract-safety-stress/results/stress-results.csv",
+          "sha256": "b33a61efb986f97e4b47283e2810d7273fddfcd7385aadbf40b3763472d29f6d",
+          "repo": "site, commit 4cf8d268a020b773a636630011a1c02b9aa05f54 — copy of the result table of research/contract-safety-stress @ ce35a1c (pre-registration 9048c30) — supporting evidence, not a test of this value"
         }
       ],
       "ruleOutput": null,
