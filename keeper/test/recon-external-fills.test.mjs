@@ -241,7 +241,7 @@ test('partial external fill in the race: another bidder fills between our read a
 });
 
 // ================================================ off the curve: HALT stays
-test('curve: an external fill below fair but on the curve (9,950 bp, lossAtRef > 0) is recorded without a HALT; one off the curve (past the duration) or a loss booked at or above fair HALTs after it is recorded', async () => {
+test('curve: an external fill below fair but on the curve (9,950 bp, lossAtRef > 0) is recorded without a HALT; one off the curve (past the duration) or a loss booked at or above fair HALTs after it is recorded (during our trade: and after our auction is cancelled)', async () => {
   // (a) a re-run finds another bidder's late fill: on the curve — recorded, no HALT.
   {
     const chain = newChain();
@@ -282,8 +282,12 @@ test('curve: an external fill below fair but on the curve (9,950 bp, lossAtRef >
     const n0 = chain.sent.length;
     await assert.rejects(runTrade(ctx, await readVault(ctx.reader, V), T1, 1), /HALT: external fill .* booked lossAtRef 123 at factor 100\d\d/);
     assert.ok(!calls(chain, n0).includes('fill@ours'), 'our fill is not sent after the HALT');
+    assert.equal(calls(chain, n0).at(-1), 'cancelAuction', 'the auction is cancelled before the run stops');
+    const u = chain.head.state.auctions[Number(lastId(chain))];
+    assert.deepEqual([u.open, u.remaining], [false, 50n * U], 'no one can fill the rest while the run is stopped');
     const p = loadPlan(f);
     assert.deepEqual(p.fills.map((x) => [x.fillTx, x.external]), [[forged, true]], 'recorded before the HALT');
+    assert.ok(p.sent.some((s) => /cancel auction \d+ before the HALT/.test(s.what)));
   }
   // The curve itself, as the contract computes it — and a fill 1 s past the
   // end, which still computes to the floor but which the contract reverts.
@@ -376,4 +380,119 @@ test('ourBidders: this run\'s bidder and keeper, the vault\'s roles, every fill 
   };
   const s = ourBidders(ctx, { owner: OWNER, keeper: OWNER });
   assert.deepEqual([...s].sort(), [OWNER, B2, B3].sort());
+});
+
+// ================================================ a fill between our read and our cancel
+test('missed fair window: another bidder fills between our read and our cancel — the auction is read again after the cancel and their fill recorded; all taken → the trade is done (no reopen); part taken → only the rest is reopened', async () => {
+  for (const extTake of [100n * U, 30n * U]) {
+    const chain = newChain();
+    const pend = await priced(chain);
+    const f = planOn(chain, pend, [T1], `plan-${extTake}.json`);
+    const ctx = ctxFor(chain, f);
+    // The fill-time read lands past the fair window (400 s late) once.
+    let late = false;
+    ctx.hook = async (point) => { if (point === 'before-fill' && !late) { late = true; chain.timeOffset = 400n; chain.mine(); } };
+    // The other bidder's fill is mined right before our cancel.
+    const base = chain.wallet(OWNER);
+    let raced = false;
+    const w = { account: base.account, async writeContract(req) { if (req.functionName === 'cancelAuction' && !raced) { raced = true; fillBy(chain, EXT, req.args[0], extTake); } return base.writeContract(req); } };
+    ctx.keeperWallet = w;
+    ctx.bidderWallet = w;
+    const n0 = chain.sent.length;
+    const rec = await runTrade(ctx, await readVault(ctx.reader, V), T1, 1);
+    const firstId = BigInt(chain.state(chain.receipts.get(lc(chain.sent[n0 + 2].hash)).blockNumber).auctions.length - 1);
+    const p = loadPlan(f);
+    assert.equal(chain.head.state.balances[lc(AAA)][lc(V)], 900n * U, `the vault sold the planned 100 AAA, not more (other bidder took ${extTake / U})`);
+    assert.equal(p.fills.reduce((s, x) => s + BigInt(x.sellTaken), 0n), 100n * U, 'every fill of the trade is recorded');
+    const ext = p.fills.find((x) => x.external);
+    assert.deepEqual([ext.seq, ext.round, ext.bidder, ext.auctionId, ext.sellTaken], [1, 1, EXT, firstId.toString(), extTake.toString()]);
+    assert.ok(ext.factorBps >= 9_900 && ext.factorBps < 10_000, `below fair, on the curve (${ext.factorBps})`);
+    if (extTake === 100n * U) {
+      assert.deepEqual(calls(chain, n0), ['setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill@ext', 'cancelAuction'], 'nothing reopened');
+      assert.equal(p.fills.length, 1);
+      assert.equal(rec.fillTx, ext.fillTx, 'runTrade returns the other bidder\'s fill');
+      assert.ok(ctx.lines.some((l) => /filled entirely by other bidder\(s\) before our cancel/.test(l)));
+    } else {
+      assert.deepEqual(calls(chain, n0), ['setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill@ext', 'cancelAuction', 'setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill@ours']);
+      const reopen = chain.sent.filter((s) => s.functionName === 'openAuction').at(-1);
+      assert.deepEqual(reopen.args, [AAA, ASTER, 70n * U, 1800n], 'the reopened auction sells what the first one had left at the cancel');
+      const ours = p.fills.find((x) => !x.external);
+      assert.deepEqual([ours.seq, ours.round, ours.sellTaken], [1, 1, (70n * U).toString()]);
+      assert.equal(rec.fillTx, ours.fillTx);
+    }
+  }
+});
+
+// ================================================ the race read at the simulation's block
+test('race on a lagging node: our fill is refused (CapExceeded) at a block that has the other fill while the next node answers one block behind — the auction is read at the simulation\'s block, so the race is seen and the rest filled', async () => {
+  const chain = newChain();
+  const pend = await priced(chain);
+  const f = planOn(chain, pend, [T1]);
+  const ctx = ctxFor(chain, f);
+  const origRead = ctx.pc.readContract;
+  const origSim = ctx.pc.simulateContract;
+  let filledExt = false;
+  let armed = false;
+  // The other bidder fills 40 right after our last read before the fill (the factor).
+  ctx.pc.readContract = async (c) => {
+    const out = await origRead(c);
+    if (c.functionName === 'curveFactorBps' && !filledExt) { filledExt = true; fillBy(chain, EXT, c.args[0], 40n * U); }
+    return out;
+  };
+  // Our simulation sees it and is refused; the reads after it are answered by a node one block behind.
+  ctx.pc.simulateContract = async (p) => {
+    try { return await origSim(p); } catch (e) {
+      if (p.functionName === 'fill' && !armed) { armed = true; chain.lagModes = ['stale']; chain.lagNow(2); }
+      throw e;
+    }
+  };
+  const n0 = chain.sent.length;
+  await runTrade(ctx, await readVault(ctx.reader, V), T1, 1);
+  assert.ok(armed, 'our simulation was refused');
+  assert.deepEqual(calls(chain, n0), ['setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill@ext', 'fill@ours']);
+  assert.ok(ctx.lines.some((l) => /another bidder filled auction \d+ before our fill landed \(.*CapExceeded/.test(l)));
+  assert.deepEqual(chain.sent.at(-1).args, [lastId(chain), 60n * U]);
+  const p = loadPlan(f);
+  assert.deepEqual(p.fills.map((x) => [x.bidder, x.external, x.sellTaken]), [[EXT, true, (40n * U).toString()], [OWNER, false, (60n * U).toString()]]);
+});
+
+// ================================================ a re-run: a second fill of one auction keeps its seq
+test('re-run: an auction with one recorded fill and one that is not — the second keeps the first\'s seq and round (a recorded fill of ours + an external one; a recorded external one + ours outside the fair window, which HALTs as planned)', async () => {
+  const setup = (chain) => {
+    chain.send(OWNER, { address: V, functionName: 'setRefPrice', args: [AAA, REF_AAA] });
+    chain.send(OWNER, { address: V, functionName: 'setRefPrice', args: [ASTER, REF_ASTER] });
+    chain.send(OWNER, { address: V, functionName: 'openAuction', args: [AAA, ASTER, 100n * U, 1800n] });
+    return lastId(chain);
+  };
+  // (a) ours recorded, theirs not.
+  {
+    const chain = newChain();
+    const pend = await priced(chain);
+    const f = planOn(chain, pend, [T1]);
+    const id = setup(chain);
+    fillBy(chain, OWNER, id, 30n * U);
+    const c1 = ctxFor(chain, f);
+    await reconcileSession(c1, await readVault(c1.reader, V), { halt: false });
+    assert.deepEqual(loadPlan(f).fills.map((x) => [x.seq, x.round, x.external]), [[1, 1, false]]);
+    fillBy(chain, EXT, id, 70n * U);
+    const c2 = ctxFor(chain, f);
+    await reconcileSession(c2, await readVault(c2.reader, V), { halt: true });
+    const p = loadPlan(f);
+    assert.deepEqual(p.fills.map((x) => [x.seq, x.round, x.bidder, x.external, x.auctionId]), [[1, 1, OWNER, false, id.toString()], [1, 1, EXT, true, id.toString()]], 'not adopted-<id>, not round null');
+  }
+  // (b) theirs recorded, ours not — ours at the top of the curve, outside the fair window.
+  {
+    const chain = newChain();
+    const pend = await priced(chain);
+    const f = planOn(chain, pend, [T1]);
+    const id = setup(chain);
+    fillBy(chain, EXT, id, 30n * U);
+    const c1 = ctxFor(chain, f);
+    await reconcileSession(c1, await readVault(c1.reader, V), { halt: true });
+    fillBy(chain, OWNER, id, 70n * U);
+    const c2 = ctxFor(chain, f);
+    await assert.rejects(reconcileSession(c2, await readVault(c2.reader, V), { halt: true }), /HALT: adopted fill 0x[0-9a-f]+ landed at factor 10\d\d\d, outside \[10000, 10010\]/);
+    const p = loadPlan(f);
+    assert.deepEqual(p.fills.map((x) => [x.seq, x.round, x.bidder, x.external]), [[1, 1, EXT, true], [1, 1, OWNER, false]], 'recorded before the HALT, as planned #1 round 1');
+  }
 });

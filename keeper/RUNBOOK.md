@@ -550,17 +550,28 @@ vault, not as errors:
   a drain then finalizes at once. Our own fills now carry `external: false`.
 - **A race.** Another fill can land between our read and our fill: a
   simulation refused `CapExceeded`/`AuctionClosed`, or a mined revert while
-  `sellRemaining` fell. The run reads the auction again, records their fill
-  and fills what is left (at most 3 times in a row, then it stops; a re-run
-  records and trades the rest). The reverted fill stays in `sent` as
-  `reverted`.
+  `sellRemaining` fell. The run reads the auction again (a refusal at the
+  block the simulation ran at, a revert at a block ≥ its receipt's), records
+  their fill and fills what is left (at most 3 times in a row, then it stops
+  with the auction open; a re-run records their fills and cancels it; round 1
+  counts that trade as done, and the residual rounds trade what the bound
+  still needs). The reverted fill stays in `sent` as `reverted`.
+- **After a cancel.** A fill can also land between our read and our cancel
+  (a missed fair window, nothing left to sell, the unfilled rest after a
+  partial fill of ours). After every cancel the auction is read again at a
+  block ≥ the cancel's and fills by others are recorded. A missed window
+  reopens only what the auction had left; nothing left → the trade is done
+  (a drain then finalizes).
 - **HALT.** Our bidder keeps the fill policy (fair window, `lossAtRef` 0).
   Another bidder's fill passes anywhere on the contract's curve,
   10,000 − `maxFillLossBps` to 10,000 + 200 bp, including a fill below fair
   with `lossAtRef` > 0 (bounded per fill by the floor and per day by
   `dailyLossBudgetBps`). A factor off the curve, a fill after the auction's
   duration, or a loss booked at or above fair is a fill the contract could
-  not have taken: HALT after it is recorded.
+  not have taken: HALT after it is recorded. If our auction is still open,
+  the run cancels it before it stops, so that no one fills it while the run
+  is stopped; if that cancel fails, the HALT says so — cancel the auction by
+  hand (a re-run also cancels it as left open).
 - **Ours or theirs.** Ours: this run's bidder and keeper, the vault's owner
   and keeper, every fill sender in the plan's `sent` list and every bidder of
   our own fills. Any other address is external.

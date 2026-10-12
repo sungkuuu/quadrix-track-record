@@ -356,15 +356,22 @@ async function simulate(ctx, params) {
   if (ctx.floor === 0n) return ctx.pc.simulateContract(params);
   const { value } = await retryRead(async () => {
     const blockNumber = await blockAtLeast(ctx.pc, ctx.floor);
-    const out = await ctx.pc.simulateContract({ ...params, blockNumber });
-    // A function without a return value: the public node (op-reth) answers
-    // eth_call at a block it has not got with null — no error — and viem
-    // reads null as that function's empty return, so the call would pass
-    // without having run (measured 2026-10-02 and 2026-10-05). At the same
-    // block eth_estimateGas errors "block not found" on such a node, reverts
-    // when the call reverts, and answers a number only when the call ran.
-    if (out.result === undefined) await ctx.pc.estimateContractGas({ ...params, blockNumber });
-    return out;
+    try {
+      const out = await ctx.pc.simulateContract({ ...params, blockNumber });
+      // A function without a return value: the public node (op-reth) answers
+      // eth_call at a block it has not got with null — no error — and viem
+      // reads null as that function's empty return, so the call would pass
+      // without having run (measured 2026-10-02 and 2026-10-05). At the same
+      // block eth_estimateGas errors "block not found" on such a node, reverts
+      // when the call reverts, and answers a number only when the call ran.
+      if (out.result === undefined) await ctx.pc.estimateContractGas({ ...params, blockNumber });
+      return out;
+    } catch (e) {
+      // The block a revert was seen at: runTrade reads the auction there
+      // when a fill is refused (lostRace).
+      if (e && typeof e === 'object') e.atBlock = blockNumber;
+      throw e;
+    }
   }, {
     what: `simulation of ${params.functionName} at a block ≥ ${ctx.floor}`,
     retryIf: (e) => notYetReason(e) != null,
@@ -455,6 +462,7 @@ export async function call(ctx, { who, to, abi = VAULT_ABI, functionName, args =
       if (e instanceof ReadTimeout) throw new Error(`${what}: ${shown} could not be simulated — ${e.message}`);
       const refused = new Refused(`${what}: ${shown} would revert as ${from} — ${fmtErr(e)}`);
       refused.revert = revertName(e); // runTrade tells a fill that lost the race (CapExceeded, AuctionClosed) apart
+      refused.atBlock = e?.atBlock ?? null; // and reads the auction at the block the simulation ran at
       throw refused;
     }
   }
@@ -1313,7 +1321,8 @@ async function auctionFills(ctx, id, fromBlock, toBlock, taken) {
  * Fills of this trade's auction that are not in plan.fills — by another
  * bidder, between our open and our fill — recorded as fills of trade
  * `t.seq` (`adopted: true`, `external` by bidder) and saved before anything
- * else; then held to fillHalt (after recording, as every HALT here).
+ * else; then held to fillHalt. Returns { recs, halts }: the caller cancels
+ * an auction that is still open before it throws the HALTs (runTrade).
  */
 async function adoptAuctionFills(ctx, v, { t, round, id, startTime, opened, toBlock, taken }) {
   const { plan, log } = ctx;
@@ -1335,18 +1344,23 @@ async function adoptAuctionFills(ctx, v, { t, round, id, startTime, opened, toBl
     const h = fillHalt(rec, { v, o: ctx.o, planned: round === 1 && typeof t.seq === 'number', duration: t.duration });
     if (h) halts.push(h);
   }
-  if (halts.length) throw new Error(halts.join('; '));
-  return recs;
+  return { recs, halts };
 }
 
 /** Did our fill fail because another bidder filled first? A simulation
  *  refused CapExceeded or AuctionClosed, or a mined revert — and the auction,
  *  read again, has less left than our fill was sized at, or is closed. Any
- *  other failure is not a race and is thrown as before. */
+ *  other failure is not a race and is thrown as before. The auction is read
+ *  at a block ≥ the one the failure was seen at: a refused simulation's own
+ *  block (a node at a block ≥ ctx.floor can be older than it and show the
+ *  remainder from before the other fill), a mined revert's receipt block
+ *  (ctx.floor). */
 async function lostRace(ctx, e, id, remainingBefore) {
   const racy = (e instanceof Refused && (e.revert === 'CapExceeded' || e.revert === 'AuctionClosed')) || e?.reverted === true;
   if (!racy) return false;
-  const a = await readNow(ctx, `auction ${id} after the fill failed`, { address: ctx.plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] });
+  const seenAt = e.atBlock != null && e.atBlock > ctx.floor ? e.atBlock : ctx.floor;
+  const { value: block } = await retryRead(() => blockAtLeast(ctx.pc, seenAt), { what: 'block number' });
+  const a = await readNow(ctx, `auction ${id} after the fill failed`, { address: ctx.plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] }, block);
   return a[2] < remainingBefore || !a[5];
 }
 
@@ -1418,16 +1432,45 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
   // the sellRemaining this run has accounted for, and the last fill of theirs.
   let remainingSeen = amount;
   let lastOther = null;
-  const adoptTo = async (st) => {
-    if (st.remaining >= remainingSeen) return;
-    const recs = await adoptAuctionFills(ctx, v, { t, round, id, startTime, opened, toBlock: st.block, taken: amount - st.remaining });
+  const adoptOnly = async (st) => {
+    if (st.remaining >= remainingSeen) return [];
+    const { recs, halts } = await adoptAuctionFills(ctx, v, { t, round, id, startTime, opened, toBlock: st.block, taken: amount - st.remaining });
     if (recs.length) lastOther = recs.at(-1);
     remainingSeen = st.remaining;
+    return halts;
+  };
+  // Records the fills of others up to st.block. A HALT is thrown after they
+  // are recorded and after the auction, if still open, is cancelled: other
+  // bidders would otherwise go on filling it while the run is stopped.
+  const adoptTo = async (st) => {
+    const halts = await adoptOnly(st);
+    if (!halts.length) return;
+    if (st.open) {
+      let cancelled = false;
+      try {
+        await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id} before the HALT` });
+        cancelled = true;
+        halts.push(...(await adoptOnly(await auctionState(ctx, id, sell, t.sell))));
+      } catch (e) {
+        halts.push(cancelled
+          ? `auction ${id} is cancelled, but the fills before the cancel could not be read again (${fmtErr(e)}) — a re-run records them`
+          : `auction ${id} could not be cancelled before this stop (${fmtErr(e)}) — it may still be open to other bidders: cancel it by hand`);
+      }
+    }
+    throw new Error(halts.join('; '));
+  };
+  // A cancel does not undo a fill mined before it: the auction is read again
+  // at a block ≥ the cancel's, and every fill by others is recorded.
+  const cancelAndAdopt = async (what) => {
+    await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what });
+    const after = await auctionState(ctx, id, sell, t.sell);
+    await adoptTo(after);
+    return after;
   };
   // Closed: taken entirely by other bidders (done), else cancelled by another keeper run (stop).
-  const whenClosed = async (st) => {
+  const whenClosed = async (st, when = 'before ours') => {
     if (st.remaining !== 0n) throw new Refused(`auction ${id} (#${t.seq}) was closed with ${st.remaining} ${t.sell} unsold, and not by this run — only the keeper cancels: another keeper run is active; stopping`);
-    log(`  auction ${id} was filled entirely by other bidder(s) before ours — nothing left for our fill`);
+    log(`  auction ${id} was filled entirely by other bidder(s) ${when} — nothing left for our fill`);
     // K-1: their fill drained a leaving asset; it is finalized right here.
     if (t.drain && !t.residual) await settleRemoval(ctx, v, t, round);
     return lastOther;
@@ -1461,7 +1504,7 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
     if (!st.open) return whenClosed(st);
     const take = st.liveBal < st.remaining ? st.liveBal : st.remaining;
     if (take === 0n) {
-      await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id} (nothing left to sell)` });
+      await cancelAndAdopt(`cancel auction ${id} (nothing left to sell)`);
       return lastOther;
     }
     const factorNow = Number(await readNow(ctx, `curve factor of auction ${id}`, { address: plan.vault, abi: VAULT_ABI, functionName: 'curveFactorBps', args: [id] }));
@@ -1475,7 +1518,10 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
     }
     if (late) {
       log(`  factor ${factorNow} is below fair — too late for a ${policy} fill; cancelling auction ${id}${attemptNo < MAX_WINDOW_ATTEMPTS ? ' and reopening' : ''}`);
-      await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id}` });
+      // Another bidder may fill between our read and the cancel: what is
+      // reopened is what the auction had left when the cancel was mined.
+      const after = await cancelAndAdopt(`cancel auction ${id}`);
+      if (after.remaining === 0n) return whenClosed(after, 'before our cancel');
       if (attemptNo >= MAX_WINDOW_ATTEMPTS) throw new Error(`#${t.seq}: missed the fair window ${attemptNo} times (window [${win.eMin}, ${win.eMax}] s of a ${t.duration} s auction = duration/30 wide; three mined transactions must land inside it) — widen the planner's --duration (1800 s gives a 60 s window on the public chain) or run when blocks are quick`);
       // What other bidders took is traded: the reopened auction sells the rest.
       return runTrade(ctx, v, remainingSeen < amount ? { ...t, sellAmount: remainingSeen.toString() } : t, round, attemptNo + 1);
@@ -1487,7 +1533,7 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
     } catch (e) {
       if (!(await lostRace(ctx, e, id, st.remaining))) throw e;
       races++;
-      if (races > MAX_FILL_RACES) throw new Error(`#${t.seq}: another bidder filled auction ${id} between our read and our fill ${races} times in a row (last: ${fmtErr(e)}) — stopping; a re-run records their fills and trades what is left`);
+      if (races > MAX_FILL_RACES) throw new Error(`#${t.seq}: another bidder filled auction ${id} between our read and our fill ${races} times in a row (last: ${fmtErr(e)}) — stopping; auction ${id} stays open until a re-run cancels it. A re-run records their fills${round === 1 ? `; round 1 counts #${t.seq} as done,` : ';'} and the residual rounds trade what the bound still needs`);
       log(`  another bidder filled auction ${id} before our fill landed (${fmtErr(e)}) — reading it again (${races}/${MAX_FILL_RACES})`);
       repostNow = false; // the references were re-posted a moment ago
       attempt--; // not a missed window
@@ -1524,7 +1570,7 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
       remainingSeen = st.remaining - take;
       const a2 = await auctionState(ctx, id, sell, t.sell);
       await adoptTo(a2);
-      if (a2.open) await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel the unfilled rest of auction ${id} (${a2.remaining} ${t.sell})` });
+      if (a2.open) await cancelAndAdopt(`cancel the unfilled rest of auction ${id} (${a2.remaining} ${t.sell})`);
     }
     return rec;
   }
