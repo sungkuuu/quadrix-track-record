@@ -1,12 +1,3 @@
-<!-- DRAFT — NOT A DECISION. scripts/anchor-decision.mjs refuses this file while this box or any ⟦…⟧ is in it.
-TO FILL before anchoring (each one changes this file's sha256):
-  1. ⟦VAULT⟧ ⟦VAULT-tx⟧ — from keeper/leverage-vaults.json.
-  2. ⟦RECORD-HEAD⟧ (two places) and ⟦PROV-sha256⟧ — the record commit that holds the rulebook JSON, provenance, keeper,
-     verifier and gate report, and the provenance file's sha256 there.
-  3. ⟦GATE-sha256⟧ — the final gate report, committed as rulebooks/qbtc2x.gate.json; the counts in the sentence "Its report …
-     reads "fail" with …" are those of the report-only run of 2026-10-06 and are replaced by the final report's.
-  4. The R64 clause under "Checks not run": R64 has run (checklist run record 2026-10-12.json). -->
-
 # qBTC2X synthetic level — inception, 2026-10-13
 
 **Effective:** 2026-10-13 (UTC). **Series:** `trackrecord/record-qbtc2x.jsonl`, anchors `trackrecord/anchors-qbtc2x.jsonl`, calldata prefix `qxpi-qbtc2x:`.
@@ -24,7 +15,7 @@ recomputed by `scripts/verify.mjs` (a second implementation) before it is append
 anchored on GIWA Sepolia (chainId 91342) as a zero-value self-send — the same mechanism as the other
 records. Append-only.
 
-A testnet vault on GIWA Sepolia, `⟦VAULT⟧` (created in `⟦VAULT-tx⟧`, deposit cap 0 at deployment), has
+A testnet vault on GIWA Sepolia, `0x7C10C33aEd202207Bb0C054B32C0708ABAC54070` (created in `0x95d302033a982d1a5fe43c459944eb75a82afb9ea098fb1e77d6dcec690c6524`, deposit cap 0 at deployment), has
 its share price marked to this level (level ÷ 100) once a day, after the day's line is anchored, by the
 keeper's daily run. It holds test dollars only — no bitcoin and no debt — and issues and redeems at the
 marked price. It displays the level; it is not the book. It runs the same contract as the qX20 tracking
@@ -34,13 +25,13 @@ basket vaults. Deposits open only after the first mark (line 1) has been checked
 
 ## The rules in force (pinned)
 
-The rulebook is `rulebooks/qbtc2x.md` at commit `076189cad4ce5e1fbc198a2c4b516bc6eed45fe0` of this
-repository (sha256 `1c70378532665b957ca1871ebf28eb4ce23c53fb4db2ec12966fcf12d167913d`), as implemented in
+The rulebook is `rulebooks/qbtc2x.md` at commit `790d7ff57692825625afdad042b337059a65973c` of this
+repository (sha256 `13335ad723aab2a0264d9d82848312db1e91ff9d8c05c662b31c7bdceab106ef`), as implemented in
 `keeper/rulebooks/qbtc2x.json` (sha256 `ae8db495ba8bb9336aa598d8ef4ff36d51c7335cfe77de702ce74c525235ce88`),
 `keeper/leverage-index.mjs` (sha256 `1e2a1e6a7e13a623c4a52619e10127ddbd25061913eaa397cc07b09ceca258fb`) and
 `keeper/leverage-step.mjs` (sha256 `0266e0f339813591be3584cef41c5107533b83a2df1cd49aab5c68d4a0880e25`),
 recomputed by `scripts/verify.mjs` (sha256 `ecc5d13bee9ed0c83465502e8ad2a69a48128a99bff7b6bdc1d1cde0f216a992`),
-at commit `⟦RECORD-HEAD⟧` of this repository. In one paragraph:
+at commit `ea157b941604862e11119ffeee5919264c2459f0` of this repository. In one paragraph:
 
 The book is bitcoin worth λ times its equity against a stablecoin debt of (λ − 1) times its equity. It is
 evaluated at the close of every 15-minute bar. At the last close of each UTC day (normally the bar that
@@ -207,11 +198,14 @@ real book to zero.
 
 ## Tested, and not tested (pinned)
 
-Parameter citation table: appendix P of `rulebooks/qbtc2x.md` at commit `076189cad4ce5e1fbc198a2c4b516bc6eed45fe0`
-(sha256 `1c70378532665b957ca1871ebf28eb4ce23c53fb4db2ec12966fcf12d167913d`); keeper provenance
-`keeper/rulebooks/qbtc2x.provenance.json` (sha256 `⟦PROV-sha256⟧`).
+Parameter citation table: appendix P of `rulebooks/qbtc2x.md` at commit `790d7ff57692825625afdad042b337059a65973c`
+(sha256 `13335ad723aab2a0264d9d82848312db1e91ff9d8c05c662b31c7bdceab106ef`); keeper provenance
+`keeper/rulebooks/qbtc2x.provenance.json` (sha256 `6aed73c7eece2e1f2881279f0d6435f7a95c83a2ab6350141f19681cb54d2414`).
 Checklist run record: `docs/methodology/checklist-runs/qbtc2x/2026-10-12.json` (site repository, private;
-sha256 `92546f141c431cb236aef14dc5b39bc08fadc60ecae3efab18b76fe45d5ddce6`). Gate report: `rulebooks/qbtc2x.gate.json` (sha256 `⟦GATE-sha256⟧`).
+sha256 `92546f141c431cb236aef14dc5b39bc08fadc60ecae3efab18b76fe45d5ddce6`). The run record also pins, by path and
+sha256, internal evidence files of the security tests and the launch preparation; they are not published. Before the
+next anchored decision, the run record will pin only evidence that can be published. Gate report:
+`rulebooks/qbtc2x.gate.json` (sha256 `4fae777c262d441c4fb7dfeff53b28e1447f0cfb71ffdebeb9c897914ecbda78`).
 
 | Basis | Count | Parameters |
 | --- | --- | --- |
@@ -236,11 +230,7 @@ because no candidate rule was tested; the decision region (P23) — the sixth te
 night of 2026-10-01 and fixed in its registration before the run (for bitcoin the full history gives the
 same result); the 15-minute bar (P25) — the sixth test's simulation step. All eighteen are entered in the
 rule audit register for a later test (site repository, private).
-The citation gate (report-only) does not pass this decision. Its report of 2026-10-06 reads "fail" with
-53 violations: 18 new untested values (C6); 24 because the site's test-scope block is not
-published (C10); 11 because the run record lists items not done (among them D11–D18 and R64; D13,
-D16, D17 and D18 can only follow this anchor) — counted once per item and once for the tested value that
-cites the record (C4). None is for the rule audit (C9): the eighteen are registered.
+⟦GATE-SENTENCE⟧
 Pre-registration commit: `8b355b7` (sixth leverage test). Result files: `docs/research/leverage/params-v6/results/results.csv.gz`
 sha256 `5cdd706e6ecb5fbc3bb7841634b7598657d173364c09b4860701fca3c3c2791e`; `docs/research/leverage/params-v6/results/verdicts.csv`
 sha256 `c1e2d12e97499f74afe4e78b6c78bcd949ff3bab1bb4a938e92633fd53c18a3b`; `docs/research/leverage/params-v6/stats.csv`
@@ -255,8 +245,8 @@ and its raw output `docs/research/leverage/params-v6/recomputation/output.txt` s
 `41353be92dadca49f60233373de28b0abbce36bc381d6460b447a0639d9348a1` (the three copies at site commit `4cf8d26`).
 Checks not run for this product, and why: holdability of collateral and debt on GIWA (R08) — not
 applicable in stage A, required before stage B; security items R44–R46 — no new contract code, the vault is
-the qX20 tracking vault's contract (its eight existing tests pass); roles on chain (R64) — read back at
-deployment. A red-team proof-of-concept pass over the new keeper code (R47) was run on 2026-10-05, on the
+the qX20 tracking vault's contract (its eight existing tests pass). Roles on chain (R64) were read back after the
+deployment: owner and keeper are the keeper key, the deposit cap is 0, the share price 1.000000. A red-team proof-of-concept pass over the new keeper code (R47) was run on 2026-10-05, on the
 code before the fixes it led to (site repository, private): ten findings, none a wrong level from honest inputs. The fixes made for nine of
 them (for one of them, all but a watch on the vault's mark, which is not built yet) are in this repository: in the
 keeper and the verifier pinned above, the freshness alarm (`scripts/watchdog-series.mjs`), two workflow
@@ -303,7 +293,7 @@ is not written yet.
 
 | Repository | HEAD at pinning |
 | --- | --- |
-| quadrix-track-record (rulebook, rulebook JSON, provenance, keeper, verifier) | `⟦RECORD-HEAD⟧` |
+| quadrix-track-record (rulebook, rulebook JSON, provenance, keeper, verifier, gate report) | `ea157b941604862e11119ffeee5919264c2459f0` |
 | quadrix (site, private — research `docs/research/leverage/params-v6/` on `research/leverage-params-v6`) | `c9bd7a2` |
 | quadrix (site, private — copies `registration.md`, `recomputation.md`, `recomputation/output.txt`, `stress-results.csv`) | `4cf8d268a020b773a636630011a1c02b9aa05f54` |
 | quadrix (site, private — checklist run record) | `4cf8d268a020b773a636630011a1c02b9aa05f54` |
