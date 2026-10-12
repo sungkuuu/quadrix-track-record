@@ -20,8 +20,8 @@
     "path": "docs/methodology/checklist-runs/qbtc2x/2026-10-12.json",
     "sha256": "92546f141c431cb236aef14dc5b39bc08fadc60ecae3efab18b76fe45d5ddce6"
   },
-  "siteCommit": "d5f08dcf8520b76e7c27064e30cc308777b1525d",
-  "siteCommitPushed": false,
+  "siteCommit": "197d9bb06b239a01c040edc3a61db9e921b88b96",
+  "siteCommitPushed": true,
   "base": "HEAD",
   "counts": {
     "tested": 1,
@@ -51,7 +51,6 @@
   "checksSkipped": [],
   "result": "fail",
   "violationsByCheck": {
-    "C4": 19,
-    "C10": 1
+    "C4": 19
   }
 }
