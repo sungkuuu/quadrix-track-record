@@ -3,13 +3,13 @@
   "index": "qeth2x",
   "rulebook": {
     "path": "rulebooks/qeth2x.md",
-    "commit": "7184080013d727902755f94cc4e01f65b79e8470",
-    "sha256": "c918b86a970b15b3489dbde4b25b080e7db11d59f9999071622097bd0ce8b7c4"
+    "commit": "cb8058b56ad6a99330199f2204d168bdb191f015",
+    "sha256": "a386239eaaa0b2674e7899177ae4811f9282ba6b06bcece4de36166ca765986f"
   },
   "checklistRun": {
     "path": "docs/methodology/checklist-runs/qeth2x/2026-10-05.json",
-    "sha256": "306ff0755c52ffe40a13aabf18895e8decfe5269c7cb48c13c4b1838d2a54291",
-    "repo": "site (private), commit d0b7d18c76823dd5459ef61c0ec79d5d5d78defd"
+    "sha256": "8b0c3c39a86c5601d64d0b3fbb913b1dd2c2a4ec03748d04c28206e92054c61d",
+    "repo": "site (private), commit 99398b3ea6d90a31d5156f934f0a71eaa36bea62"
   },
   "keeperJson": {
     "path": "keeper/rulebooks/qeth2x.json",

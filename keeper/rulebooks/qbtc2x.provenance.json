@@ -3,13 +3,13 @@
   "index": "qbtc2x",
   "rulebook": {
     "path": "rulebooks/qbtc2x.md",
-    "commit": "7184080013d727902755f94cc4e01f65b79e8470",
-    "sha256": "d2afba09040f908ff8de707e4ece78470a2a396a19b632e3893d84b168fb4e4a"
+    "commit": "cb8058b56ad6a99330199f2204d168bdb191f015",
+    "sha256": "395485a12b845a8058136e9fb9c65846937e3bbcbf690dcab10747cc1dbc8366"
   },
   "checklistRun": {
     "path": "docs/methodology/checklist-runs/qbtc2x/2026-10-05.json",
-    "sha256": "eee772a2b91ffdbdc3be7f6ee1aaf11808d1e542c59229156ab17219e40f386f",
-    "repo": "site (private), commit d0b7d18c76823dd5459ef61c0ec79d5d5d78defd"
+    "sha256": "3af514e8df497819a6fbdc768f0f11efe4307fe7f1e59d48fb3d00e03092b38b",
+    "repo": "site (private), commit 99398b3ea6d90a31d5156f934f0a71eaa36bea62"
   },
   "keeperJson": {
     "path": "keeper/rulebooks/qbtc2x.json",
