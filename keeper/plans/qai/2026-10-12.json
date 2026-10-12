@@ -735,7 +735,77 @@
       ]
     }
   ],
-  "verify": null,
+  "verify": {
+    "at": "2026-10-12T09:21:05.599Z",
+    "block": "38451737",
+    "assetCount": 10,
+    "order": [
+      "0x44fF37Ef6Ff714E77630d715A0969db1977a7cEb",
+      "0xf4A8b84D459B7Cf0cf586Dc87ea564b571E5aA1F",
+      "0xe4e80bCa8D96bA5bDA3AC27F1D68eE7E49588fFc",
+      "0x2eB321948717C2481a437Ea11CcAb052c433C51D",
+      "0x072b0BAB1397dE3b3193617ae3dD61a9c04Ea928",
+      "0xcb6aeA59876E3059F2f9518F421db8B1BDbb4972",
+      "0xacc4B3083f76888afE4C1a0FCc09a52d2f0Af329",
+      "0xf57E67f92679587fF8E09cC7634661aECDD708eF",
+      "0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16",
+      "0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393"
+    ],
+    "fails": [],
+    "pending": [],
+    "weights": [
+      {
+        "symbol": "TAO",
+        "weight": 0.18528449651822917,
+        "targetWeight": 0.18528552544899998
+      },
+      {
+        "symbol": "VVV",
+        "weight": 0.06525024446820653,
+        "targetWeight": 0.065250606819
+      },
+      {
+        "symbol": "AKE",
+        "weight": 0.05957757204396499,
+        "targetWeight": 0.059577902893
+      },
+      {
+        "symbol": "RENDER",
+        "weight": 0.05656090163328314,
+        "targetWeight": 0.056561215729
+      },
+      {
+        "symbol": "VIRTUAL",
+        "weight": 0.050475080068359414,
+        "targetWeight": 0.050475360368999994
+      },
+      {
+        "symbol": "FET",
+        "weight": 0.05690186127385048,
+        "targetWeight": 0.056902177263999994
+      },
+      {
+        "symbol": "UB",
+        "weight": 0.03614173302299076,
+        "targetWeight": 0.036141933726999996
+      },
+      {
+        "symbol": "GRASS",
+        "weight": 0.05681315755344958,
+        "targetWeight": 0.05681347305099999
+      },
+      {
+        "symbol": "ICP",
+        "weight": 0.10489927480435901,
+        "targetWeight": 0.10489430408799999
+      },
+      {
+        "symbol": "NEAR",
+        "weight": 0.32809567861330685,
+        "targetWeight": 0.32809750061
+      }
+    ]
+  },
   "sent": [
     {
       "what": "open auction #1",
