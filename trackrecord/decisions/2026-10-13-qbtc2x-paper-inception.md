@@ -31,7 +31,7 @@ repository (sha256 `13335ad723aab2a0264d9d82848312db1e91ff9d8c05c662b31c7bdceab1
 `keeper/leverage-index.mjs` (sha256 `1e2a1e6a7e13a623c4a52619e10127ddbd25061913eaa397cc07b09ceca258fb`) and
 `keeper/leverage-step.mjs` (sha256 `0266e0f339813591be3584cef41c5107533b83a2df1cd49aab5c68d4a0880e25`),
 recomputed by `scripts/verify.mjs` (sha256 `ecc5d13bee9ed0c83465502e8ad2a69a48128a99bff7b6bdc1d1cde0f216a992`),
-at commit `ea157b941604862e11119ffeee5919264c2459f0` of this repository. In one paragraph:
+at commit `d5efc6566e4b5130639b6731222d5dcf6cdfc992` of this repository. In one paragraph:
 
 The book is bitcoin worth λ times its equity against a stablecoin debt of (λ − 1) times its equity. It is
 evaluated at the close of every 15-minute bar. At the last close of each UTC day (normally the bar that
@@ -293,7 +293,7 @@ is not written yet.
 
 | Repository | HEAD at pinning |
 | --- | --- |
-| quadrix-track-record (rulebook, rulebook JSON, provenance, keeper, verifier, gate report) | `ea157b941604862e11119ffeee5919264c2459f0` |
+| quadrix-track-record (rulebook, rulebook JSON, provenance, keeper, verifier, gate report) | `d5efc6566e4b5130639b6731222d5dcf6cdfc992` |
 | quadrix (site, private — research `docs/research/leverage/params-v6/` on `research/leverage-params-v6`) | `c9bd7a2` |
 | quadrix (site, private — copies `registration.md`, `recomputation.md`, `recomputation/output.txt`, `stress-results.csv`) | `4cf8d268a020b773a636630011a1c02b9aa05f54` |
 | quadrix (site, private — checklist run record) | `4cf8d268a020b773a636630011a1c02b9aa05f54` |
