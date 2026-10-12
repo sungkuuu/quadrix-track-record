@@ -31,7 +31,7 @@ repository (sha256 `8dfa8b49c6a06a62079173e82a4c3e285aa2b7915321ab1a8b331a6d87d7
 `keeper/leverage-index.mjs` (sha256 `1e2a1e6a7e13a623c4a52619e10127ddbd25061913eaa397cc07b09ceca258fb`) and
 `keeper/leverage-step.mjs` (sha256 `0266e0f339813591be3584cef41c5107533b83a2df1cd49aab5c68d4a0880e25`),
 recomputed by `scripts/verify.mjs` (sha256 `ecc5d13bee9ed0c83465502e8ad2a69a48128a99bff7b6bdc1d1cde0f216a992`),
-at commit `⟦RECORD-HEAD⟧` of this repository. In one paragraph:
+at commit `628edb0380b1b0f86fdac22b338f73d814887c9f` of this repository. In one paragraph:
 
 The book is bitcoin worth λ times its equity against a stablecoin debt of (λ − 1) times its equity. It is
 evaluated at the close of every 15-minute bar. At the last close of each UTC day (normally the bar that
@@ -206,7 +206,7 @@ sha256 `e4d7f8ea9de155c1bcb5388e1fca272a8ab7aac3a5924473a3f35401a82ba3bb`). The 
 internal evidence files of the security tests and the launch preparation, and pins the result files among them by
 sha256; they are not published. Before the
 next anchored decision, the run record will pin only evidence that can be published. Gate report:
-`rulebooks/qbtc2x.gate.json` (sha256 `⟦GATE-sha256⟧`).
+`rulebooks/qbtc2x.gate.json` (sha256 `63b3d9bd877f277fcefe4c84e70ba7f7d54f8d94acc41d8ce0af4304a28418f4`).
 
 | Basis | Count | Parameters |
 | --- | --- | --- |
@@ -297,7 +297,7 @@ is not written yet.
 
 | Repository | HEAD at pinning |
 | --- | --- |
-| quadrix-track-record (rulebook, rulebook JSON, provenance, keeper, verifier, gate report) | `⟦RECORD-HEAD⟧` |
+| quadrix-track-record (rulebook, rulebook JSON, provenance, keeper, verifier, gate report) | `628edb0380b1b0f86fdac22b338f73d814887c9f` |
 | quadrix (site, private — research `docs/research/leverage/params-v6/` on `research/leverage-params-v6`) | `c9bd7a2` |
 | quadrix (site, private — copies `registration.md`, `recomputation.md`, `recomputation/output.txt`, `stress-results.csv`) | `ad67f57caf39eed1ddbfbdf4882250f5ab19caed` |
 | quadrix (site, private — checklist run record) | `ad67f57caf39eed1ddbfbdf4882250f5ab19caed` |
