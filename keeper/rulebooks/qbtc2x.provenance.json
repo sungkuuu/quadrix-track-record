@@ -3,8 +3,8 @@
   "index": "qbtc2x",
   "rulebook": {
     "path": "rulebooks/qbtc2x.md",
-    "commit": "076189cad4ce5e1fbc198a2c4b516bc6eed45fe0",
-    "sha256": "1c70378532665b957ca1871ebf28eb4ce23c53fb4db2ec12966fcf12d167913d"
+    "commit": "790d7ff57692825625afdad042b337059a65973c",
+    "sha256": "13335ad723aab2a0264d9d82848312db1e91ff9d8c05c662b31c7bdceab106ef"
   },
   "checklistRun": {
     "path": "docs/methodology/checklist-runs/qbtc2x/2026-10-12.json",
@@ -173,6 +173,11 @@
         }
       ],
       "ruleOutput": "BTC|2|daily|L>=2.2|120 (trk_asset_outcome,BTC,A,own,all: best)",
+      "verdict": {
+        "path": "docs/research/leverage/params-v6/results/results.csv.gz",
+        "key": "trk_asset_outcome,BTC,A,own,all",
+        "sha256": "5cdd706e6ecb5fbc3bb7841634b7598657d173364c09b4860701fca3c3c2791e"
+      },
       "selectedBy": "rule_output",
       "decision": "owner 2026-10-05 (rule output adopted)",
       "definitionKind": null,

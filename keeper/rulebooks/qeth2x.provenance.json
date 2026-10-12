@@ -3,7 +3,7 @@
   "index": "qeth2x",
   "rulebook": {
     "path": "rulebooks/qeth2x.md",
-    "commit": "076189cad4ce5e1fbc198a2c4b516bc6eed45fe0",
+    "commit": "790d7ff57692825625afdad042b337059a65973c",
     "sha256": "d64ed3b3199d77e9252a68c631f0202d6e590618ce584410a6b49f84b4636fb9"
   },
   "checklistRun": {
