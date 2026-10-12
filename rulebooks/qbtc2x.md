@@ -1,10 +1,10 @@
 # qBTC2X (BTC 2x) 방법론 규칙서
 
-작성 2026-10-02 · **최종 갱신 2026-10-07** (공개 정리본)
+작성 2026-10-02 · **최종 갱신 2026-10-12** (공개 정리본)
 
 **상품 원칙: 우리는 규칙·실행·보관을 책임지고 시장은 책임지지 않는다.**
 
-> **상태: 개시 결정문 `2026-10-08-qbtc2x-paper-inception`이 앵커되면 2026-10-08부터 A단계 효력(그 전에는 효력 없음).** **A단계** — 바이낸스 현물 1분봉을 15분봉으로 모은 닫힌 봉에 이 규칙을 그대로 적용한 합성 레벨을 UTC 하루에 한 줄씩 기록 · 앵커하고, GIWA Sepolia 테스트넷의 마크 볼트가 그 레벨을 따른다. A단계에는 차입도 스왑도 청산도 없다. 구현: `keeper/rulebooks/qbtc2x.json` · `keeper/leverage-step.mjs` · `keeper/leverage-index.mjs`, 검증: `scripts/verify.mjs`.
+> **상태: 개시 결정문 `2026-10-13-qbtc2x-paper-inception`이 앵커되면 2026-10-13부터 A단계 효력(그 전에는 효력 없음).** **A단계** — 바이낸스 현물 1분봉을 15분봉으로 모은 닫힌 봉에 이 규칙을 그대로 적용한 합성 레벨을 UTC 하루에 한 줄씩 기록 · 앵커하고, GIWA Sepolia 테스트넷의 마크 볼트가 그 레벨을 따른다. A단계에는 차입도 스왑도 청산도 없다. 구현: `keeper/rulebooks/qbtc2x.json` · `keeper/leverage-step.mjs` · `keeper/leverage-index.mjs`, 검증: `scripts/verify.mjs`.
 >
 > **무엇인가**: 비트코인 **UTC일 수익률의 2배**를 목표로 하는 책. 매일 00:00 UTC에 배수를 2.0으로 되돌리고, 120분마다 배수가 2.2 이상이면 2.0으로 내린다. 하루를 넘는 기간의 2배는 약속하지 않는다. 재량이 없다.
 >
@@ -103,7 +103,7 @@
   | λ ≥ 2.4 | 86.01% | 아니오 | — |
 
   k = 1.0(참고)이면 λ ≥ 2.2의 도달 LTV는 73.46%, 늦어도 되는 시간은 238분이다. 검사 한 번을 통째로 놓치면(창 240분) k = 1.25에서 99.22%로 여유 밖이다. 트리거가 없으면(매일 리셋만) 2020-03-12에 청산된다.
-- **이 값이 남는 청산선의 범위**: 청산선이 80.43% 초과 86.01% 이하이면 같은 판정 규칙이 같은 값을 낸다(후보 집합이 {2.1, 2.2, 2.3} 또는 {2.1, 2.2}). 그 밖이면 다시 판정한다 — λ ≥ 2.4는 86.01%로 0.01%p 차이로 빠져 있다. 엔진을 다시 돌린 값이 아니라 정적 여유 표와 지배 표에서 읽은 산술이다(`final-review.md` §4-2 (5)).
+- **이 값이 남는 청산선의 범위**: 청산선이 80.43% 초과 86.01% 이하이면 같은 판정 규칙이 같은 값을 낸다(후보 집합이 {2.1, 2.2, 2.3} 또는 {2.1, 2.2}). 그 밖이면 다시 판정한다 — λ ≥ 2.4는 86.01%로 0.01%p 차이로 빠져 있다. 엔진을 다시 돌린 값이 아니라 정적 여유 표와 지배 표에서 읽은 산술이다(`recomputation.md` §4-2 (5)).
 - **이 숫자가 성립하는 조건**: (가) 실제 마켓의 LLTV가 도달 LTV보다 높다. (나) 120분마다 격자 시각에 검사하고 그 종가에 체결한다(§7). (다) 마켓 오라클의 급락 시각 저가가 바이낸스 현물 1분봉보다 깊지 않다 — 미확인. 1분봉의 저가는 한 건의 체결일 수 있다. (라) 미래의 120분 하락이 기록보다 깊지 않다 — 보장할 수 없다.
 - 여유는 이자를 넣지 않고 계산한다. 봉 안 저가에서 닿은 가장 높은 배수는 3.507(2018→ 창, 2020-03-12 10:45)이다.
 
@@ -191,7 +191,7 @@ qX20 §10과 같다. 이 규칙서의 모든 값(목표 · 기본 규칙 · 트�
 
 ## 부록 A — 6차 검정 결과 (이 규칙: 매일 리셋 + 120분 + λ ≥ 2.2)
 
-출처: 사이트 리포 브랜치 `research/leverage-params-v6`(머리 `c9bd7a2`) `docs/research/leverage/params-v6/` — 사전 등록 `README.md`(고정 커밋 `8b355b7`), 결과 `results/results.csv.gz`, 판정 표 `results/verdicts.csv`, 표 `results/band-compare.csv` · `results/fixed-table.csv` · `results/ref45-windows.csv` · `results/ref45-mc-distribution.csv`, 정적 여유 `stats.csv`, 공시 값 정리 `final-review.md` §4-2. sha256은 부록 C 끝. 모든 배수는 30bp · 연 6%(헤드라인) 위의 값이고 운용보수가 없다.
+출처: 사이트 리포 브랜치 `research/leverage-params-v6`(머리 `c9bd7a2`) `docs/research/leverage/params-v6/` — 사전 등록 `registration.md`(고정 커밋 `8b355b7`의 사본), 결과 `results/results.csv.gz`, 판정 표 `results/verdicts.csv`, 표 `results/band-compare.csv` · `results/fixed-table.csv` · `results/ref45-windows.csv` · `results/ref45-mc-distribution.csv`, 정적 여유 `stats.csv`, 공시 값 정리 `recomputation.md` §4-2(사본 둘은 사이트 커밋 `4cf8d26`). sha256은 부록 C 끝. 모든 배수는 30bp · 연 6%(헤드라인) 위의 값이고 운용보수가 없다.
 
 **판정 규칙을 적용한 출력(헤드라인, 규칙 A = 규칙 B)**
 
@@ -203,7 +203,7 @@ qX20 §10과 같다. 이 규칙서의 모든 값(목표 · 기본 규칙 · 트�
 | (트리거 2.2 이상만 — 격자 민감도) | 오너 트랙 120분 · λ ≥ 2.2 | 최선 | 2 · 2 · 2 |
 
 - 「최선」의 근거: 2.2의 G 위 P = 0.85225 · 0.84716 · 0.85449 · 0.81164(블록 1 · 3 · 6 · 12개월), 블록 6개월 경로 3,333개에서 2.2가 2,848 · 2.3이 485(동률 0), 일곱 비용 시나리오 모두에서 같은 출력, 보고 시드 둘도 같다. 2.1은 2.2와 2.3 둘 다에 지배당했다.
-- 독립 대조: 독립 대조와 그 스크립트를 등록된 모드로 옮긴 재실행(`verify-p2/summary.csv`, 두 실행의 요약 파일 바이트 동일), 세 번째 재계산이 같은 값을 냈다. 등록과 다른 형식 셋(파일 · 순서 · 커밋)은 `final-review.md` §3.
+- 독립 대조: 독립 대조와 그 스크립트를 등록된 모드로 옮긴 재실행(`verify-p2/summary.csv`, 두 실행의 요약 파일 바이트 동일), 세 번째 재계산이 같은 값을 냈다. 등록과 다른 형식 셋(파일 · 순서 · 커밋)은 `recomputation.md` §3.
 - 목표 내리기 조항은 발동하지 않았다(2.0에 적격 변형이 있다, `target_stepped_down` = 0).
 
 **역사 창(2018→ · 2021→ · 2023→, 끝 2026-09-30)**
@@ -248,7 +248,7 @@ qX20 §10과 같다. 이 규칙서의 모든 값(목표 · 기본 규칙 · 트�
 | D15 | 운용보수 — A단계에는 두지 않음 | **정함** — 2026-10-05 |
 | D16 | 모델 청산 — 사람이 저가를 확인해 수락한 뒤에만 레벨 0 줄을 쓴다. 그 뒤 기록 종료 · 볼트 바닥까지 인하 · 예치 정지, 새 기록은 새 결정문 | **정함** — 수락 절차 2026-10-06, 나머지는 검정 모델 그대로 |
 | D17 | 이더 2x를 같은 날 개시(`qeth2x.md`) | **보류** — 2026-10-06. 2026-10-08에 열지 않는다(2026-10-05의 같은 날 개시를 거둠) |
-| D18 | 개시일 2026-10-08, 배포 먼저 · 결정문에 볼트 주소, 예치는 첫 마크 확인 뒤 | **정함** — 2026-10-05 |
+| D18 | 개시일 2026-10-13, 배포 먼저 · 결정문에 볼트 주소, 예치는 첫 마크 확인 뒤 | **정함** — 2026-10-05, 개시일 2026-10-13은 2026-10-12 |
 | D19 | 며칠 · 위상의 한계 — 규칙 출력을 쓰고 공시, B단계 전에 위상을 넣은 재검정을 사전 등록 | **정함** — 2026-10-05 |
 | D20 | 정정 경로 — 필요할 때 구현, 그 전에는 정정 결정문 | **정함** — 2026-10-05 |
 | D21 | B단계(실제 차입 루프) 개시 | **열림** — §7 · §12의 전제와 실제 청산선 재판정 뒤 별도 결정문 |
@@ -294,14 +294,14 @@ qX20 §10과 같다. 이 규칙서의 모든 값(목표 · 기본 규칙 · 트�
 
 **A단계용 값이다.** 실제 차입(B단계) 전에는 실제 청산선으로 적격을 다시 계산하고(§5의 범위 밖이면 재판정), 오라클과 대조하고, 검사 간격을 보장하는 실행 환경(늦어도 50분)을 갖춘다.
 
-**파일**(사이트 리포 `research/leverage-params-v6` `c9bd7a2`, `docs/research/leverage/params-v6/`; 공개 사본은 아직 없다): `README.md`(사전 등록, 고정 커밋 `8b355b7`) sha256 `eb7b50e5601b818f94381e78eff4e0972b1ab2ee65844a0ae8f05bbdfef20136` · 엔진 `leverage-params-v6.mjs` sha256 `ceadadd3003fcbbb858a9b19adcbbc3db5873308c0f7705c68cb11b7d0c2fab3` · `results/results.csv.gz` sha256 `5cdd706e6ecb5fbc3bb7841634b7598657d173364c09b4860701fca3c3c2791e` · `results/verdicts.csv` sha256 `c1e2d12e97499f74afe4e78b6c78bcd949ff3bab1bb4a938e92633fd53c18a3b` · `results/band-compare.csv` sha256 `a14d3bad64e2a210c1e5f9b3afe8d25445b1bc7c76bd0e6da8825215abd779e4` · `stats.csv` sha256 `64ebb30b01f64bab14d58f28c7184839bbe3cdb08419d793f9efd7b0caa40a72` · `verify-p2/summary.csv` sha256 `2f64759ec40fcfcf5f5c70e68083c8ffc942fd7ba6d12f8b4de8ba216f546dcc` · `final-review.md` sha256 `4db1ca7d5c3243d1416522dd927c63b531ff762713e5ced60676270df3a27d82` · `final-review/output.txt` sha256 `1c1067874748d11679cb68cba573b97e43007ad490408500c9ac936f26de2b04`(`final-review.md` §5-2의 「세 위상에서는 2.2가」는 `output.txt` 276 ~ 292행으로 세면 두 위상이다 — 위 문단은 `output.txt`를 따랐고 그 파일은 고치지 않았다). 마크 게이트: 사이트 리포 `research/contract-safety-stress`(`ce35a1c`) `docs/research/contract-safety-stress/results/results.csv` sha256 `4a1fa7aee89108513b99e671b85b6e156ad5027793a5d93da07bc8a1cb232a22`(사전 등록 `9048c30`).
+**파일**(사이트 리포 `research/leverage-params-v6` `c9bd7a2`, `docs/research/leverage/params-v6/` — `registration.md` · `recomputation.md` · `recomputation/`는 사이트 커밋 `4cf8d26`의 사본; 공개 사본은 아직 없다): `registration.md`(사전 등록 — 고정 커밋 `8b355b7`의 사본) sha256 `4b4249961413b5303c0315aa4421cbbc3c7256d7d71d423b9a889270651f6e97` · 엔진 `leverage-params-v6.mjs` sha256 `ceadadd3003fcbbb858a9b19adcbbc3db5873308c0f7705c68cb11b7d0c2fab3` · `results/results.csv.gz` sha256 `5cdd706e6ecb5fbc3bb7841634b7598657d173364c09b4860701fca3c3c2791e` · `results/verdicts.csv` sha256 `c1e2d12e97499f74afe4e78b6c78bcd949ff3bab1bb4a938e92633fd53c18a3b` · `results/band-compare.csv` sha256 `a14d3bad64e2a210c1e5f9b3afe8d25445b1bc7c76bd0e6da8825215abd779e4` · `stats.csv` sha256 `64ebb30b01f64bab14d58f28c7184839bbe3cdb08419d793f9efd7b0caa40a72` · `verify-p2/summary.csv` sha256 `2f64759ec40fcfcf5f5c70e68083c8ffc942fd7ba6d12f8b4de8ba216f546dcc` · `recomputation.md` sha256 `b48058d6229b488d3dd46b75f7faa1d078e9c283a03bed6addb08ecd3e392c46` · `recomputation/output.txt` sha256 `41353be92dadca49f60233373de28b0abbce36bc381d6460b447a0639d9348a1`. 마크 게이트: 사이트 리포 `research/contract-safety-stress`(`ce35a1c`, 사전 등록 `9048c30`)의 결과 표 — 사본 `docs/research/contract-safety-stress/results/stress-results.csv`(사이트 커밋 `4cf8d26`) sha256 `b33a61efb986f97e4b47283e2810d7273fddfcd7385aadbf40b3763472d29f6d`.
 
 ## 부록 R — 체크리스트 실행 기록 (요약)
 
-실행 기록: 사이트 리포 `docs/methodology/checklist-runs/qbtc2x/2026-10-05.json`(볼트 설계 D01 ~ D18, 강건성 레버 유형 ● 28항목과 ○ 3항목). 2026-10-05 상태:
+실행 기록: 사이트 리포 `docs/methodology/checklist-runs/qbtc2x/2026-10-12.json`(볼트 설계 D01 ~ D18, 강건성 레버 유형 ● 28항목과 ○ 3항목). 2026-10-05 상태(R64는 2026-10-12):
 
 - **설계 단계** — done: D03 ~ D10. n/a: D02(A단계는 아무것도 담지 않는다). 대기: D11(규칙서 · JSON · 출처 파일은 썼고 인용 관문 보고가 통과가 아니다 — 새 미검정 값 18개는 개시 결정문의 예외 공시로 다룬다) · D12(공개 블록 · CSV 사본) · D13(키퍼 레그 · 드라이런 · 엔진 대조는 됐고, 결정문 앵커와 첫 기록 줄이 남았다) · D14(신선도 경보는 구현했다(`scripts/watchdog-series.mjs`) — main 푸시 전이라 아직 돌지 않는다. 역할 체인 확인(R64)은 배포 때) · D15(새 키퍼 코드의 레드팀(R47)을 2026-10-05에 돌렸다 — 확정 깨짐 10건, 정상 입력에서 틀린 레벨은 없었다. 깨짐마다 조치와 일정이 정해지면 done이다) · D16(개시 결정문 앵커) · D17(배포 · 사이트) · D18(출시 후 감사).
-- **강건성 ● 28항목** — 돌림 23: R02 · R09 · R14 · R15 · R20 · R22 · R24 · R25 · R26 · R27 · R28 · R29 · R33 · R38 · R39 · R40 · R47 · R49 · R50 · R54 · R56 · R59 · R60 가운데 R47 · R54 · R56 · R50 · R49 · R02는 이 개시 준비에서, 나머지는 6차 검정에서. 해당 없음 4: R08(담는 자산 없음) · R44 · R45 · R46(새 컨트랙트 코드 없음 — qX20 추적 볼트와 같은 런타임, 그 컨트랙트의 기존 시험 8개 통과 2026-10-05). 안 돌림 1: **R64**(볼트 배포 전 — 배포 때 읽기 확인). ● 항목에 「안 돌림」이 남아 있는 동안 이 기록으로는 앵커하지 않는다.
+- **강건성 ● 28항목** — 돌림 24: R02 · R09 · R14 · R15 · R20 · R22 · R24 · R25 · R26 · R27 · R28 · R29 · R33 · R38 · R39 · R40 · R47 · R49 · R50 · R54 · R56 · R59 · R60 · R64 가운데 R64는 2026-10-12 볼트 배포 뒤(배포 블록에서 owner = keeper = 키퍼 키, 예치 캡 0, 주가 1.000000을 읽음), R47 · R54 · R56 · R50 · R49 · R02는 이 개시 준비에서, 나머지는 6차 검정에서. 해당 없음 4: R08(담는 자산 없음) · R44 · R45 · R46(새 컨트랙트 코드 없음 — qX20 추적 볼트와 같은 런타임, 그 컨트랙트의 기존 시험 8개 통과 2026-10-05). 안 돌림 0. ● 항목에 「안 돌림」이 남아 있는 동안 이 기록으로는 앵커하지 않는다.
 
 ## 부록 P — 파라미터 인용표
 
@@ -314,7 +314,7 @@ qX20 §10과 같다. 이 규칙서의 모든 값(목표 · 기본 규칙 · 트�
 | P03 | 가격 출처 · 바이낸스 현물 BTCUSDT 분봉(공개 REST), 닫힌 봉만, 폴백 없음 | 정의 | — | — | — | — | 출처 · 오너 2026-10-05 | — | `underlying.source` |
 | P04 | 목표 레버리지 · 2.0 | 미검정 | — | — | — | — | 상품 정의 — 개시 결정문 예외 · 오너 2026-10-01 · 2026-10-05 | — | `product.target` |
 | P05 | 기본 규칙 · 매일 리셋 | 미검정 | — | — | — | — | 상품 정의 — 개시 결정문 예외 · 오너 2026-10-01 · 2026-10-05 | — | `product.reset` |
-| P06 | 디레버리지 트리거 · λ ≥ 2.2 | 검정 | R14 · R15 · R20 · R22 · R24 · R25 · R26 · R27 · R28 · R29 · R33 · R60 — `docs/research/leverage/params-v6/` | `docs/research/leverage/params-v6/results/results.csv.gz` · `5cdd706e6ecb5fbc3bb7841634b7598657d173364c09b4860701fca3c3c2791e` | `8b355b7` | 규칙 출력 | 오너 2026-10-05(규칙 출력 채택) | `docs/methodology/checklist-runs/qbtc2x/2026-10-05.json` | `check.trigger` |
+| P06 | 디레버리지 트리거 · λ ≥ 2.2 | 검정 | R14 · R15 · R20 · R22 · R24 · R25 · R26 · R27 · R28 · R29 · R33 · R60 — `docs/research/leverage/params-v6/` | `docs/research/leverage/params-v6/results/results.csv.gz` · `5cdd706e6ecb5fbc3bb7841634b7598657d173364c09b4860701fca3c3c2791e` | `8b355b7` | 규칙 출력 | 오너 2026-10-05(규칙 출력 채택) | `docs/methodology/checklist-runs/qbtc2x/2026-10-12.json` | `check.trigger` |
 | P07 | 검사 주기 · 120분 | 미검정 | — | — | — | — | 오너가 정한 트랙 조건 · 오너 2026-10-01(1분 실측 전) · 미검정으로 셈 오너 2026-10-06 · 6차 사전 등록 「검정하지 않은 값」 | — | `check.minutes` |
 | P08 | 검사 격자 · 00:00 UTC에서 n분씩, 그 시각의 최신 종가 | 미검정 | — | — | — | — | 위상 — 공시, B단계 전 재검정 사전 등록 · 오너 2026-10-05 | — | — |
 | P09 | 여유 배율 k · 1.25 | 미검정 | — | — | — | — | 모형 가정 — 개시 결정문 예외 · 오너 2026-10-01(정책) · 2026-10-05 | — | — |

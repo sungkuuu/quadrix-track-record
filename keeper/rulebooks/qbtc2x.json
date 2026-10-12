@@ -2,7 +2,7 @@
   "ticker": "qBTC2X",
   "name": "BTC 2x",
   "kind": "leverage-synthetic",
-  "status": "in force from 2026-10-08 once the inception decision 2026-10-08-qbtc2x-paper-inception is anchored (see decisions.jsonl) — stage A: a rules-only synthetic level of a daily-reset 2x book from Binance spot bars, one line per UTC day, and a testnet mark vault holding test dollars; nothing is borrowed, swapped or liquidated.",
+  "status": "in force from 2026-10-13 once the inception decision 2026-10-13-qbtc2x-paper-inception is anchored (see decisions.jsonl) — stage A: a rules-only synthetic level of a daily-reset 2x book from Binance spot bars, one line per UTC day, and a testnet mark vault holding test dollars; nothing is borrowed, swapped or liquidated.",
   "asOf": "2026-10-06",
   "_doc": "Stage A rules for BTC 2x (keeper/leverage-index.mjs). The rulebook is rulebooks/qbtc2x.md in this repository; the inception decision pins this file's sha256. check.trigger is the output of the sixth pre-registered leverage test (site repository, research/leverage-params-v6, registration 8b355b7, results/results.csv.gz row trk_asset_outcome,BTC,A,own,all: best) within check.minutes = 120, an interval the owner set on 2026-10-01 before the one-minute measurement and which is counted as not tested (owner, 2026-10-06). The values hold for stage A only: a real borrowing book needs a new verdict against the real liquidation line. Changing any value after a decision pinned this file is a rule change: a new decision, never an edit.",
   "underlying": {
@@ -40,7 +40,7 @@
   },
   "genesisLevel": 100,
   "inception": {
-    "date": "2026-10-08",
-    "decision": "2026-10-08-qbtc2x-paper-inception"
+    "date": "2026-10-13",
+    "decision": "2026-10-13-qbtc2x-paper-inception"
   }
 }

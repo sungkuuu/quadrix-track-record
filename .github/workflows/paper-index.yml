@@ -5,7 +5,7 @@ name: paper-index
 # Daily at 00:25 UTC, after the N1Q record at 00:10; manual dispatch kept for reruns.
 # Barbell and Triens: in force since their anchored inception decisions of
 # 2026-09-22 (trackrecord/decisions/2026-09-22-{barbell,triens}-paper-inception.md).
-# qBTC2X (leverage stage A): from 2026-10-08, once its inception decision is
+# qBTC2X (leverage stage A): from 2026-10-13, once its inception decision is
 # anchored; until then the leg reports NOT IN FORCE and exits 0. qETH2X is held
 # (owner, 2026-10-06): its step below does not run.
 on:
@@ -122,11 +122,11 @@ jobs:
       #
       # The guard is in the leg, not here: it writes nothing and exits 0
       # ("NOT IN FORCE") until the inception decision
-      # 2026-10-08-<index>-paper-inception is in trackrecord/decisions.jsonl
-      # and pins keeper/rulebooks/<index>.json, and until 2026-10-08T00:00Z.
+      # 2026-10-13-<index>-paper-inception is in trackrecord/decisions.jsonl
+      # and pins keeper/rulebooks/<index>.json, and until 2026-10-13T00:00Z.
       # An ANCHORED decision that the rulebook JSON no longer matches is a
       # refusal (exit 2): restore the JSON to the pinned bytes.
-      # qBTC2X opens on 2026-10-08. qETH2X is held (owner, 2026-10-06): it
+      # qBTC2X opens on 2026-10-13. qETH2X is held (owner, 2026-10-06): it
       # does not open on that day, its step is switched off below, and turning
       # it on needs its own inception decision.
       # ------------------------------------------------------------------
@@ -143,7 +143,7 @@ jobs:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 
       - name: qETH2X — held (owner, 2026-10-06), not run
-        # Held: ETH 2x does not open on 2026-10-08. `false` keeps the step from running whatever the leg's own guard
+        # Held: ETH 2x does not open on 2026-10-13. `false` keeps the step from running whatever the leg's own guard
         # says; switching it back on is a commit with its own inception decision.
         if: ${{ false }}
         # A step time limit fails only this step; "Commit records" below still runs and the five paper series keep

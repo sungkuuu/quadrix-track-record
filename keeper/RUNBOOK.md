@@ -589,9 +589,9 @@ with three additions specific to this leg:
 | `quality seats: 4/10` on Triens | fewer names passed the screen than the rulebook's viability floor of 5 | nothing operational — the level is still recorded. It is a signal for the owner: the rule says a product would not be launched on that quarter. |
 | `sleeve reset: … outside the 5-point tolerance` | the quarterly reset traded | expected on a reconstitution day after a large move. The line prints every sleeve's target, drifted weight and gap before it decides. |
 
-## Leverage stage A — qBTC2X / qETH2X (qBTC2X from 2026-10-08, once its inception decision is anchored; qETH2X held)
+## Leverage stage A — qBTC2X / qETH2X (qBTC2X from 2026-10-13, once its inception decision is anchored; qETH2X held)
 
-qETH2X is held (owner, 2026-10-06): it does not open on 2026-10-08, its step in
+qETH2X is held (owner, 2026-10-06): it does not open on 2026-10-13, its step in
 `paper-index` is switched off (`if: false`), and no vault is deployed for it.
 Its rulebook, JSON and draft decision stay in the repository; opening it later
 is its own inception decision and a commit that switches the step back on.
@@ -607,8 +607,8 @@ minutes and 2.3 for qETH2X) and the level's cost convention (30 bp a trade,
 4.5% a year on the debt). A changed JSON no longer matches its decision; the
 leg then refuses (exit 2).
 
-Until the inception decision `2026-10-08-<index>-paper-inception` is in
-`trackrecord/decisions.jsonl`, and before 2026-10-08 00:00 UTC, every run says
+Until the inception decision `2026-10-13-<index>-paper-inception` is in
+`trackrecord/decisions.jsonl`, and before 2026-10-13 00:00 UTC, every run says
 `NOT IN FORCE` and exits 0, writing nothing. The first run after that writes
 the genesis line (level 100). A line dated D holds the bars of UTC day D − 1;
 it is written only after D 00:00 UTC on both the runner's clock and Binance's.

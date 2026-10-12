@@ -33,7 +33,7 @@ pins these files (see "Pinned versions" below).
 | [`barbell.md`](barbell.md) | qDUO — Barbell (BTC 60 / working capital 40) | Paper index since 2026-09-22 (`2026-09-22-barbell-paper-inception`). Candidate vault. |
 | [`triens.md`](triens.md) | qTRI — Triens (BTC 30 / working capital 40 / Quality 30) | Paper index since 2026-09-22 (`2026-09-22-triens-paper-inception`; listing-age and issuance sources, `2026-09-29-source-reconciliation`). Candidate vault. |
 | [`classification-sources.md`](classification-sources.md) | Classification-source framework used by qDEFI, qAI, qREV and Triens | Adopted 2026-09-14. Not a product. |
-| [`qbtc2x.md`](qbtc2x.md) | qBTC2X — BTC 2x (daily reset) | Not in force. Stage A (a rules-only synthetic level from Binance spot bars and a testnet mark vault holding test dollars; nothing borrowed) opens on 2026-10-08 when `2026-10-08-qbtc2x-paper-inception` is anchored. |
+| [`qbtc2x.md`](qbtc2x.md) | qBTC2X — BTC 2x (daily reset) | Not in force. Stage A (a rules-only synthetic level from Binance spot bars and a testnet mark vault holding test dollars; nothing borrowed) opens on 2026-10-13 when `2026-10-13-qbtc2x-paper-inception` is anchored. |
 | [`qeth2x.md`](qeth2x.md) | qETH2X — ETH 2x (daily reset) | Not in force. Held (owner, 2026-10-06): not opened on 2026-10-08; opening it later is its own inception decision. |
 
 A paper index is a daily, rules-only index level with no vault and no capital
