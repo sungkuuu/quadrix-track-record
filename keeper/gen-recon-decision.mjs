@@ -88,7 +88,7 @@ const eta = plan.announce?.etaIso ? plan.announce.etaIso.slice(0, 10) : `announc
 const owner = plan.vaultState.owner;
 const keeper = plan.vaultState.keeper;
 const rolesCollapsed = owner.toLowerCase() === keeper.toLowerCase();
-const bidder = plan.fills?.[0]?.bidder ?? null;
+const bidder = plan.fills?.find((f) => !f.external)?.bidder ?? null; // our bidder, not another bidder's fill
 const bookWeight = (sym) => plan.targets.find((t) => t.symbol === sym)?.targetWeight;
 const rowWeight = (sym) => row?.members?.find((m) => m.symbol === sym)?.weight;
 // qX20 has no record series: its day is the keeper book and the NAV mark.

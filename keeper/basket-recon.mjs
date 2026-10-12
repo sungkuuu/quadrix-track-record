@@ -81,6 +81,22 @@
  * takes min(auction amount, the vault's live balance), so a redemption in
  * the window shrinks the fill instead of reverting it, and the unfilled rest
  * of the auction is cancelled.
+ * Other bidders (owner answers of 2026-10-13): once bidding is open, anyone
+ * may fill our auctions. Both references are therefore re-posted (same
+ * value) right before an auction that waits for its fair point is opened,
+ * as well as right before our fill, so the auction is fillable from its
+ * first block. Before our fill the auction's sellRemaining is read with the
+ * vault's balance at one block: the fill takes min(sellRemaining, live
+ * balance); fills by others that it finds are recorded in plan.fills
+ * (`external: true`, their bidder) before anything else; an auction they
+ * took entirely is done (a drain then finalizes at once). A fill of ours
+ * that loses the race (CapExceeded or AuctionClosed in the simulation, or a
+ * mined revert while sellRemaining fell) re-reads and fills what is left.
+ * A fill by another bidder anywhere on the contract's curve
+ * [10,000 − maxFillLossBps, 10,000 + premium] is accepted — the fill policy
+ * binds our own bidder only; a fill the contract could not have taken (a
+ * factor off that curve, a time after the auction's end, a loss booked at or
+ * above fair) HALTs as before, after it is recorded.
  * Every transaction is simulated first, sent with fixed gas, retried on a
  * nonce error (the keeper key is shared by the crons and the desk) and
  * required to be mined WITHOUT revert before the next one (a reverted
@@ -195,14 +211,19 @@ function parseArgs(argv) {
 }
 
 // ----------------------------------------------------------- error decoding
-function fmtErr(e) {
-  let name = null;
+/** The contract error a revert decodes to (e.g. CapExceeded), or null. */
+function revertName(e) {
   let cur = e;
   for (let i = 0; cur && i < 8; i++) {
-    if (cur.data?.errorName) { name = cur.data.errorName; break; }
-    if (cur.name === 'ContractFunctionRevertedError' && cur.reason) { name = cur.reason; break; }
+    if (cur.data?.errorName) return cur.data.errorName;
+    if (cur.name === 'ContractFunctionRevertedError' && cur.reason) return cur.reason;
     cur = cur.cause;
   }
+  return null;
+}
+
+function fmtErr(e) {
+  const name = revertName(e);
   const short = e?.shortMessage ?? e?.message ?? String(e);
   return name ? `${name} (${short.split('\n')[0]})` : short.split('\n')[0];
 }
@@ -373,7 +394,11 @@ async function waitMined(ctx, entry, label) {
   entry.status = receipt.status;
   entry.gasUsed = receipt.gasUsed;
   savePlan(ctx.planFile, ctx.plan);
-  if (receipt.status !== 'success') throw new Error(`${label} reverted on chain (tx ${entry.hash}, block ${receipt.blockNumber}, gasUsed ${receipt.gasUsed})`);
+  if (receipt.status !== 'success') {
+    const err = new Error(`${label} reverted on chain (tx ${entry.hash}, block ${receipt.blockNumber}, gasUsed ${receipt.gasUsed})`);
+    err.reverted = true; // a fill that lost the race to another bidder is told apart by runTrade
+    throw err;
+  }
   return receipt;
 }
 
@@ -428,7 +453,9 @@ export async function call(ctx, { who, to, abi = VAULT_ABI, functionName, args =
       ({ request, result } = await simulate(ctx, { address: to, abi, functionName, args, account: from }));
     } catch (e) {
       if (e instanceof ReadTimeout) throw new Error(`${what}: ${shown} could not be simulated — ${e.message}`);
-      throw new Refused(`${what}: ${shown} would revert as ${from} — ${fmtErr(e)}`);
+      const refused = new Refused(`${what}: ${shown} would revert as ${from} — ${fmtErr(e)}`);
+      refused.revert = revertName(e); // runTrade tells a fill that lost the race (CapExceeded, AuctionClosed) apart
+      throw refused;
     }
   }
   if (!ctx.live) {
@@ -1167,6 +1194,162 @@ async function runHook(ctx, point, info) {
   if (ctx.hook) await ctx.hook(point, info, { rpc: ctx.o.rpc, vault: ctx.plan.vault, chainId: ctx.reader.chainId });
 }
 
+// ------------------------------------------- fills by other bidders (2026-10-13)
+/** A fill of ours that loses the race to another bidder is retried after a
+ *  fresh read of the auction at most this many times in a row. */
+export const MAX_FILL_RACES = 3;
+const FILLED_EVENT = VAULT_ABI.find((x) => x.type === 'event' && x.name === 'AuctionFilled');
+const byBlockLog = (a, b) => (a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1);
+
+/** The contract's curve at `elapsed` seconds of a `duration`-second auction
+ *  (curveFactorBps). Past the duration the contract reverts AuctionExpired;
+ *  the value here then falls below the curve's floor. */
+export function curveFactorAt(v, elapsed, duration) {
+  const premium = Number(v.premiumBps);
+  return 10_000 + premium - Math.floor(((premium + Number(v.maxFillLossBps)) * elapsed) / Number(duration));
+}
+
+/** Our bidders: this run's bidder and keeper, the vault's keeper and owner,
+ *  the sender of every fill in the plan's `sent` list, and the bidder of
+ *  every fill our runs made. Any other address that fills is external. */
+export function ourBidders(ctx, v) {
+  const s = new Set();
+  for (const a of [ctx.bidderAddr, ctx.keeperAddr, v?.keeper, v?.owner]) if (a) s.add(getAddress(a));
+  for (const e of ctx.plan.sent ?? []) if (/^fill /.test(e.what ?? '') && e.from) s.add(getAddress(e.from));
+  for (const f of ctx.plan.fills ?? []) if (f.bidder && (f.external === false || (f.external == null && !f.adopted))) s.add(getAddress(f.bidder));
+  return s;
+}
+
+/** Is an AuctionFilled log already in plan.fills? By transaction and log
+ *  index; a record made before log indexes were kept, by transaction and
+ *  auction id (one fill of ours per transaction). */
+function recordedFillMatcher(plan) {
+  const exact = new Set();
+  const legacy = new Set();
+  for (const f of plan.fills ?? []) {
+    if (!f.fillTx) continue;
+    const tx = String(f.fillTx).toLowerCase();
+    if (f.logIndex != null) exact.add(`${tx}:${f.logIndex}`);
+    else legacy.add(`${tx}#${f.auctionId}`);
+  }
+  return (e) => exact.has(`${e.transactionHash.toLowerCase()}:${e.logIndex}`) || legacy.has(`${e.transactionHash.toLowerCase()}#${e.args.id}`);
+}
+
+/** The plan.fills record of an AuctionFilled log read from the chain, with
+ *  the factor recomputed from the auction's start and the fill block's time. */
+async function fillRecordFromLog(ctx, v, e, { seq, round, sell, buy, startTime, duration, openTx, ours, extra = {} }) {
+  const blk = (await retryRead(() => ctx.pc.getBlock({ blockNumber: e.blockNumber }), { what: `block ${e.blockNumber}` })).value;
+  const elapsed = Number(blk.timestamp - BigInt(startTime));
+  const bidder = getAddress(e.args.bidder);
+  const external = !ours.has(bidder);
+  return {
+    seq, round, auctionId: e.args.id.toString(), sell, buy,
+    sellTaken: e.args.sellTaken.toString(), buyPaid: e.args.buyPaid.toString(), lossAtRef: e.args.lossAtRef.toString(),
+    factorBps: curveFactorAt(v, elapsed, duration), elapsed, policy: external ? 'external' : 'adopted', bidder, external,
+    openTx, fillTx: e.transactionHash, logIndex: e.logIndex, at: iso(blk.timestamp), adopted: true, ...extra,
+  };
+}
+
+/**
+ * Why a fill recorded from the chain stops the session, or null.
+ *   External (not our bidder): only a factor off the contract's curve
+ *   [10,000 − maxFillLossBps, 10,000 + premium], or a loss booked at or
+ *   above fair — values the contract cannot produce. A below-fair fill on
+ *   the curve is the contract working as designed (bounded per fill by the
+ *   floor and per day by dailyLossBudgetBps).
+ *   Ours: the fill policy, as for a fill made now — lossAtRef 0 unless
+ *   --fill natural; a planned fill inside the fair window under --fill fair.
+ */
+export function fillHalt(rec, { v, o, planned, duration = null }) {
+  const f = rec.factorBps;
+  if (rec.external) {
+    const lo = 10_000 - Number(v.maxFillLossBps);
+    const hi = 10_000 + Number(v.premiumBps);
+    if (f == null || f < lo || f > hi) return `HALT: external fill ${rec.fillTx} by ${rec.bidder} (auction ${rec.auctionId}) at factor ${f ?? 'unknown'}, off the contract's curve [${lo}, ${hi}] — the contract could not have taken it; check the auction and this fill by hand before re-running`;
+    // The curve's integer step lets a few seconds past the end still compute
+    // to the floor; the contract reverts AuctionExpired there.
+    if (rec.elapsed < 0 || (duration != null && rec.elapsed > Number(duration))) return `HALT: external fill ${rec.fillTx} by ${rec.bidder} (auction ${rec.auctionId}) at ${rec.elapsed} s of a ${duration} s auction, off the contract's curve — the contract could not have taken it; check the auction and this fill by hand before re-running`;
+    if (f >= 10_000 && big(rec.lossAtRef) !== 0n) return `HALT: external fill ${rec.fillTx} by ${rec.bidder} (auction ${rec.auctionId}) booked lossAtRef ${rec.lossAtRef} at factor ${f} — at or above fair the contract books no loss`;
+    return null;
+  }
+  if (o.fill === 'natural') return null;
+  if (big(rec.lossAtRef) !== 0n) return `HALT: adopted fill ${rec.fillTx} booked lossAtRef ${rec.lossAtRef} under the ${o.fill} policy`;
+  if (planned && o.fill === 'fair' && (f < 10_000 || f > 10_000 + o.fairWindowBps)) return `HALT: adopted fill ${rec.fillTx} landed at factor ${f}, outside [10000, ${10_000 + o.fairWindowBps}]`;
+  return null;
+}
+
+/** The auction's sellRemaining and open flag and the vault's balance of
+ *  `sell`, read at one named block (returned with them). */
+async function auctionState(ctx, id, sell, sym) {
+  const { value: block } = await retryRead(() => blockAtLeast(ctx.pc, ctx.floor), { what: 'block number' });
+  const [a, liveBal] = await Promise.all([
+    readNow(ctx, `auction ${id}`, { address: ctx.plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] }, block),
+    readNow(ctx, `${sym} in the vault`, { address: sell, abi: ERC20_ABI, functionName: 'balanceOf', args: [ctx.plan.vault] }, block),
+  ]);
+  return { remaining: a[2], open: a[5], liveBal, block };
+}
+
+/** Every AuctionFilled log of auction `id` in [fromBlock, toBlock], read
+ *  again (within READ_WAIT_MS) until their sellTaken add up to `taken` —
+ *  what the auction's sellRemaining at toBlock says was taken: a node that
+ *  answers a log search short cannot hide a fill. */
+async function auctionFills(ctx, id, fromBlock, toBlock, taken) {
+  const { value, reads } = await retryRead(async () => {
+    const out = [];
+    for (let lo = BigInt(fromBlock); lo <= toBlock; lo += 10_000n) {
+      const hi = lo + 9_999n < toBlock ? lo + 9_999n : toBlock;
+      const logs = await ctx.pc.getLogs({ address: ctx.plan.vault, event: FILLED_EVENT, args: { id }, fromBlock: lo, toBlock: hi });
+      out.push(...logs.filter((l) => l.args?.id === id));
+    }
+    const sum = out.reduce((s, l) => s + l.args.sellTaken, 0n);
+    if (sum !== taken) throw new Error(`the AuctionFilled logs of auction ${id} in blocks ${fromBlock}–${toBlock} add up to ${sum} taken, its sellRemaining says ${taken}`);
+    return out.sort(byBlockLog);
+  }, { what: `fills of auction ${id} up to block ${toBlock}` });
+  if (reads > 1) ctx.log(`  (fills of auction ${id}: complete at read ${reads})`);
+  return value;
+}
+
+/**
+ * Fills of this trade's auction that are not in plan.fills — by another
+ * bidder, between our open and our fill — recorded as fills of trade
+ * `t.seq` (`adopted: true`, `external` by bidder) and saved before anything
+ * else; then held to fillHalt (after recording, as every HALT here).
+ */
+async function adoptAuctionFills(ctx, v, { t, round, id, startTime, opened, toBlock, taken }) {
+  const { plan, log } = ctx;
+  const logs = await auctionFills(ctx, id, opened.receipt.blockNumber, toBlock, taken);
+  const isRecorded = recordedFillMatcher(plan);
+  const ours = ourBidders(ctx, v);
+  const recs = [];
+  const halts = [];
+  for (const e of logs) {
+    if (isRecorded(e)) continue;
+    const rec = await fillRecordFromLog(ctx, v, e, {
+      seq: t.seq, round, sell: t.sell, buy: t.buy, startTime, duration: t.duration, openTx: opened.hash, ours,
+      extra: t.residual ? { residualOf: t.parentSeq ?? null } : {},
+    });
+    plan.fills.push(rec);
+    savePlan(ctx.planFile, plan);
+    recs.push(rec);
+    log(`  ${rec.external ? `external bidder ${rec.bidder}` : `bidder ${rec.bidder} (ours, another run)`} filled auction ${id}: took ${rec.sellTaken} ${t.sell}, paid ${rec.buyPaid} ${t.buy}, factor ${rec.factorBps} bp (${rec.elapsed} s in), lossAtRef ${rec.lossAtRef} — recorded`);
+    const h = fillHalt(rec, { v, o: ctx.o, planned: round === 1 && typeof t.seq === 'number', duration: t.duration });
+    if (h) halts.push(h);
+  }
+  if (halts.length) throw new Error(halts.join('; '));
+  return recs;
+}
+
+/** Did our fill fail because another bidder filled first? A simulation
+ *  refused CapExceeded or AuctionClosed, or a mined revert — and the auction,
+ *  read again, has less left than our fill was sized at, or is closed. Any
+ *  other failure is not a race and is thrown as before. */
+async function lostRace(ctx, e, id, remainingBefore) {
+  const racy = (e instanceof Refused && (e.revert === 'CapExceeded' || e.revert === 'AuctionClosed')) || e?.reverted === true;
+  if (!racy) return false;
+  const a = await readNow(ctx, `auction ${id} after the fill failed`, { address: ctx.plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] });
+  return a[2] < remainingBefore || !a[5];
+}
+
 export async function runTrade(ctx, v, t, round, attemptNo = 1) {
   const { plan, log, o } = ctx;
   // A residual drain under $1 (option K) fills at the open: waiting ~10
@@ -1191,17 +1374,29 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
   // are comfortably fresh (they were re-posted by the fill a moment ago):
   // fewer transactions, a narrower window.
   const repost = !(t.immediate && now - tsSell < v.maxRefAge - 120n && now - tsBuy < v.maxRefAge - 120n);
-
-  // Inventory for the worst case (+2% at the open), then the auction itself.
-  const buyWorst = (amount * pSell * (10_000n + v.premiumBps) + pBuy * 10_000n - 1n) / (pBuy * 10_000n);
-  await ensureInventory(ctx, buy, t.buy, buyWorst);
-  const opened = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'openAuction', args: [sell, buy, amount, BigInt(t.duration)], gas: GAS.openAuction, what: `open auction #${t.seq}` });
   const win = fairWindow(t.duration, Number(v.premiumBps), Number(v.maxFillLossBps), o.fairWindowBps);
   const aimElapsed = policy === 'fair' ? win.aim : 0;
+  // Inventory for the worst case (+2% at the open), then the auction itself —
+  // opened right after both references are re-posted.
+  const buyWorst = (amount * pSell * (10_000n + v.premiumBps) + pBuy * 10_000n - 1n) / (pBuy * 10_000n);
+  await ensureInventory(ctx, buy, t.buy, buyWorst);
+  // Owner answer 2 of 2026-10-13: an auction that waits for its fair point
+  // opens with both references just re-posted, so another bidder can fill it
+  // from its first block until maxRefAge — not only in the seconds after our
+  // pre-fill re-posts. Same value, same guard as those (this script never
+  // moves a reference). An auction filled at once (--fill open / natural, a
+  // remnant) has its pre-fill re-posts right after the open already.
+  if (repost && aimElapsed > 0) {
+    await requireRefsUnmoved(ctx, sell, buy, pSell, pBuy, t);
+    await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [sell, pSell], gas: GAS.post, what: `re-post ${t.sell} at the open (same value)` });
+    await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [buy, pBuy], gas: GAS.post, what: `re-post ${t.buy} at the open (same value)` });
+  }
+
+  const opened = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'openAuction', args: [sell, buy, amount, BigInt(t.duration)], gas: GAS.openAuction, what: `open auction #${t.seq}` });
   if (opened.dry) {
     // A dry run sends nothing: the id the open would get is auctionCount now.
     const id = await readNow(ctx, 'auctionCount', { address: plan.vault, abi: VAULT_ABI, functionName: 'auctionCount' });
-    log(`  would wait ${aimElapsed} s to the ${policy === 'fair' ? `fair window [${win.eMin}, ${win.eMax}] s` : 'open'}, re-read and re-post both references at their current values, then fill(${id}, min(${amount}, live balance)) as bidder ${ctx.bidderAddr}${t.drain ? `; then read ${t.sell}'s balance: zero → finalizeRemoval at once, else re-drain at once (≤ ${MAX_DRAIN_ATTEMPTS}×), else left waiting (finalizePending)` : ''}`);
+    log(`  would wait ${aimElapsed} s to the ${policy === 'fair' ? `fair window [${win.eMin}, ${win.eMax}] s` : 'open'}, re-read and re-post both references at their current values, read auction ${id}'s sellRemaining (recording any other bidder's fill), then fill(${id}, min(sellRemaining, live balance)) as bidder ${ctx.bidderAddr}${t.drain ? `; then read ${t.sell}'s balance: zero → finalizeRemoval at once, else re-drain at once (≤ ${MAX_DRAIN_ATTEMPTS}×), else left waiting (finalizePending)` : ''}`);
     await requireRefsUnmoved(ctx, sell, buy, pSell, pBuy, t);
     await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [sell, pSell], gas: GAS.post, what: `re-post ${t.sell} (same value)` });
     await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [buy, pBuy], gas: GAS.post, what: `re-post ${t.buy} (same value)` });
@@ -1219,26 +1414,55 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
   if (getAddress(oev.sellAsset) !== sell || getAddress(oev.buyAsset) !== buy || oev.sellAmount !== amount) throw new Error(`auction ${id} opened in ${opened.hash} is ${oev.sellAmount} ${oev.sellAsset} → ${oev.buyAsset}, not this trade — the next auctions run cancels it`);
   const startTime = opened.blockTimestamp ?? BigInt((await readNow(ctx, `auction ${id}`, { address: plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] }, opened.receipt.blockNumber))[3]);
 
+  // What other bidders took of this auction (owner answer 1 of 2026-10-13):
+  // the sellRemaining this run has accounted for, and the last fill of theirs.
+  let remainingSeen = amount;
+  let lastOther = null;
+  const adoptTo = async (st) => {
+    if (st.remaining >= remainingSeen) return;
+    const recs = await adoptAuctionFills(ctx, v, { t, round, id, startTime, opened, toBlock: st.block, taken: amount - st.remaining });
+    if (recs.length) lastOther = recs.at(-1);
+    remainingSeen = st.remaining;
+  };
+  // Closed: taken entirely by other bidders (done), else cancelled by another keeper run (stop).
+  const whenClosed = async (st) => {
+    if (st.remaining !== 0n) throw new Refused(`auction ${id} (#${t.seq}) was closed with ${st.remaining} ${t.sell} unsold, and not by this run — only the keeper cancels: another keeper run is active; stopping`);
+    log(`  auction ${id} was filled entirely by other bidder(s) before ours — nothing left for our fill`);
+    // K-1: their fill drained a leaving asset; it is finalized right here.
+    if (t.drain && !t.residual) await settleRemoval(ctx, v, t, round);
+    return lastOther;
+  };
+  let repostNow = repost;
+  let races = 0;
   for (let attempt = 0; attempt < 2; attempt++) {
     await waitUntil(ctx, startTime + BigInt(aimElapsed), policy === 'fair' ? `to the fair point of auction ${id}` : `auction ${id} open`);
     // Same-value re-posts: refresh the staleness clock, move nothing — so the
     // values on chain must still be the ones read at the start of this trade.
-    if (repost) {
+    if (repostNow) {
+      // No re-post for an auction other bidders took entirely while we waited.
+      const pre = await auctionState(ctx, id, sell, t.sell);
+      await adoptTo(pre);
+      if (!pre.open) return whenClosed(pre);
       await requireRefsUnmoved(ctx, sell, buy, pSell, pBuy, t);
       await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [sell, pSell], gas: GAS.post, what: `re-post ${t.sell} (same value)` });
       await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [buy, pBuy], gas: GAS.post, what: `re-post ${t.buy} (same value)` });
     }
-    // K-3: the fill takes what the vault holds NOW, at most the auction's
-    // amount — a redemption since the balance was read would otherwise make
+    repostNow = repost;
+    // K-3: the fill takes what the vault holds NOW, at most what the auction
+    // has left — a redemption since the balance was read would otherwise make
     // the fill revert; anything that arrived since stays and is re-drained.
+    // sellRemaining: another bidder may have filled part or all of the
+    // auction since it opened; their fills are recorded before ours is sent.
     // Read before the factor, so that the factor check stays the last read
     // before the fill.
     await runHook(ctx, 'before-fill', { seq: t.seq, symbol: t.sell, asset: sell, auctionId: id, amount, drain: !!t.drain, residual: !!t.residual });
-    const liveBal = await readNow(ctx, `${t.sell} in the vault`, { address: sell, abi: ERC20_ABI, functionName: 'balanceOf', args: [plan.vault] });
-    const take = liveBal < amount ? liveBal : amount;
+    const st = await auctionState(ctx, id, sell, t.sell);
+    await adoptTo(st);
+    if (!st.open) return whenClosed(st);
+    const take = st.liveBal < st.remaining ? st.liveBal : st.remaining;
     if (take === 0n) {
       await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id} (nothing left to sell)` });
-      return null;
+      return lastOther;
     }
     const factorNow = Number(await readNow(ctx, `curve factor of auction ${id}`, { address: plan.vault, abi: VAULT_ABI, functionName: 'curveFactorBps', args: [id] }));
     const late = policy !== 'natural' && factorNow < 10_000;
@@ -1253,21 +1477,34 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
       log(`  factor ${factorNow} is below fair — too late for a ${policy} fill; cancelling auction ${id}${attemptNo < MAX_WINDOW_ATTEMPTS ? ' and reopening' : ''}`);
       await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id}` });
       if (attemptNo >= MAX_WINDOW_ATTEMPTS) throw new Error(`#${t.seq}: missed the fair window ${attemptNo} times (window [${win.eMin}, ${win.eMax}] s of a ${t.duration} s auction = duration/30 wide; three mined transactions must land inside it) — widen the planner's --duration (1800 s gives a 60 s window on the public chain) or run when blocks are quick`);
-      return runTrade(ctx, v, t, round, attemptNo + 1);
+      // What other bidders took is traded: the reopened auction sells the rest.
+      return runTrade(ctx, v, remainingSeen < amount ? { ...t, sellAmount: remainingSeen.toString() } : t, round, attemptNo + 1);
     }
-    if (take !== amount) log(`  live balance ${liveBal} ${t.sell} is below the auction's ${amount} (a redemption in the window) — filling ${take}`);
-    const filled = await call(ctx, { who: 'bidder', to: plan.vault, functionName: 'fill', args: [id, take], gas: GAS.fill(v.assetCount), what: `fill #${t.seq} (auction ${id})` });
+    if (take !== st.remaining) log(`  live balance ${st.liveBal} ${t.sell} is below the auction's ${st.remaining} left (a redemption in the window) — filling ${take}`);
+    let filled;
+    try {
+      filled = await call(ctx, { who: 'bidder', to: plan.vault, functionName: 'fill', args: [id, take], gas: GAS.fill(v.assetCount), what: `fill #${t.seq} (auction ${id})` });
+    } catch (e) {
+      if (!(await lostRace(ctx, e, id, st.remaining))) throw e;
+      races++;
+      if (races > MAX_FILL_RACES) throw new Error(`#${t.seq}: another bidder filled auction ${id} between our read and our fill ${races} times in a row (last: ${fmtErr(e)}) — stopping; a re-run records their fills and trades what is left`);
+      log(`  another bidder filled auction ${id} before our fill landed (${fmtErr(e)}) — reading it again (${races}/${MAX_FILL_RACES})`);
+      repostNow = false; // the references were re-posted a moment ago
+      attempt--; // not a missed window
+      continue;
+    }
     // Recorded from the receipt before any read (call() contract). Without
     // the block's time the factor is unknown: recorded as null, and a fair
     // fill then stops below instead of guessing.
-    const ev = eventsIn(filled.receipt, VAULT_ABI, 'AuctionFilled', plan.vault).find((e) => e.args.id === id)?.args;
+    const evLog = eventsIn(filled.receipt, VAULT_ABI, 'AuctionFilled', plan.vault).find((e) => e.args.id === id);
+    const ev = evLog?.args;
     if (!ev) throw new Error(`no AuctionFilled event for auction ${id} in ${filled.hash}`);
     const elapsed = filled.blockTimestamp == null ? null : Number(filled.blockTimestamp - startTime);
     const factor = elapsed == null ? null : 10_000 + Number(v.premiumBps) - Math.floor((win.range * elapsed) / t.duration);
     const rec = {
       seq: t.seq, round, auctionId: id.toString(), sell: t.sell, buy: t.buy, sellTaken: ev.sellTaken.toString(), buyPaid: ev.buyPaid.toString(),
-      lossAtRef: ev.lossAtRef.toString(), factorBps: factor, elapsed, policy, bidder: ctx.bidderAddr,
-      openTx: opened.hash, fillTx: filled.hash, at: isoOrNull(filled.blockTimestamp),
+      lossAtRef: ev.lossAtRef.toString(), factorBps: factor, elapsed, policy, bidder: ctx.bidderAddr, external: false,
+      openTx: opened.hash, fillTx: filled.hash, logIndex: evLog.logIndex, at: isoOrNull(filled.blockTimestamp),
       ...(take !== amount ? { auctionAmount: amount.toString() } : {}),
       ...(t.residual ? { residualOf: t.parentSeq ?? null } : {}),
     };
@@ -1281,9 +1518,13 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
     }
     // K-1: a drain is finalized right here, not after the other auctions.
     if (t.drain && !t.residual) await settleRemoval(ctx, v, t, round);
-    if (take !== amount) {
-      const a2 = await readNow(ctx, `auction ${id} after the fill`, { address: plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] });
-      if (a2[5]) await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel the unfilled rest of auction ${id} (${a2[2]} ${t.sell})` });
+    if (take !== st.remaining) {
+      // Our fill took less than the auction had left: other bidders' fills
+      // since ours are recorded, and the unfilled rest is cancelled.
+      remainingSeen = st.remaining - take;
+      const a2 = await auctionState(ctx, id, sell, t.sell);
+      await adoptTo(a2);
+      if (a2.open) await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel the unfilled rest of auction ${id} (${a2.remaining} ${t.sell})` });
     }
     return rec;
   }
@@ -1498,9 +1739,12 @@ const symOf = (plan, a) => {
  *     pair (computeTrades never repeats a pair); two candidates → REFUSED;
  *     none → recorded as an unplanned fill (a residual round or a re-drain —
  *     those are computed from live balances, so they cannot repeat it).
+ *     A further fill of an auction that already has one recorded keeps that
+ *     fill's seq (other bidders can fill an auction in parts). A fill whose
+ *     bidder is not ours (ourBidders) is recorded `external: true`.
  *     Its factor is recomputed from the auction's startTime and the fill
- *     block's time. With `halt`, an adopted fill is held to the same HALT
- *     rules as a fill made now.
+ *     block's time. With `halt`, a fill is held to fillHalt: ours to the
+ *     same rules as a fill made now, an external one to the contract's curve.
  *   - ORPHANS (`cancelOrphans`, the auctions stage): an auction opened since
  *     the plan's block that is still open is cancelled before anything is
  *     opened — a re-run never leaves one beside a new one.
@@ -1522,34 +1766,36 @@ export async function reconcileSession(ctx, v, { cancelOrphans = false, halt = f
     }
   }
   const adoptedSeqs = new Set();
-  const recordedFills = new Set(plan.fills.map((f) => String(f.fillTx ?? '').toLowerCase()));
+  const isRecorded = recordedFillMatcher(plan);
+  const ours = ourBidders(ctx, v);
   const doneSeqs = new Set(plan.fills.filter((f) => f.round === 1).map((f) => f.seq));
-  const unrecorded = events.filter((e) => e.eventName === 'AuctionFilled' && !recordedFills.has(e.transactionHash.toLowerCase()))
-    .sort((a, b) => (a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1));
+  // An auction with a fill already recorded (or adopted above) keeps that
+  // fill's seq: with other bidders an auction can have several fills.
+  const seqOfAuction = new Map(plan.fills.filter((f) => f.auctionId != null).map((f) => [String(f.auctionId), { seq: f.seq, round: f.round }]));
+  const unrecorded = events.filter((e) => e.eventName === 'AuctionFilled' && !isRecorded(e)).sort(byBlockLog);
   const halts = [];
   for (const e of unrecorded) {
     const id = e.args.id;
     const a = await readNow(ctx, `auction ${id}`, { address: vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] });
     const [sellA, buyA, , startTime, duration] = a;
     const openEv = events.find((x) => x.eventName === 'AuctionOpened' && x.args.id === id);
-    const cands = plan.trades.filter((t) => getAddress(t.sellAddress) === getAddress(sellA) && getAddress(t.buyAddress) === getAddress(buyA) && !doneSeqs.has(t.seq) && !adoptedSeqs.has(t.seq));
-    if (cands.length > 1) throw new Refused(`fill ${e.transactionHash} (auction ${id}, ${symOf(plan, sellA)} → ${symOf(plan, buyA)}) is not in plan.fills and matches planned trades ${cands.map((t) => `#${t.seq}`).join(', ')} — record it in plan.fills by hand (the planned seq it was) before re-running`);
-    const t = cands[0] ?? null;
-    const blk = (await retryRead(() => ctx.pc.getBlock({ blockNumber: e.blockNumber }), { what: `block ${e.blockNumber}` })).value;
-    const elapsed = Number(blk.timestamp - BigInt(startTime));
-    const range = Number(v.premiumBps) + Number(v.maxFillLossBps);
-    const factor = 10_000 + Number(v.premiumBps) - Math.floor((range * elapsed) / Number(duration));
-    const rec = {
-      seq: t ? t.seq : `adopted-${id}`, round: t ? 1 : null, auctionId: id.toString(), sell: symOf(plan, sellA), buy: symOf(plan, buyA),
-      sellTaken: e.args.sellTaken.toString(), buyPaid: e.args.buyPaid.toString(), lossAtRef: e.args.lossAtRef.toString(), factorBps: factor, elapsed,
-      policy: 'adopted', bidder: getAddress(e.args.bidder), openTx: openEv?.transactionHash ?? null, fillTx: e.transactionHash, at: iso(blk.timestamp), adopted: true,
-    };
+    const known = seqOfAuction.get(id.toString());
+    let t = null;
+    if (!known) {
+      const cands = plan.trades.filter((x) => getAddress(x.sellAddress) === getAddress(sellA) && getAddress(x.buyAddress) === getAddress(buyA) && !doneSeqs.has(x.seq) && !adoptedSeqs.has(x.seq));
+      if (cands.length > 1) throw new Refused(`fill ${e.transactionHash} (auction ${id}, ${symOf(plan, sellA)} → ${symOf(plan, buyA)}) is not in plan.fills and matches planned trades ${cands.map((x) => `#${x.seq}`).join(', ')} — record it in plan.fills by hand (the planned seq it was) before re-running`);
+      t = cands[0] ?? null;
+    }
+    const seq = known ? known.seq : t ? t.seq : `adopted-${id}`;
+    const round = known ? known.round : t ? 1 : null;
+    if (!known) seqOfAuction.set(id.toString(), { seq, round });
+    const rec = await fillRecordFromLog(ctx, v, e, { seq, round, sell: symOf(plan, sellA), buy: symOf(plan, buyA), startTime, duration, openTx: openEv?.transactionHash ?? null, ours });
     if (t) adoptedSeqs.add(t.seq);
-    log(`  ${write ? 'recorded' : 'would record'} a fill an earlier run made but did not record: ${rec.sell}→${rec.buy} auction ${id}, took ${rec.sellTaken}, paid ${rec.buyPaid}, factor ${factor} bp, tx ${e.transactionHash}${t ? ` — planned #${t.seq}, not traded again` : ' — not a planned trade (a residual or a re-drain)'}`);
+    log(`  ${write ? 'recorded' : 'would record'} a fill ${rec.external ? `by an external bidder ${rec.bidder}` : 'an earlier run made but did not record'}: ${rec.sell}→${rec.buy} auction ${id}, took ${rec.sellTaken}, paid ${rec.buyPaid}, factor ${rec.factorBps} bp, tx ${e.transactionHash}${known ? ` — auction of #${seq}, another fill of it is recorded` : t ? ` — planned #${t.seq}, not traded again` : ' — not a planned trade (a residual or a re-drain)'}`);
     if (write) { plan.fills.push(rec); savePlan(ctx.planFile, plan); }
-    if (halt && o.fill !== 'natural') {
-      if (e.args.lossAtRef !== 0n) halts.push(`HALT: adopted fill ${e.transactionHash} booked lossAtRef ${e.args.lossAtRef} under the ${o.fill} policy`);
-      else if (t && o.fill === 'fair' && (factor < 10_000 || factor > 10_000 + o.fairWindowBps)) halts.push(`HALT: adopted fill ${e.transactionHash} landed at factor ${factor}, outside [10000, ${10_000 + o.fairWindowBps}]`);
+    if (halt) {
+      const h = fillHalt(rec, { v, o, planned: round === 1, duration });
+      if (h) halts.push(h);
     }
   }
   if (halts.length) throw new Error(halts.join('; '));

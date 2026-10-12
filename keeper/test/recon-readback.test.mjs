@@ -593,8 +593,9 @@ test('runTrade on a lagging node: the same sent calls and the same plan records 
   const clean = await runOn(0);
   const lag = await runOn(5);
   assert.deepEqual(lag.sent, clean.sent, 'what is sent is the same');
-  assert.deepEqual(clean.sent.map((s) => s.fn), ['openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'finalizeRemoval']);
-  assert.equal(clean.sent[3].args[0], '1', 'fill(1, …): the id from AuctionOpened');
+  // Both references are re-posted before each open (owner answer 2 of 2026-10-13) and again before each fill.
+  assert.deepEqual(clean.sent.map((s) => s.fn), ['setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'finalizeRemoval']);
+  assert.equal(clean.sent[5].args[0], '1', 'fill(1, …): the id from AuctionOpened');
   const norm = (p) => ({ fills: p.fills.map((x) => ({ ...x, openTx: null, fillTx: null })), finalize: p.finalize.map((x) => ({ ...x, txHash: null })) });
   assert.deepEqual(norm(lag.plan), norm(clean.plan));
   assert.equal(clean.plan.fills.length, 2);
@@ -625,7 +626,7 @@ test('day 7 end to end on a lagging node (execute → first prices → auctions 
   const lag = await runOn(3);
   assert.deepEqual(lag.sent, clean.sent);
   assert.deepEqual(lag.records, clean.records);
-  assert.deepEqual(clean.sent.map((x) => x.split('(')[0]), ['executeRegistryChange', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'finalizeRemoval']);
+  assert.deepEqual(clean.sent.map((x) => x.split('(')[0]), ['executeRegistryChange', 'setRefPrice', 'setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'finalizeRemoval']);
   assert.deepEqual(clean.records.verify.fails, []);
   assert.ok(lag.ctx.lines.filter((l) => /answered at read [2-9]/.test(l)).length >= 5, 'reads after writes were answered late and repeated');
   assert.ok(lag.chain.reads > clean.chain.reads);
@@ -717,7 +718,7 @@ test('runDay7 (the day7 stage itself): a plan the first-price gate refuses sends
   const good = pendingPlan(chain, (p) => p, 'plan-good.json');
   const ctx = ctxFor(chain, good);
   await runDay7(ctx);
-  assert.deepEqual(chain.sent.slice(n).map((x) => x.functionName), ['executeRegistryChange', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'finalizeRemoval']);
+  assert.deepEqual(chain.sent.slice(n).map((x) => x.functionName), ['executeRegistryChange', 'setRefPrice', 'setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'finalizeRemoval']);
   assert.deepEqual(loadPlan(good).verify.fails, []);
   assert.ok(ctx.lines.some((l) => /^before execute: signer is the keeper/.test(l)));
 });

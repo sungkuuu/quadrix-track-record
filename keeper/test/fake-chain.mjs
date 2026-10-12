@@ -68,6 +68,7 @@ export class FakeChain {
     this.inFlight = {}; // address(lower) → transactions sent but not mined (pending nonce − latest)
     this.sent = [];
     this.timeOffset = 0n;
+    this.strictRefAge = false; // opt-in: fill reverts RefPriceStale like v3.1 (off: the older tests' earlier-run fills use references aged by the 7-day delay)
     const state = {
       owner: getAddress(owner), keeper: getAddress(keeper), registry: [], inRemoval: {}, refPrice: {}, refAt: {},
       balances: {}, decimals: {}, symbols: {}, faucet: {}, pending: ZERO32, eta: 0n, auctions: [], biddingOpen: false, bidders: {},
@@ -265,6 +266,7 @@ export class FakeChain {
         if (take > u.remaining) throw revert('CapExceeded');
         const factor = this.read({ address: this.vault, functionName: 'curveFactorBps', args: [id] }, st, blk);
         const pS = st.refPrice[lc(u.sell)]; const pB = st.refPrice[lc(u.buy)];
+        if (this.strictRefAge && (blk.timestamp - (st.refAt[lc(u.sell)] ?? 0n) > st.maxRefAge || blk.timestamp - (st.refAt[lc(u.buy)] ?? 0n) > st.maxRefAge)) throw revert('RefPriceStale');
         const pay = (take * pS * factor + pB * 10_000n - 1n) / (pB * 10_000n);
         u.remaining -= take; if (u.remaining === 0n) u.open = false;
         const v = lc(this.vault);
