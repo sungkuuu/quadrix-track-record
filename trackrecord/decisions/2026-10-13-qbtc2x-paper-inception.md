@@ -249,7 +249,9 @@ and its raw output `docs/research/leverage/params-v6/recomputation/output.txt` s
 `41353be92dadca49f60233373de28b0abbce36bc381d6460b447a0639d9348a1` (the three copies at site commit `0a4a218`).
 Checks not run for this product, and why: holdability of collateral and debt on GIWA (R08) — not
 applicable in stage A, required before stage B; security items R44–R46 — no new contract code, the vault is
-the qX20 tracking vault's contract (its eight existing tests pass). Roles on chain (R64) were read back after the
+the qX20 tracking vault's contract (its eight existing tests pass). Two optional items were not run: a
+distinctness measurement against listed daily-2× products (R03) and an overfitting account of the variants tried
+against the independent samples (R16); the run record says so. Roles on chain (R64) were read back after the
 deployment: owner and keeper are the keeper key, the deposit cap is 0, the share price 1.000000. A red-team proof-of-concept pass over the new keeper code (R47) was run on 2026-10-05, on the
 code before the fixes it led to (site repository, private): ten findings, none a wrong level from honest inputs. The fixes made for nine of
 them (for one of them, all but a watch on the vault's mark, which is not built yet) are in this repository: in the
