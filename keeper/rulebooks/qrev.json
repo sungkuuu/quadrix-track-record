@@ -196,6 +196,26 @@
       "ZRO": {
         "address": "0xe2dcf51f5c7f03bd502c0948d8541063f2c8df04",
         "decimals": 8
+      },
+      "SYRUP": {
+        "address": "0x13db3b252c993dd7ad7e6b02964dadd7d181d460",
+        "decimals": 8
+      },
+      "TRX": {
+        "address": "0xa8c8310bf839b24cb10fd40c0323c9bf8f19ddc2",
+        "decimals": 8
+      },
+      "LINK": {
+        "address": "0x9f23ff0f9f58a391603c07dc12ca2bb881bc0f45",
+        "decimals": 10
+      },
+      "NEAR": {
+        "address": "0xbd815b0c9601f32a5bab22e7cff38e483789e4e8",
+        "decimals": 9
+      },
+      "BNB": {
+        "address": "0x495fa29f63cbae7e1abbfdb209413a8dc4b950e9",
+        "decimals": 11
       }
     }
   }

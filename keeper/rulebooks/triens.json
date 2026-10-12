@@ -268,6 +268,10 @@
       "RAY": {
         "address": "0x43901ce3e49252e57d490d54ef74692f134e572d",
         "decimals": 9
+      },
+      "AERO": {
+        "address": "0x2befb7fcb681b20014c9e19b023ae4c9ccb28d4d",
+        "decimals": 8
       }
     }
   }
