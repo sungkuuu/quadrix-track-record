@@ -1,0 +1,57 @@
+{
+  "schema": "quadrix-gate-report/2",
+  "index": "qbtc2x",
+  "track": "general",
+  "stage": null,
+  "rulebook": {
+    "path": "rulebooks/qbtc2x.md",
+    "repo": "record",
+    "sha256": "13335ad723aab2a0264d9d82848312db1e91ff9d8c05c662b31c7bdceab106ef"
+  },
+  "keeperJson": {
+    "path": "keeper/rulebooks/qbtc2x.json",
+    "sha256": "ae8db495ba8bb9336aa598d8ef4ff36d51c7335cfe77de702ce74c525235ce88"
+  },
+  "provenance": {
+    "path": "keeper/rulebooks/qbtc2x.provenance.json",
+    "sha256": "6aed73c7eece2e1f2881279f0d6435f7a95c83a2ab6350141f19681cb54d2414"
+  },
+  "checklistRun": {
+    "path": "docs/methodology/checklist-runs/qbtc2x/2026-10-12.json",
+    "sha256": "92546f141c431cb236aef14dc5b39bc08fadc60ecae3efab18b76fe45d5ddce6"
+  },
+  "siteCommit": "d5f08dcf8520b76e7c27064e30cc308777b1525d",
+  "siteCommitPushed": false,
+  "base": "HEAD",
+  "counts": {
+    "tested": 1,
+    "partial": 0,
+    "definition": 4,
+    "definitionNumeric": 0,
+    "price": 1,
+    "absent": 0,
+    "exposureLimit": 0,
+    "exception": {
+      "product-definition": 0,
+      "model-assumption": 0,
+      "no-data": 0,
+      "stage-only": 0
+    },
+    "reference": 0,
+    "inheritedUntested": 0,
+    "untested": 18
+  },
+  "changedParams": [],
+  "exceptionsAmongChanged": 0,
+  "exposureAmongChanged": 0,
+  "exceptions": [],
+  "pendingSteps": [],
+  "judgments": [],
+  "untestedAmongChanged": 0,
+  "checksSkipped": [],
+  "result": "fail",
+  "violationsByCheck": {
+    "C4": 19,
+    "C10": 1
+  }
+}
