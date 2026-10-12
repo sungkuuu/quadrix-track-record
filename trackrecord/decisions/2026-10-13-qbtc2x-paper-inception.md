@@ -31,7 +31,7 @@ repository (sha256 `13335ad723aab2a0264d9d82848312db1e91ff9d8c05c662b31c7bdceab1
 `keeper/leverage-index.mjs` (sha256 `1e2a1e6a7e13a623c4a52619e10127ddbd25061913eaa397cc07b09ceca258fb`) and
 `keeper/leverage-step.mjs` (sha256 `0266e0f339813591be3584cef41c5107533b83a2df1cd49aab5c68d4a0880e25`),
 recomputed by `scripts/verify.mjs` (sha256 `ecc5d13bee9ed0c83465502e8ad2a69a48128a99bff7b6bdc1d1cde0f216a992`),
-at commit `d5efc6566e4b5130639b6731222d5dcf6cdfc992` of this repository. In one paragraph:
+at commit `7e45587ef4e6416eb13c6e86929c6c8a6c2e3795` of this repository. In one paragraph:
 
 The book is bitcoin worth λ times its equity against a stablecoin debt of (λ − 1) times its equity. It is
 evaluated at the close of every 15-minute bar. At the last close of each UTC day (normally the bar that
@@ -205,7 +205,7 @@ Checklist run record: `docs/methodology/checklist-runs/qbtc2x/2026-10-12.json` (
 sha256 `92546f141c431cb236aef14dc5b39bc08fadc60ecae3efab18b76fe45d5ddce6`). The run record also pins, by path and
 sha256, internal evidence files of the security tests and the launch preparation; they are not published. Before the
 next anchored decision, the run record will pin only evidence that can be published. Gate report:
-`rulebooks/qbtc2x.gate.json` (sha256 `4fae777c262d441c4fb7dfeff53b28e1447f0cfb71ffdebeb9c897914ecbda78`).
+`rulebooks/qbtc2x.gate.json` (sha256 `e81a721ea0e1670e924d9f0c23d8677422ecaa6427018180272a70295623d133`).
 
 | Basis | Count | Parameters |
 | --- | --- | --- |
@@ -230,7 +230,10 @@ because no candidate rule was tested; the decision region (P23) — the sixth te
 night of 2026-10-01 and fixed in its registration before the run (for bitcoin the full history gives the
 same result); the 15-minute bar (P25) — the sixth test's simulation step. All eighteen are entered in the
 rule audit register for a later test (site repository, private).
-⟦GATE-SENTENCE⟧
+The citation gate (report-only) does not pass this decision. Its report of 2026-10-12 reads "fail" with
+19 violations, all for the checklist run record (C4): 9 design steps not done (among them D11–D18; D13,
+D16, D17 and D18 can only follow this anchor) and 10 fields of the record format that the record, written
+on 2026-10-05, does not carry. None is for the rule audit (C9): the eighteen are registered.
 Pre-registration commit: `8b355b7` (sixth leverage test). Result files: `docs/research/leverage/params-v6/results/results.csv.gz`
 sha256 `5cdd706e6ecb5fbc3bb7841634b7598657d173364c09b4860701fca3c3c2791e`; `docs/research/leverage/params-v6/results/verdicts.csv`
 sha256 `c1e2d12e97499f74afe4e78b6c78bcd949ff3bab1bb4a938e92633fd53c18a3b`; `docs/research/leverage/params-v6/stats.csv`
@@ -293,7 +296,7 @@ is not written yet.
 
 | Repository | HEAD at pinning |
 | --- | --- |
-| quadrix-track-record (rulebook, rulebook JSON, provenance, keeper, verifier, gate report) | `d5efc6566e4b5130639b6731222d5dcf6cdfc992` |
+| quadrix-track-record (rulebook, rulebook JSON, provenance, keeper, verifier, gate report) | `7e45587ef4e6416eb13c6e86929c6c8a6c2e3795` |
 | quadrix (site, private — research `docs/research/leverage/params-v6/` on `research/leverage-params-v6`) | `c9bd7a2` |
 | quadrix (site, private — copies `registration.md`, `recomputation.md`, `recomputation/output.txt`, `stress-results.csv`) | `4cf8d268a020b773a636630011a1c02b9aa05f54` |
 | quadrix (site, private — checklist run record) | `4cf8d268a020b773a636630011a1c02b9aa05f54` |
