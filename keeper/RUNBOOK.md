@@ -501,7 +501,7 @@ mined the chain-side records below pick it up. Then, per stage:
 | first price mined, not in `plan.firstPrices` | the chain reference equals the plan's first price → **recorded** (`adopted: true`, tx from `sent` or `RefPricePosted`), not posted again. |
 | openAuction mined, not filled | the auctions stage **cancels** every auction opened since the plan's block that is still open before it opens anything (a dry run prints it). |
 | same-value re-post mined | nothing to record; the trade is re-read and re-posted from the chain. |
-| fill mined, not in `plan.fills` | **recorded, never traded again**: matched to the planned round-1 trade with the same sell/buy pair (the planner never repeats a pair), so round 1 skips it; two planned trades with that pair → REFUSED (record it in `plan.fills` by hand); no planned pair → recorded as `adopted-<auction id>` (residual rounds and re-drains are computed from live balances). Under `fair`/`open` an adopted fill with `lossAtRef` ≠ 0, or a planned one outside the fair window under `fair`, → HALT after it is recorded, as a fill made now would. A drain whose finalize did not run is finalized by the sweep after round 1. |
+| fill mined, not in `plan.fills` | **recorded, never traded again**: matched to the planned round-1 trade with the same sell/buy pair (the planner never repeats a pair), so round 1 skips it; two planned trades with that pair → REFUSED (record it in `plan.fills` by hand); no planned pair → recorded as `adopted-<auction id>` (residual rounds and re-drains are computed from live balances). Under `fair`/`open` an adopted fill of our bidder with `lossAtRef` ≠ 0, or a planned one outside the fair window under `fair`, → HALT after it is recorded, as a fill made now would; a fill by another bidder is recorded `external: true` and held to the contract's curve only (next section). A drain whose finalize did not run is finalized by the sweep after round 1. |
 | cancelAuction mined | nothing to record (the trade reopens from live balances; an orphan is closed). |
 | finalizeRemoval mined, not in `plan.finalize` | **recorded** from `RemovalFinalized` by the auctions, finalize or verify stage, so verify's asset count matches. |
 | setBidder mined, not logged | the chain already says `allowed` → nothing sent. setBidder emits no event, so the line cannot be rebuilt: take the hash from the run's log (printed when sent) and add the line by hand. |
@@ -527,7 +527,43 @@ announcement, and with no lag it sends exactly what this tool sends.
 `--stop-variant` adds a node that goes dark for 40 s right after the fill's
 receipt (the run stops, fill recorded) and a re-run on the clean node, which
 must finish with the same transactions and vault state as the clean run. Unit tests: `node --test keeper/test/*.test.mjs`
-(`readback-helpers`, `recon-readback`, `set-bidder-readback`).
+(`readback-helpers`, `recon-readback`, `set-bidder-readback`; other bidders: `recon-external-fills`).
+
+### Other bidders on the vault (2026-10-13)
+
+Once bidding is open (`biddingOpen`, or another address whitelisted), anyone
+may fill our auctions. `basket-recon.mjs` treats such fills as trades of the
+vault, not as errors:
+
+- **References at the open.** For an auction that waits for its fair point,
+  both legs are re-posted at their chain values right before `openAuction`,
+  and again right before our fill. The auction is fillable from its first
+  block until `maxRefAge` (3,600 s; a 1,800 s auction fits). A reference that
+  moved since the trade read it stops the run before the open (same guard as
+  the pre-fill re-post). `--fill open`/`natural` and remnants fill at once:
+  their one pair of re-posts right after the open is unchanged.
+- **Before our fill** the auction's `sellRemaining` and the vault's balance
+  are read at one block. Our fill takes the smaller. Fills by others found
+  there are recorded in `plan.fills` first, under the trade's seq, with
+  `bidder`, `external: true`, `adopted: true`, `policy: "external"` and
+  `logIndex`. An auction others took entirely is done (no re-post, no fill);
+  a drain then finalizes at once. Our own fills now carry `external: false`.
+- **A race.** Another fill can land between our read and our fill: a
+  simulation refused `CapExceeded`/`AuctionClosed`, or a mined revert while
+  `sellRemaining` fell. The run reads the auction again, records their fill
+  and fills what is left (at most 3 times in a row, then it stops; a re-run
+  records and trades the rest). The reverted fill stays in `sent` as
+  `reverted`.
+- **HALT.** Our bidder keeps the fill policy (fair window, `lossAtRef` 0).
+  Another bidder's fill passes anywhere on the contract's curve,
+  10,000 − `maxFillLossBps` to 10,000 + 200 bp, including a fill below fair
+  with `lossAtRef` > 0 (bounded per fill by the floor and per day by
+  `dailyLossBudgetBps`). A factor off the curve, a fill after the auction's
+  duration, or a loss booked at or above fair is a fill the contract could
+  not have taken: HALT after it is recorded.
+- **Ours or theirs.** Ours: this run's bidder and keeper, the vault's owner
+  and keeper, every fill sender in the plan's `sent` list and every bidder of
+  our own fills. Any other address is external.
 
 ## Sleeve indexes — Barbell and Triens (added 2026-09-22, not running)
 
