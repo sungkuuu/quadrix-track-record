@@ -3,13 +3,13 @@
   "index": "qeth2x",
   "rulebook": {
     "path": "rulebooks/qeth2x.md",
-    "commit": "6f32e12995ccdef044f57fb39b0e06ac6a39944e",
-    "sha256": "076e1237977b99ad5501664ad8028d98a48e776525a37b2fbf5a6affcae446df"
+    "commit": "bada86dd70bff5b3b6890e2dea4fec759731c13a",
+    "sha256": "4858a4d79594fa97d55fa935570b32d349258c79b74b4b21d1829a548d7af26e"
   },
   "checklistRun": {
     "path": "docs/methodology/checklist-runs/qeth2x/2026-10-12.json",
-    "sha256": "04a614cbb1672a05974b6e43a92ead0efae3d8010689e2b7f9721d88a0ad6c8e",
-    "repo": "site (private), commit ad67f57caf39eed1ddbfbdf4882250f5ab19caed"
+    "sha256": "711edf2363780db236d97eb4874ba7a1838cf66bff76aeca28eaf3a5db348410",
+    "repo": "site (private), commit 0a4a2182bfc8e920eda44708c7fc22307f33b899"
   },
   "keeperJson": {
     "path": "keeper/rulebooks/qeth2x.json",
@@ -277,7 +277,7 @@
         {
           "path": "docs/research/contract-safety-stress/results/stress-results.csv",
           "sha256": "951bf4299ace3ca2d640e5486176d5f973134289c5ec825f63c8cd8b8569f68f",
-          "repo": "site, commit ad67f57caf39eed1ddbfbdf4882250f5ab19caed — copy of the result table of research/contract-safety-stress @ ce35a1c (pre-registration 9048c30) — supporting evidence, not a test of this value"
+          "repo": "site, commit 0a4a2182bfc8e920eda44708c7fc22307f33b899 — copy of the result table of research/contract-safety-stress @ ce35a1c (pre-registration 9048c30) — supporting evidence, not a test of this value"
         }
       ],
       "ruleOutput": null,
