@@ -1,0 +1,2 @@
+{"at":"2026-10-12T01:21:06.265Z","index":"qbtc2x","action":"deploy","what":"deploy","chainId":91342,"status":"sent","tx":"0x95d302033a982d1a5fe43c459944eb75a82afb9ea098fb1e77d6dcec690c6524","from":"0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902","rpc":"giwa-sepolia"}
+{"at":"2026-10-12T01:21:09.123Z","index":"qbtc2x","action":"deploy","what":"deploy","chainId":91342,"status":"mined","tx":"0x95d302033a982d1a5fe43c459944eb75a82afb9ea098fb1e77d6dcec690c6524","block":"38422951","gasUsed":"1362408","contractAddress":"0x7c10c33aed202207bb0c054b32c0708abac54070"}
