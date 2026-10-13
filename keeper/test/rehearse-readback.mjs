@@ -333,7 +333,10 @@ async function variantStop(env, B, tag) {
 }
 
 const OWNABLE_ABI = parseAbi(['function transferOwnership(address newOwner)']);
-const ANNOUNCE_SELECTOR = toFunctionSelector('announceRegistryChange(address[],address[],bytes32)');
+/** Either announce shape (basket-plan.mjs SHAPE_MARKERS): the deployed
+ *  baskets' (adds, removes, sha) and a hardened vault's (adds, addRefPrices,
+ *  removes, sha). */
+const ANNOUNCE_SELECTORS = [toFunctionSelector('announceRegistryChange(address[],address[],bytes32)'), toFunctionSelector('announceRegistryChange(address[],uint256[],address[],bytes32)')];
 
 /** The announce as the workflow sends it: KEEPER_PK, a node that will not sign. */
 async function variantPk(env, B, tag, { script, lag }) {
@@ -451,7 +454,7 @@ async function main() {
     }
     if (out.pk) {
       const p = out.pk;
-      const ref = c.mined.find((m) => m.input.startsWith(ANNOUNCE_SELECTOR));
+      const ref = c.mined.find((m) => ANNOUNCE_SELECTORS.some((sel) => m.input.startsWith(sel)));
       check('KEEPER_PK path, lagging node that will not sign: announce exits 0, signed here (eth_sendRawTransaction only), recorded with the signer', p.announceExit === 0 && p.sends.length === 1 && p.sends.every((x) => x.method === 'eth_sendRawTransaction') && p.raw[0]?.from === p.signer && p.plan.announce?.pendingHash === p.chain.pending && p.plan.announce?.signer === p.signer && p.plan.sent.length === 1 && p.plan.sent[0].status === 'success', `exit ${p.announceExit}; sends ${p.sends.map((x) => x.method).join(',') || 'none'}; lag ${JSON.stringify(p.lagStats ?? {})}`);
       check('KEEPER_PK path: the same transaction (to, calldata, gas) and the same pending tuple hash as the --from run', !!ref && p.raw.length === 1 && p.raw[0].to === ref.to && p.raw[0].input === ref.input && p.raw[0].gas === ref.gas && p.chain.pending === c.afterAnnounce.chain.pending, ref ? `gas ${ref.gas}; pending ${p.chain.pending}` : 'no announce in the --from run');
       if (out.mainPk) {

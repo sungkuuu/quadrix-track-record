@@ -132,7 +132,13 @@ else {
     lines.push(`| ${a.symbol} | ${short(a.address)} | ${a.decimals} (${a.decimalsSource.startsWith('onchain') ? 'read from the mock' : 'by the price rule; re-read from the mock before posting'}) | ${pct(bookWeight(a.symbol))} | \`${a.firstRefPrice}\` | ${a.priceA} | ${a.priceB ?? '—'} | ${a.disagreementBps ?? '—'} bp |`);
   }
   lines.push('');
-  lines.push(`The first reference price of a new asset is band-free by construction (\`setRefPrice\` applies the ±15% band only from the second post), so it is the one number in this change that nothing on chain bounds. Policy: it is posted only when two independent sources agree within ${pct(plan.policy.firstPriceTolBps / 10_000)} and the mock's \`decimals()\` on chain equals the value above; a wrong decimal is a 10× price and the band then needs about fifteen steps to walk it back. The price posted is taken from the two sources on the execution day, when the plan is regenerated; the prices above are those of ${plan.date}.`);
+  if (plan.vaultAbi === 'priced-adds') {
+    // A vault built from the hardened source takes each entering name's first
+    // reference price in the announcement itself (addRefPrices).
+    lines.push(`The announcement commits the first reference price of each new asset: \`announceRegistryChange\` takes the price with the address and writes it on chain at once, so holders can read it for the whole notice. Only a new announcement, which restarts the ${days} days, can change it before execution. Policy: the keeper commits a price only when two independent sources agree within ${pct(plan.policy.firstPriceTolBps / 10_000)} and the mock's \`decimals()\` on chain equals the value above (a wrong decimal is a 10× price), and only from a plan made on the day of the announcement; the prices above are those of ${plan.date}. On the execution day the keeper's first post must lie within ±15% of the committed price, as every later post must lie within ±15% of the one before it.`);
+  } else {
+    lines.push(`The first reference price of a new asset is band-free by construction (\`setRefPrice\` applies the ±15% band only from the second post), so it is the one number in this change that nothing on chain bounds. Policy: it is posted only when two independent sources agree within ${pct(plan.policy.firstPriceTolBps / 10_000)} and the mock's \`decimals()\` on chain equals the value above; a wrong decimal is a 10× price and the band then needs about fifteen steps to walk it back. The price posted is taken from the two sources on the execution day, when the plan is regenerated; the prices above are those of ${plan.date}.`);
+  }
 }
 lines.push('');
 lines.push('## What leaves');

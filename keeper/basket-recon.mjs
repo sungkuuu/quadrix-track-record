@@ -1,8 +1,10 @@
 /**
  * Basket reconstitution executor — runs one plan (keeper/basket-plan.mjs)
- * against a QuadrixBasketVault v3.1, one stage at a time.
+ * against a QuadrixBasketVault, one stage at a time.
  *
- *   announce      owner: announceRegistryChange(adds, removes, decisionSha256)
+ *   announce      owner: announceRegistryChange(adds, removes, decisionSha256),
+ *                 or (adds, addRefPrices, removes, decisionSha256) on a
+ *                 priced-adds vault
  *   execute       anyone: executeRegistryChange(same tuple) once the 7 days ran
  *   first-prices  keeper: the first setRefPrice for every added asset
  *   auctions      keeper opens, the bidder fills, until every traded name is
@@ -45,6 +47,17 @@
  *     the day's market price — re-mark with the daily keeper first; and
  *     refuses to trade when a chain reference is no longer the one the plan
  *     sized its amounts at (chainRefAtPlan) — regenerate the plan.
+ * Two vault shapes (basket-plan.mjs ANNOUNCE_ABI): the shape is read from
+ * the vault's code at start and must equal the plan's vaultAbi. On an
+ * unpriced-adds vault (the baskets deployed before the hardening of
+ * 2026-10-01) an add enters unpriced and first-prices makes its band-free
+ * first post. On a priced-adds vault the announcement commits each add's
+ * first reference (the plan's addRefPrices), so the two-source gate runs at
+ * announce — which also requires a plan made today and adds and removes in
+ * ascending address order — and first-prices posts today's price as an
+ * ordinary in-band post (±15% of the committed one; refused outside it,
+ * checked by day7 before execute); until that post the add's reference has
+ * never been refreshed, and the auctions stage refuses to start.
  * Fills are taken at the curve's fair point by default (--fill fair: factor
  * 10,000 ≤ f ≤ 10,010, so lossAtRef is 0 and share value is unchanged);
  * --fill open takes the +2% start (a gift to holders); --fill natural fills
@@ -111,6 +124,7 @@ import {
   INDEXES, GIWA_RPC, GIWA_CHAIN_ID, VAULT_ABI, ERC20_ABI, DECISIONS_LEDGER,
   chainFor, isLocalRpc, sleep, makeReader, readVault, toRefPrice, bpsDiff, sha256,
   loadDecisions, loadPlan, savePlan, latestPlan, computeTrades,
+  detectVaultAbi, vaultAbiFor, byAddress, REF_BAND_BPS, MAX_REF_PRICE,
 } from './basket-plan.mjs';
 import { retryRead, latestReader, pinnedReader, blockAtLeast, notYetReason, eventsIn, ReadTimeout } from './readback.mjs';
 
@@ -129,6 +143,8 @@ export const MAX_DRAIN_ATTEMPTS = 5;
 const GAS = {
   post: 120_000n,
   announce: (k) => 150_000n + 45_000n * BigInt(k),
+  // priced-adds: each add also costs a balanceOf call and a refPrice write.
+  announcePriced: (adds, removes) => 150_000n + 80_000n * BigInt(adds) + 45_000n * BigInt(removes),
   execute: (k) => 120_000n + 60_000n * BigInt(k),
   openAuction: 220_000n,
   fill: (n) => 260_000n + 12_000n * BigInt(n),
@@ -251,7 +267,26 @@ async function makeCtx(o) {
   log(`${mode}; rpc ${o.rpc}; plan ${path.relative(ROOT, planFile)} (${plan.date}, ${plan.adds.length} add, ${plan.removes.length} remove, ${plan.trades.length} auction); keeper/owner signer ${keeperAddr}; bidder ${bidderAddr}; fill ${o.fill}`);
   // floor: the highest receipt block this run has seen (or this plan's
   // "sent" list records); every read after it is made at a block ≥ floor.
-  return { o, log, plan, planFile, reader, pc: reader.publicClient, devNode, keeperAddr, keeperWallet, bidderAddr, bidderWallet, live: o.live, hook, pendingThisRun: new Set(), floor: 0n, receipts: new Map(), events: null };
+  const ctx = { o, log, plan, planFile, reader, pc: reader.publicClient, devNode, keeperAddr, keeperWallet, bidderAddr, bidderWallet, live: o.live, hook, pendingThisRun: new Set(), floor: 0n, receipts: new Map(), events: null };
+  log(`vault shape ${await vaultShape(ctx)} (read from the vault's code; the plan says ${plan.vaultAbi ?? 'nothing — made before the shape was recorded: unpriced-adds'})`);
+  return ctx;
+}
+
+/**
+ * The vault's announce shape (basket-plan.mjs ANNOUNCE_ABI), read once from
+ * its code and kept on the context. A plan records the shape it was made for
+ * (plan.vaultAbi; a plan without it predates the field and was made for an
+ * unpriced-adds vault): a plan for the other shape is refused — its tuple,
+ * its first prices and its stages assume the other contract.
+ */
+export async function vaultShape(ctx) {
+  if (ctx.vaultAbi) return ctx.vaultAbi;
+  let shape;
+  try { shape = await detectVaultAbi(ctx.pc, ctx.plan.vault); } catch (e) { throw new Refused(e.message); }
+  const planned = ctx.plan.vaultAbi ?? 'unpriced-adds';
+  if (shape !== planned) throw new Refused(`the vault at ${ctx.plan.vault} is a ${shape} vault (read from its code) but the plan was made for ${planned}${ctx.plan.vaultAbi ? '' : ' (no vaultAbi in the plan: made before the shape was recorded)'} — regenerate the plan (keeper/basket-plan.mjs) against this vault`);
+  ctx.vaultAbi = shape;
+  return shape;
 }
 
 // -------------------------------------------------------------- sending
@@ -527,7 +562,35 @@ function tuple(plan) {
     const why = plan.notes.find((n) => /^(announce tuple|nothing to announce)/.test(n)) ?? "adds' addresses or decisionSha256 missing";
     throw new Refused(`the plan has no complete announce tuple — ${why}`);
   }
-  return { adds: t.adds.map((a) => getAddress(a)), removes: t.removes.map((a) => getAddress(a)), sha: t.decisionSha256 };
+  return {
+    adds: t.adds.map((a) => getAddress(a)), removes: t.removes.map((a) => getAddress(a)), sha: t.decisionSha256,
+    // priced-adds only: the first reference each add is announced with.
+    prices: Array.isArray(t.addRefPrices) ? t.addRefPrices.map((x) => big(x)) : null,
+  };
+}
+
+/**
+ * priced-adds: what the contract would refuse in a tuple — a price list that
+ * is not one positive price ≤ MAX_REF_PRICE per add, adds or removes not in
+ * strictly ascending address order (NotAscending) — and an add whose price is
+ * not the plan's firstRefPrice for it. Pure; [] when the tuple is fine.
+ */
+export function pricedTupleProblems(t, adds) {
+  const out = [];
+  if (!t.prices) return ['no addRefPrices in the tuple — the plan was made for an unpriced-adds vault; regenerate it'];
+  if (t.prices.length !== t.adds.length) out.push(`${t.prices.length} addRefPrices for ${t.adds.length} adds (LengthMismatch)`);
+  const ascending = (xs) => xs.every((x, i) => i === 0 || byAddress(xs[i - 1], x) < 0);
+  if (!ascending(t.adds)) out.push('adds not in strictly ascending address order (NotAscending)');
+  if (!ascending(t.removes)) out.push('removes not in strictly ascending address order (NotAscending)');
+  t.adds.forEach((a, i) => {
+    const p = t.prices[i];
+    if (p == null) return;
+    const add = adds.find((x) => x.address && getAddress(x.address) === a);
+    const sym = add?.symbol ?? a;
+    if (!(p > 0n) || p > MAX_REF_PRICE) out.push(`${sym}: addRefPrice ${p} outside (0, 1e30] (PriceOutOfRange)`);
+    if (add && big(add.firstRefPrice) !== p) out.push(`${sym}: addRefPrice ${p} != the plan's firstRefPrice ${add.firstRefPrice}`);
+  });
+  return out;
 }
 
 /** The ledger entry for the plan's sha, which must be THIS basket's decision:
@@ -644,6 +707,15 @@ async function requireStagesWouldStart(ctx, v) {
     const why = firstPriceRefusal(add, i >= 0 ? Number(decs[i]) : null, o);
     if (why) throw stop(why);
   }
+  // priced-adds: the first post after execute is banded against the price
+  // committed at the announcement (readable on chain while pending).
+  if (withAddress.length && (await vaultShape(ctx)) === 'priced-adds') {
+    const committed = await batchNow(ctx, 'committed first references', withAddress.map((a) => ({ address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [a.address] })));
+    withAddress.forEach((add, i) => {
+      const why = committedPostRefusal(add, committed[i], committedRefOf(plan, add));
+      if (why) throw stop(why);
+    });
+  }
 }
 
 /** References must be today's marks: this script never moves one. A chain
@@ -676,7 +748,7 @@ async function assetIndex(ctx, v) {
 
 // ================================================================ announce
 export async function stageAnnounce(ctx) {
-  const { plan, log } = ctx;
+  const { plan, log, o } = ctx;
   const t = tuple(plan);
   // An empty tuple is a valid call for the contract, and it would lock this
   // vault's auctions for REGISTRY_DELAY. A weight-only plan trades, it does
@@ -695,6 +767,7 @@ export async function stageAnnounce(ctx) {
   if (fs.existsSync(onDisk) && sha256(fs.readFileSync(onDisk)) !== sha) throw new Refused(`${entry.file} on disk does not hash to the anchored ${sha.slice(0, 12)}… — the document was edited after anchoring`);
   log(`decision ${entry.id} anchored in ${entry.txHash} (${entry.anchoredAt})`);
 
+  const shape = await vaultShape(ctx);
   const expectedHash = tupleHash(t);
   const v = await vaultNow(ctx);
   if (v.pendingRegistryChange !== ZERO32) {
@@ -733,8 +806,24 @@ export async function stageAnnounce(ctx) {
     log(`  remove ${rem.symbol.padEnd(7)} ${a} ${sym} (balance ${rem.balance})`);
   });
   log(`checks: no duplicate address in adds or removes, none in both; every chain symbol is m{SYMBOL} (${t.adds.length} add, ${t.removes.length} remove)`);
+  if (shape === 'priced-adds') {
+    // The announcement commits each add's first reference: the gate the
+    // first-prices stage applies on an unpriced-adds vault applies here, to
+    // today's plan.
+    const problems2 = pricedTupleProblems(t, plan.adds);
+    if (problems2.length) throw new Refused(`${problems2.join('; ')} — refused before anything is sent`);
+    if (!(plan.date === todayUTC() || o.allowPlanDate)) throw new Refused(`plan ${plan.date} was not generated today (${todayUTC()}) — on this vault the announcement commits each add's first reference from the plan's two sources; regenerate the plan with the decision today (or pass --allow-plan-date for a rehearsal)`);
+    t.adds.forEach((a, i) => {
+      const add = plan.adds.find((x) => x.address && getAddress(x.address) === a);
+      const why = firstPriceRefusal(add, Number(reads[i * 3 + 1]), o);
+      if (why) throw new Refused(`${why} — on this vault the first reference is committed at the announcement`);
+    });
+    log(`priced-adds: committing first references ${t.adds.map((a, i) => `${plan.adds.find((x) => x.address && getAddress(x.address) === a).symbol} ${t.prices[i]}`).join(', ')} (each = the plan's firstRefPrice, two sources within ${pct(o.firstPriceTol)}); adds and removes in ascending address order`);
+  }
   log(`tuple keccak ${expectedHash}; eta would be now + ${Number(v.registryDelay) / 86400} days`);
-  const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'announceRegistryChange', args: [t.adds, t.removes, t.sha], gas: GAS.announce(t.adds.length + t.removes.length), what: 'announce' });
+  const args = shape === 'priced-adds' ? [t.adds, t.prices, t.removes, t.sha] : [t.adds, t.removes, t.sha];
+  const gas = shape === 'priced-adds' ? GAS.announcePriced(t.adds.length, t.removes.length) : GAS.announce(t.adds.length + t.removes.length);
+  const r = await call(ctx, { who: 'keeper', to: plan.vault, abi: vaultAbiFor(shape), functionName: 'announceRegistryChange', args, gas, what: 'announce' });
   if (r.dry) return;
   // Recorded from the receipt alone: the RegistryChangeAnnounced event
   // carries the tuple (whose keccak IS pendingRegistryChange) and the eta;
@@ -742,14 +831,17 @@ export async function stageAnnounce(ctx) {
   const ev = eventsIn(r.receipt, VAULT_ABI, 'RegistryChangeAnnounced', plan.vault)[0]?.args;
   const pendingHash = ev ? tupleHashOf(ev) : expectedHash;
   const eta = ev ? ev.eta : null;
-  plan.announce = announceRecord({ txHash: r.hash, block: r.receipt.blockNumber, at: r.blockTimestamp ?? (eta != null ? eta - v.registryDelay : null), eta, pendingHash, t, entry, signer: ctx.keeperAddr });
+  // priced-adds: the committed prices as the event carries them.
+  const tRec = ev?.addRefPrices ? { ...t, prices: [...ev.addRefPrices] } : t;
+  plan.announce = announceRecord({ txHash: r.hash, block: r.receipt.blockNumber, at: r.blockTimestamp ?? (eta != null ? eta - v.registryDelay : null), eta, pendingHash, t: tRec, entry, signer: ctx.keeperAddr });
   plan.announceTuple = plan.announce.tuple;
   savePlan(ctx.planFile, plan);
   log(`announced; recorded in the plan from the receipt (pending ${pendingHash}, eta ${eta != null ? iso(eta) : 'not in the receipt'})`);
   // Then the check, at the receipt's block (exact).
-  const [pending, etaOnChain] = await batchNow(ctx, 'pending change after announce', [
+  const [pending, etaOnChain, ...committed] = await batchNow(ctx, 'pending change after announce', [
     { address: plan.vault, abi: VAULT_ABI, functionName: 'pendingRegistryChange' },
     { address: plan.vault, abi: VAULT_ABI, functionName: 'pendingRegistryEta' },
+    ...(shape === 'priced-adds' ? t.adds.map((a) => ({ address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [a] })) : []),
   ], r.receipt.blockNumber);
   if (eta == null) {
     plan.announce = announceRecord({ ...plan.announce, block: r.receipt.blockNumber, at: r.blockTimestamp ?? etaOnChain - v.registryDelay, eta: etaOnChain, pendingHash: pending, t, entry, signer: ctx.keeperAddr, txHash: r.hash });
@@ -758,6 +850,7 @@ export async function stageAnnounce(ctx) {
   }
   if (pending.toLowerCase() !== expectedHash.toLowerCase()) throw new Error(`announced hash ${pending} != expected ${expectedHash} (block ${r.receipt.blockNumber})`);
   if (etaOnChain !== BigInt(plan.announce.eta)) throw new Error(`pendingRegistryEta ${etaOnChain} at block ${r.receipt.blockNumber} != the event's ${plan.announce.eta}`);
+  committed.forEach((c, i) => { if (c !== t.prices[i]) throw new Error(`refPrice(${t.adds[i]}) reads ${c} at block ${r.receipt.blockNumber}, the announcement committed ${t.prices[i]}`); });
   log(`announced; execute on or after ${iso(etaOnChain)}; plan updated`);
 }
 
@@ -767,7 +860,7 @@ function announceRecord({ txHash, block, at, eta, pendingHash, t, entry, signer,
   return {
     txHash, block, at: at == null ? null : (typeof at === 'string' ? at : iso(at)),
     eta: eta == null ? null : eta.toString(), etaIso: eta == null ? null : iso(eta), pendingHash,
-    tuple: { adds: t.adds, removes: t.removes, decisionSha256: t.sha }, decisionId: entry.id, signer,
+    tuple: { adds: t.adds, ...(t.prices ? { addRefPrices: t.prices } : {}), removes: t.removes, decisionSha256: t.sha }, decisionId: entry.id, signer,
     ...(adopted ? { adopted: true } : {}), ...(note ? { note } : {}),
   };
 }
@@ -783,21 +876,27 @@ function announceRecord({ txHash, block, at, eta, pendingHash, t, entry, signer,
  * plan's block; `at` is eta − REGISTRY_DELAY, the announce block's time by
  * construction (eta = block.timestamp + REGISTRY_DELAY).
  */
-async function adoptAnnounce(ctx, { t, v, entry, expectedHash }) {
+async function adoptAnnounce(ctx, { t: t0, v, entry, expectedHash }) {
+  let t = t0;
   const { plan, log } = ctx;
   let txHash = null;
   let block = null;
   let how;
+  let evArgs = null;
   const fromSent = (await sentReceipts(ctx, /^announce$/)).map(({ receipt }) => ({ receipt, ev: eventsIn(receipt, VAULT_ABI, 'RegistryChangeAnnounced', plan.vault)[0]?.args }))
     .filter((x) => x.ev && tupleHashOf(x.ev) === expectedHash.toLowerCase() && x.ev.eta === v.pendingRegistryEta).at(-1);
   if (fromSent) {
     txHash = fromSent.receipt.transactionHash;
     block = fromSent.receipt.blockNumber;
     how = "the plan's own sent list";
+    evArgs = fromSent.ev;
   } else {
     const hit = (await vaultEvents(ctx, ['RegistryChangeAnnounced'])).filter((e) => tupleHashOf(e.args) === expectedHash.toLowerCase() && e.args.eta === v.pendingRegistryEta).at(-1);
-    if (hit) { txHash = hit.transactionHash; block = hit.blockNumber; how = 'the RegistryChangeAnnounced log'; }
+    if (hit) { txHash = hit.transactionHash; block = hit.blockNumber; how = 'the RegistryChangeAnnounced log'; evArgs = hit.args; }
   }
+  // priced-adds: the prices the chain committed (the pending hash does not
+  // cover them), from the event when it was found.
+  if (evArgs?.addRefPrices) t = { ...t, prices: [...evArgs.addRefPrices] };
   let signer = v.owner; // announceRegistryChange is onlyOwner
   if (txHash) {
     const tx = await retryRead(() => ctx.pc.getTransaction({ hash: txHash }), { what: `tx ${txHash}` }).then((x) => x.value).catch(() => null);
@@ -878,7 +977,7 @@ export async function stageExecute(ctx) {
   savePlan(ctx.planFile, plan);
   if (after.assetCount !== v.assetCount + t.adds.length) throw new Error(`assetCount ${after.assetCount} after execute (block ${r.receipt.blockNumber}), expected ${v.assetCount + t.adds.length}`);
   for (const a of t.removes) if (!after.assets.find((x) => x.address === a)?.inRemoval) throw new Error(`${a} not flagged inRemoval after execute (block ${r.receipt.blockNumber})`);
-  log(`executed; ${after.assetCount} assets; every fill on this vault is closed until first-prices runs (portfolioValueAtRef reverts PriceUnset)`);
+  log(`executed; ${after.assetCount} assets; ${(await vaultShape(ctx)) === 'priced-adds' ? 'the adds hold the references committed at the announcement and have never been posted (fills on them revert RefPriceStale) until first-prices runs' : 'every fill on this vault is closed until first-prices runs (portfolioValueAtRef reverts PriceUnset)'}`);
 }
 
 // ============================================================ first-prices
@@ -906,11 +1005,40 @@ async function adoptFirstPrice(ctx, add, target, on) {
 export function firstPriceRefusal(add, onchainDecimals, o) {
   if (!add.address) return `${add.symbol}: no mock address in the plan`;
   if (onchainDecimals !== add.decimals) return `${add.symbol}: ${onchainDecimals} decimals on chain, plan says ${add.decimals}`;
-  if (!(add.priceB > 0)) return `${add.symbol}: no second-source price — a band-free first post needs two independent sources`;
+  if (!(add.priceB > 0)) return `${add.symbol}: no second-source price — a first reference needs two independent sources`;
   const diff = Math.abs(add.priceA - add.priceB) / add.priceA;
   if (diff > o.firstPriceTol) return `${add.symbol}: sources disagree by ${pct(diff)} (A ${add.priceA}, B ${add.priceB}) > ${pct(o.firstPriceTol)}`;
   const target = toRefPrice(add.priceA, add.decimals);
   if (target !== big(add.firstRefPrice)) return `${add.symbol}: plan firstRefPrice ${add.firstRefPrice} != toRefPrice(${add.priceA}, ${add.decimals}) = ${target}`;
+  return null;
+}
+
+/** priced-adds: the first reference the announcement committed for `add`, as
+ *  the plan records it (the announced tuple, else adds[].committedRefPrice
+ *  read by the planner), or null. */
+export function committedRefOf(plan, add) {
+  const t = plan.announce?.tuple ?? plan.announceTuple;
+  if (t?.addRefPrices && add.address) {
+    const k = t.adds.findIndex((a) => String(a).toLowerCase() === String(add.address).toLowerCase());
+    if (k >= 0 && t.addRefPrices[k] != null) return big(t.addRefPrices[k]);
+  }
+  return add.committedRefPrice != null ? big(add.committedRefPrice) : null;
+}
+
+/**
+ * priced-adds: why the first post of `add` after execute cannot be made —
+ * `onChain` is the add's reference on chain before that post (the committed
+ * one), `committed` what the plan recorded the announcement committing — or
+ * null. The post is today's toRefPrice(priceA) and the contract bands it
+ * against the reference on chain (REF_BAND_BPS), so outside the band it
+ * reverts with the registry already changed. Pure.
+ */
+export function committedPostRefusal(add, onChain, committed) {
+  if (!(onChain > 0n)) return `${add.symbol}: no committed first reference on chain (refPrice ${onChain})`;
+  if (committed != null && onChain !== committed) return `${add.symbol}: reference on chain ${onChain} is not the ${committed} the announcement committed (as the plan records it) — regenerate the plan`;
+  const target = toRefPrice(add.priceA, add.decimals);
+  const span = (onChain * REF_BAND_BPS) / 10_000n;
+  if (target > onChain + span || target < onChain - span) return `${add.symbol}: today's first reference ${target} is ${pct(Math.abs(Number(target - onChain)) / Number(onChain))} from the ${onChain} committed at the announcement, outside the contract's ±${Number(REF_BAND_BPS) / 100}% band — the post after execute would revert NavMoveTooLarge; only a new announcement (7 more days) changes a committed price`;
   return null;
 }
 
@@ -921,7 +1049,8 @@ export async function stageFirstPrices(ctx) {
   if (v.pendingRegistryChange !== ZERO32) throw new Refused('a registry change is still pending — execute first');
   if (ctx.keeperAddr !== v.keeper) throw new Refused(`setRefPrice is keeper-only; keeper is ${v.keeper}, signer is ${ctx.keeperAddr}`);
   if (plan.adds.length === 0) { log('no adds in the plan — nothing to post'); return; }
-  const bandBps = 1_500n;
+  const shape = await vaultShape(ctx);
+  const bandBps = REF_BAND_BPS;
   for (const add of plan.adds) {
     if (!add.address) throw new Refused(`${add.symbol}: no mock address in the plan`);
     const on = v.assets.find((x) => x.address === add.address);
@@ -929,17 +1058,24 @@ export async function stageFirstPrices(ctx) {
     const why = firstPriceRefusal(add, on.decimals, o);
     if (why) throw new Refused(why);
     const target = toRefPrice(add.priceA, add.decimals);
-    if (on.refPrice === target) {
+    // priced-adds: an add that entered at its committed price and has not
+    // been posted since (refPriceUpdatedAt 0) is posted even when today's
+    // price equals the committed one — the post is what makes it fresh.
+    const committedOnly = shape === 'priced-adds' && on.refPriceUpdatedAt === 0n;
+    if (committedOnly) {
+      const why2 = committedPostRefusal(add, on.refPrice, committedRefOf(plan, add));
+      if (why2) throw new Refused(why2);
+      log(`  ${add.symbol}: entered at the reference committed at the announcement (${on.refPrice}); ${target} is inside the band — posting`);
+    } else if (on.refPrice === target) {
       if (!plan.firstPrices.some((f) => getAddress(f.address) === getAddress(add.address))) { await adoptFirstPrice(ctx, add, target, on); continue; }
       log(`  ${add.symbol}: reference already ${target} — skipped`);
       continue;
-    }
-    if (on.refPrice !== 0n) {
+    } else if (on.refPrice !== 0n) {
       const span = (on.refPrice * bandBps) / 10_000n;
       if (target > on.refPrice + span || target < on.refPrice - span) throw new Refused(`${add.symbol}: reference is already set (${on.refPrice}) and ${target} is outside the ±15% band — the daily mark steps references, this stage does not`);
       log(`  ${add.symbol}: reference already set (${on.refPrice}); ${target} is inside the band — posting`);
     }
-    log(`  ${add.symbol}: first post ${target} = $${add.priceA} at ${add.decimals} dec (B $${add.priceB}, ${add.disagreementBps} bp apart); ${on.refPrice === 0n ? 'BAND-FREE first post' : 'in-band post'}`);
+    log(`  ${add.symbol}: first post ${target} = $${add.priceA} at ${add.decimals} dec (B $${add.priceB}, ${add.disagreementBps} bp apart); ${on.refPrice === 0n ? 'BAND-FREE first post' : committedOnly ? 'in-band of the committed reference' : 'in-band post'}`);
     const r = await call(ctx, { who: 'keeper', to: plan.vault, functionName: 'setRefPrice', args: [add.address, target], gas: GAS.post, what: `first price ${add.symbol}` });
     if (r.dry) continue;
     plan.firstPrices.push({ symbol: add.symbol, address: add.address, price: target.toString(), priceA: add.priceA, priceB: add.priceB, txHash: r.hash, at: isoOrNull(r.blockTimestamp) });
@@ -1447,6 +1583,14 @@ export async function stageAuctions(ctx) {
   if (ctx.keeperAddr !== v.keeper) throw new Refused(`openAuction/setRefPrice are keeper-only; keeper is ${v.keeper}, signer is ${ctx.keeperAddr}`);
   const unpriced = v.assets.filter((a) => a.refPrice === 0n);
   if (unpriced.length) throw new Refused(`unpriced registry assets ${unpriced.map((a) => a.address).join(', ')} — every fill reverts PriceUnset until first-prices runs`);
+  // priced-adds: an asset that entered at its committed price and was never
+  // posted since would be refreshed at that price by a same-value re-post
+  // below — not at today's first reference the plan sized the auctions with.
+  if ((await vaultShape(ctx)) === 'priced-adds') {
+    const unposted = v.assets.filter((a) => a.refPriceUpdatedAt === 0n);
+    const symOf = (a) => [...plan.adds, ...plan.registry].find((x) => x.address && getAddress(x.address) === a.address)?.symbol ?? a.address;
+    if (unposted.length) throw new Refused(`never posted since admission (committed price only): ${unposted.map(symOf).join(', ')} — run first-prices for the plan's adds (the daily mark posts the others) before trading`);
+  }
   if (!v.biddingOpen) {
     const isB = await readNow(ctx, 'isBidder', { address: plan.vault, abi: VAULT_ABI, functionName: 'isBidder', args: [ctx.bidderAddr] });
     if (!isB) throw new Refused(`bidder ${ctx.bidderAddr} is not whitelisted (isBidder false, biddingOpen false) — owner setBidder first`);
@@ -1545,6 +1689,7 @@ export async function stageVerify(ctx) {
     const on = a.address ? v.assets.find((x) => x.address === a.address) : null;
     check(!!on, `${a.symbol} is in the registry`);
     if (on) check(on.refPrice !== 0n, `${a.symbol} has a reference (${on.refPrice}, age ${Number(v.block.timestamp - on.refPriceUpdatedAt)} s)`);
+    if (on && (await vaultShape(ctx)) === 'priced-adds') check(on.refPriceUpdatedAt !== 0n, `${a.symbol} reference posted since admission (not only the committed price)`);
     if (on) check(on.decimals === a.decimals, `${a.symbol} decimals ${on.decimals} == plan ${a.decimals}`);
   }
   for (const r of plan.removes) {

@@ -96,7 +96,7 @@ import {
 } from 'viem';
 import {
   TICKER, GIWA_RPC, GIWA_CHAIN_ID, VAULT_ABI, ERC20_ABI, SLEEVE_INDEXES,
-  chainFor, makeReader, readVault, toRefPrice, decimalsByPrice, sha256, loadPlan, savePlan,
+  chainFor, makeReader, readVault, toRefPrice, decimalsByPrice, sha256, loadPlan, savePlan, detectVaultAbi,
 } from './basket-plan.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -832,12 +832,22 @@ async function registryChangeFlow(o, env, chain, cb, { index, standIns, shape, e
   check(`execute: assetCount ${v0.assetCount} → ${v.assetCount}, adds appended in tuple order, removes flagged inRemoval`,
     v.assetCount === v0.assetCount + t.adds.length && v.assets.map((a) => a.address).join() === orderAfterExecute.join() && t.removes.every((a) => v.assets.find((x) => x.address === getAddress(a))?.inRemoval),
     v.assets.map((a) => ctx.sym(a.address)).join(' '));
-  const pvErr = await chain.expectRevert(DEV.holder, { address: ctx.vault, functionName: 'portfolioValueAtRef' });
-  check('after execute: portfolioValueAtRef reverts PriceUnset (fills closed) while redeem still works', pvErr === 'PriceUnset', `reverts ${pvErr}`);
+  // The two vault shapes differ here: an unpriced-adds vault (the deployed
+  // baskets) has the adds unpriced, a priced-adds vault has them at the
+  // price committed at the announcement, never posted.
+  const vaultShape = await detectVaultAbi(chain.pc, ctx.vault);
+  if (vaultShape === 'priced-adds') {
+    const committed = (loadPlan(planFile).announce?.tuple?.addRefPrices ?? []).map((x) => BigInt(x));
+    const ok = t.adds.every((a, i) => { const on = v.assets.find((x) => x.address === getAddress(a)); return on && on.refPrice === committed[i] && on.refPriceUpdatedAt === 0n; });
+    check('after execute (priced-adds): each add holds the price committed at the announcement, never posted', ok && committed.length === t.adds.length, t.adds.map((a, i) => `${ctx.sym(a)} ${committed[i]}`).join(', '));
+  } else {
+    const pvErr = await chain.expectRevert(DEV.holder, { address: ctx.vault, functionName: 'portfolioValueAtRef' });
+    check('after execute: portfolioValueAtRef reverts PriceUnset (fills closed) while redeem still works', pvErr === 'PriceUnset', `reverts ${pvErr}`);
+  }
   const R2 = await redeemCheck(chain, ctx, 'after execute, before first prices');
   await createCheck(chain, ctx, 'after execute', { oldLength: v0.assetCount });
   r = runScript(env, 'basket-recon.mjs', recon('auctions', [...live, '--bidder', DEV.bidder, '--warp']), 'auctions before first prices');
-  check('auctions refuse while an added asset is unpriced', refused(r, /unpriced registry assets/));
+  check(vaultShape === 'priced-adds' ? 'auctions refuse while an added asset has only its committed price (never posted)' : 'auctions refuse while an added asset is unpriced', refused(r, vaultShape === 'priced-adds' ? /never posted since admission/ : /unpriced registry assets/));
 
   // ---- first prices: the two-source gate, then the posts
   const badPlan = path.join(env.work, 'scenarios', `${CURRENT}-plan-priceB-off.json`);

@@ -10,9 +10,15 @@
  *   'empty'    — eth_call answers "0x" (viem: returned no data);
  *   'notfound' — every read errors "header not found" / BlockNotFound.
  * Only what keeper/basket-recon.mjs and keeper/set-bidder.mjs call is modelled.
+ *
+ * `shape` picks the vault's announce shape (basket-plan.mjs ANNOUNCE_ABI):
+ * 'unpriced-adds' (default; the deployed index baskets) or 'priced-adds'
+ * (the hardened source: announce takes addRefPrices and writes them,
+ * adds/removes strictly ascending, every setRefPrice banded). getCode answers
+ * a stand-in code carrying that shape's selector and event topic.
  */
 import { encodeEventTopics, encodeAbiParameters, getAddress, keccak256, toHex, maxUint256, BlockNotFoundError } from 'viem';
-import { VAULT_ABI } from '../basket-plan.mjs';
+import { VAULT_ABI, SHAPE_MARKERS } from '../basket-plan.mjs';
 
 export const ZERO32 = `0x${'0'.repeat(64)}`;
 const EVENTS = [...VAULT_ABI.filter((x) => x.type === 'event'), { type: 'event', name: 'AuctionCancelled', inputs: [{ type: 'uint256', name: 'id', indexed: true }] }];
@@ -43,8 +49,10 @@ function revert(reason) {
 const VOID_FUNCTIONS = new Set(['setRefPrice', 'cancelAuction', 'finalizeRemoval', 'executeRegistryChange', 'announceRegistryChange', 'faucet', 'setNav']);
 
 export class FakeChain {
-  constructor({ vault, owner, keeper = owner, assets = [], t0 = 1_790_000_000n, startBlock = 1000n } = {}) {
+  constructor({ vault, owner, keeper = owner, assets = [], t0 = 1_790_000_000n, startBlock = 1000n, shape = 'unpriced-adds' } = {}) {
     this.vault = getAddress(vault);
+    if (!SHAPE_MARKERS[shape]) throw new Error(`fake vault: unknown shape ${shape}`);
+    this.shape = shape;
     this.blocks = []; // [{ number, timestamp, state, txs }]
     this.receipts = new Map();
     this.txs = new Map();
@@ -163,8 +171,16 @@ export class FakeChain {
   tupleHash(adds, removes, sha) {
     return keccak256(encodeAbiParameters([{ type: 'address[]' }, { type: 'address[]' }, { type: 'bytes32' }], [adds, removes, sha]));
   }
+  /** Stand-in runtime code: PUSH4 <announce selector> … PUSH32 <announced topic> of this vault's shape. */
+  code() {
+    const m = SHAPE_MARKERS[this.shape];
+    return `0x6080604052${'63'}${m.selector.slice(2)}5b${'7f'}${m.topic.slice(2)}00`;
+  }
   log(eventName, args, address = this.vault) {
-    const ev = EVENTS.find((x) => x.name === eventName);
+    // Two RegistryChangeAnnounced shapes: the one whose inputs are the args given.
+    const keys = Object.keys(args).sort().join();
+    const evs = EVENTS.filter((x) => x.name === eventName);
+    const ev = evs.find((x) => x.inputs.map((i) => i.name).sort().join() === keys) ?? evs[0];
     const topics = encodeEventTopics({ abi: [ev], eventName, args });
     const nonIdx = ev.inputs.filter((i) => !i.indexed);
     const data = encodeAbiParameters(nonIdx, nonIdx.map((i) => args[i.name]));
@@ -183,6 +199,24 @@ export class FakeChain {
     switch (functionName) {
       case 'announceRegistryChange': {
         if (f !== st.owner) throw revert('OwnableUnauthorizedAccount');
+        if (this.shape === 'priced-adds') {
+          if (args.length !== 4) throw revert('fake vault: priced-adds announce takes (adds, addRefPrices, removes, sha)');
+          const [adds, prices, removes, sha] = args;
+          if (prices.length !== adds.length) throw revert('LengthMismatch');
+          const asc = (xs, i) => i === 0 || BigInt(xs[i]) > BigInt(xs[i - 1]);
+          adds.forEach((x, i) => {
+            if (!asc(adds, i)) throw revert('NotAscending');
+            if (isReg(x)) throw revert('AlreadyRegistryAsset');
+            if (prices[i] === 0n || prices[i] > 10n ** 30n) throw revert('PriceOutOfRange');
+            if (!(lc(x) in st.decimals)) throw revert('balanceOf'); // the admission check calls balanceOf
+            st.refPrice[lc(x)] = prices[i];
+          });
+          removes.forEach((x, i) => { if (!asc(removes, i)) throw revert('NotAscending'); if (!isReg(x)) throw revert('NotRegistryAsset'); if (st.inRemoval[lc(x)]) throw revert('AssetInRemoval'); });
+          st.pending = this.tupleHash(adds, removes, sha);
+          st.eta = blk.timestamp + st.registryDelay;
+          return [this.log('RegistryChangeAnnounced', { adds, addRefPrices: prices, removes, decisionSha256: sha, eta: st.eta })];
+        }
+        if (args.length !== 3) throw revert('fake vault: unpriced-adds announce takes (adds, removes, sha)');
         const [adds, removes, sha] = args;
         for (const x of adds) if (isReg(x)) throw revert('AlreadyRegistryAsset');
         for (const x of removes) { if (!isReg(x)) throw revert('NotRegistryAsset'); if (st.inRemoval[lc(x)]) throw revert('AssetInRemoval'); }
@@ -196,7 +230,8 @@ export class FakeChain {
         if (blk.timestamp < st.eta) throw revert('TimelockNotElapsed');
         if (this.tupleHash(adds, removes, sha) !== st.pending) throw revert('ChangeMismatch');
         st.pending = ZERO32; st.eta = 0n;
-        for (const x of adds) { st.registry.push(getAddress(x)); st.refPrice[lc(x)] = 0n; st.refAt[lc(x)] = 0n; }
+        // priced-adds: an add enters at the price committed at announce (never posted: refAt 0).
+        for (const x of adds) { st.registry.push(getAddress(x)); if (this.shape !== 'priced-adds') st.refPrice[lc(x)] = 0n; st.refAt[lc(x)] = 0n; }
         for (const x of removes) st.inRemoval[lc(x)] = true;
         return [this.log('RegistryChangeExecuted', { adds, removes, decisionSha256: sha })];
       }
@@ -205,6 +240,7 @@ export class FakeChain {
         const [x, p] = args;
         if (!isReg(x)) throw revert('NotRegistryAsset');
         const old = st.refPrice[lc(x)] ?? 0n;
+        if (this.shape === 'priced-adds' && (p === 0n || p > 10n ** 30n)) throw revert('PriceOutOfRange');
         if (old !== 0n) { const span = (old * 1500n) / 10_000n; if (p > old + span || p < old - span) throw revert('NavMoveTooLarge'); }
         st.refPrice[lc(x)] = p; st.refAt[lc(x)] = blk.timestamp;
         return [this.log('RefPricePosted', { asset: x, price: p })];
@@ -345,6 +381,10 @@ export class FakeChain {
       async getTransactionCount({ address, blockTag }) {
         const mined = self.sent.filter((x) => x.from.toLowerCase() === String(address).toLowerCase()).length;
         return blockTag === 'pending' ? mined + (self.inFlight[String(address).toLowerCase()] ?? 0) : mined;
+      },
+      async getCode({ address }) {
+        if (lc(address) === lc(self.vault)) return self.code();
+        return lc(address) in self.head.state.decimals ? '0x6080' : undefined;
       },
       async getTransaction({ hash }) { const t = self.txs.get(lc(hash)); if (!t) throw new Error('tx not found'); return t; },
       async getLogs({ address, fromBlock, toBlock, event }) {

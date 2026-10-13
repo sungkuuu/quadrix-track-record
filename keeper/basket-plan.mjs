@@ -64,6 +64,20 @@
  *                marked — only to resume a session whose registry change was
  *                executed but whose auctions did not finish (written to notes)
  *
+ * Two announce shapes are on chain (VAULT_ABI_SHAPES, read from the vault's
+ * code — detectVaultAbi): the baskets deployed before the hardening of
+ * 2026-10-01 announce (adds, removes, decisionSha256) and take an add's first
+ * reference with a band-free setRefPrice after execute ('unpriced-adds');
+ * a vault built from the hardened source announces (adds, addRefPrices,
+ * removes, decisionSha256), writes each add's first reference at the
+ * announcement and bands every later post against it, and wants adds and
+ * removes in ascending address order ('priced-adds'). For that shape the
+ * plan's announce tuple carries addRefPrices[i] = adds[i].firstRefPrice —
+ * toRefPrice(source A of the plan date, the deployed mock's decimals), the
+ * same number the two-source gate checks (|A − B| / A within
+ * policy.firstPriceTolBps) — so the gate moves from execute day to the
+ * announcement, and the plan records the shape as plan.vaultAbi.
+ *
  * The executor (keeper/basket-recon.mjs) imports the chain helpers exported
  * below; running this file directly writes the plan.
  */
@@ -71,7 +85,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { createPublicClient, http, defineChain, parseAbi, getAddress, isAddress } from 'viem';
+import { createPublicClient, http, defineChain, parseAbi, getAddress, isAddress, toFunctionSelector, toEventSelector } from 'viem';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -119,14 +133,18 @@ export const VAULT_ABI = parseAbi([
   'function CURVE_START_PREMIUM_BPS() view returns (uint256)',
   'function REGISTRY_DELAY() view returns (uint256)',
   'function setRefPrice(address asset, uint256 price)',
-  'function announceRegistryChange(address[] adds, address[] removes, bytes32 decisionSha256)',
+  // announceRegistryChange has two shapes on chain: see ANNOUNCE_ABI / vaultAbiFor.
   'function executeRegistryChange(address[] adds, address[] removes, bytes32 decisionSha256)',
   'function finalizeRemoval(address asset)',
   'function openAuction(address sellAsset, address buyAsset, uint256 sellAmount, uint64 duration) returns (uint256)',
   'function cancelAuction(uint256 id)',
   'function fill(uint256 id, uint256 sellTake) returns (uint256)',
   'function redeem(uint256 shares, address receiver) returns (uint256[])',
+  // Both shapes of the announcement event: a log decodes by its topic, so
+  // either vault's RegistryChangeAnnounced decodes with this ABI (the
+  // hardened one also carries addRefPrices).
   'event RegistryChangeAnnounced(address[] adds, address[] removes, bytes32 decisionSha256, uint256 eta)',
+  'event RegistryChangeAnnounced(address[] adds, uint256[] addRefPrices, address[] removes, bytes32 decisionSha256, uint256 eta)',
   'event RegistryChangeExecuted(address[] adds, address[] removes, bytes32 decisionSha256)',
   'event RemovalFinalized(address indexed asset)',
   'event RefPricePosted(address indexed asset, uint256 price)',
@@ -138,7 +156,115 @@ export const VAULT_ABI = parseAbi([
   'error DailyBudgetExceeded()', 'error NoPendingChange()', 'error TimelockNotElapsed()', 'error ChangeMismatch()',
   'error RemovalNotDrained()', 'error NotInRemoval()', 'error AuctionClosed()', 'error AuctionExpired()',
   'error RefPriceStale()', 'error OwnableUnauthorizedAccount(address account)',
+  'error NotAscending()', 'error PriceOutOfRange()',
 ]);
+
+/**
+ * The two shapes of announceRegistryChange on chain, keyed by what tells them
+ * apart: whether an add carries its first reference price.
+ *   'unpriced-adds' — the index baskets deployed before the hardening of
+ *       2026-10-01: announce(adds, removes, sha); an add enters unpriced and
+ *       its first setRefPrice after execute is band-free.
+ *   'priced-adds'   — a vault built from the hardened source:
+ *       announce(adds, addRefPrices, removes, sha); the announcement writes
+ *       refPrice[add] (readable for the whole notice), every setRefPrice is
+ *       banded against the previous price, prices lie in (0, MAX_REF_PRICE],
+ *       and adds and removes must each be in strictly ascending address
+ *       order (NotAscending).
+ * Both pin keccak(abi.encode(adds, removes, sha)) as pendingRegistryChange —
+ * the prices are not in the hash — and executeRegistryChange is the same.
+ */
+export const ANNOUNCE_ABI = {
+  'unpriced-adds': parseAbi([
+    'function announceRegistryChange(address[] adds, address[] removes, bytes32 decisionSha256)',
+    'event RegistryChangeAnnounced(address[] adds, address[] removes, bytes32 decisionSha256, uint256 eta)',
+  ]),
+  'priced-adds': parseAbi([
+    'function announceRegistryChange(address[] adds, uint256[] addRefPrices, address[] removes, bytes32 decisionSha256)',
+    'event RegistryChangeAnnounced(address[] adds, uint256[] addRefPrices, address[] removes, bytes32 decisionSha256, uint256 eta)',
+  ]),
+};
+export const VAULT_ABI_SHAPES = Object.keys(ANNOUNCE_ABI);
+/** The contract's NAV_BAND_BPS and MAX_REF_PRICE (constants of both shapes'
+ *  source; the band binds a priced-adds vault's first post after execute). */
+export const REF_BAND_BPS = 1_500n;
+export const MAX_REF_PRICE = 10n ** 30n;
+
+/** The selector and event topic that mark each shape in the deployed code:
+ *  the dispatcher compares the call's selector with a PUSH4 constant, and the
+ *  emit pushes the event's topic as a PUSH32. Measured on the six index
+ *  baskets deployed on GIWA Sepolia (unpriced-adds: both markers, none of
+ *  the other shape) and on the hardened build (priced-adds: the reverse). */
+export const SHAPE_MARKERS = Object.fromEntries(VAULT_ABI_SHAPES.map((k) => {
+  const fn = ANNOUNCE_ABI[k].find((x) => x.type === 'function');
+  const ev = ANNOUNCE_ABI[k].find((x) => x.type === 'event');
+  return [k, { selector: toFunctionSelector(fn), topic: toEventSelector(ev) }];
+}));
+
+/** The vault ABI for one shape: VAULT_ABI plus that shape's announce. */
+export function vaultAbiFor(shape) {
+  if (!ANNOUNCE_ABI[shape]) throw new Error(`unknown vault shape ${shape} (expected ${VAULT_ABI_SHAPES.join(' | ')})`);
+  return [...VAULT_ABI, ...ANNOUNCE_ABI[shape].filter((x) => x.type === 'function')];
+}
+
+/** The shape whose two markers the code carries — exactly one, else null. */
+export function vaultAbiFromCode(code) {
+  const c = String(code ?? '').toLowerCase();
+  const has = (k) => c.includes(`63${SHAPE_MARKERS[k].selector.slice(2)}`) && c.includes(`7f${SHAPE_MARKERS[k].topic.slice(2)}`);
+  const hits = VAULT_ABI_SHAPES.filter(has);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * Which announce shape the vault at `vault` has, from its code (one
+ * eth_getCode; the code of a deployed vault never changes). An empty answer —
+ * a lagging node right after a deploy — is asked again a few times. Throws
+ * when the code carries neither shape's markers or both: the tools refuse to
+ * guess a signature for a call that pins a decision on chain.
+ */
+export async function detectVaultAbi(publicClient, vault, { tries = 5, waitMs = 1000 } = {}) {
+  const addr = getAddress(vault);
+  for (let i = 1; ; i++) {
+    const code = await publicClient.getCode({ address: addr }).catch(() => undefined);
+    if (code && code !== '0x') {
+      const shape = vaultAbiFromCode(code);
+      if (!shape) {
+        const seen = VAULT_ABI_SHAPES.map((k) => `${k}: selector ${String(code).toLowerCase().includes(SHAPE_MARKERS[k].selector.slice(2)) ? 'found' : 'absent'}`).join(', ');
+        throw new Error(`${addr}: the code does not carry exactly one announce shape (${seen}) — not a QuadrixBasketVault this keeper knows; refusing to guess its announceRegistryChange signature`);
+      }
+      return shape;
+    }
+    if (i >= tries) throw new Error(`${addr}: no contract code (eth_getCode answered empty ${tries} time(s))`);
+    await sleep(waitMs);
+  }
+}
+
+const addrKey = (a) => BigInt(a);
+/** Ascending by address as uint160 (the contract's `adds[i] <= adds[i-1]` test). */
+export const byAddress = (a, b) => (addrKey(a) < addrKey(b) ? -1 : addrKey(a) > addrKey(b) ? 1 : 0);
+
+/**
+ * The announce tuple for a fresh announcement (nothing pending on chain).
+ * unpriced-adds: {adds, removes, decisionSha256} in the plan's order, as the
+ * deployed baskets have always been announced. priced-adds: adds sorted
+ * ascending by address with addRefPrices permuted alongside — addRefPrices[i]
+ * is that add's firstRefPrice (source A of the plan date at the mock's
+ * decimals) — and removes sorted ascending. Pure; exported for the tests.
+ */
+export function announceTupleFor({ shape, adds, removes, decisionSha256 }) {
+  const sha = `0x${String(decisionSha256).replace(/^0x/, '')}`;
+  if (shape === 'unpriced-adds') return { adds: adds.map((a) => a.address), removes: [...removes], decisionSha256: sha };
+  if (shape !== 'priced-adds') throw new Error(`unknown vault shape ${shape}`);
+  const sorted = [...adds].sort((x, y) => byAddress(x.address, y.address));
+  return {
+    adds: sorted.map((a) => a.address),
+    addRefPrices: sorted.map((a) => big(a.firstRefPrice)),
+    removes: [...removes].sort(byAddress),
+    decisionSha256: sha,
+  };
+}
+const big = (x) => (typeof x === 'bigint' ? x : BigInt(x));
+
 export const ERC20_ABI = parseAbi([
   'function decimals() view returns (uint8)',
   'function symbol() view returns (string)',
@@ -459,7 +585,7 @@ export function referenceGuardNote(registry, marketRef, tolBps) {
  * gate allows (|A − B| / A, as the executor computes it). Pure; null when
  * every add passes. The executor makes the same check before execute.
  */
-export function firstPriceGateNote(adds, tolBps) {
+export function firstPriceGateNote(adds, tolBps, then = 'the executor will refuse this plan before execute; do not dispatch day7') {
   const off = [];
   for (const a of adds) {
     if (!a.address) { off.push(`${a.symbol} no mock address`); continue; }
@@ -468,7 +594,28 @@ export function firstPriceGateNote(adds, tolBps) {
     if (bps > tolBps) off.push(`${a.symbol} sources ${(bps / 100).toFixed(2)}% apart`);
   }
   if (off.length === 0) return null;
-  return `first-price gate: ${off.join(', ')} — more than the executor's ${(tolBps / 100).toFixed(2)}% or missing; the executor will refuse this plan before execute; do not dispatch day7`;
+  return `first-price gate: ${off.join(', ')} — more than the executor's ${(tolBps / 100).toFixed(2)}% or missing; ${then}`;
+}
+
+/**
+ * priced-adds, a change pending on chain: each entering name's first
+ * reference was committed at the announcement, and the executor's first post
+ * after execute (today's source A) must lie within the contract's band
+ * (REF_BAND_BPS) of it — else setRefPrice reverts NavMoveTooLarge with the
+ * registry already changed. Pure; null when every add is inside (or has no
+ * committed price to compare).
+ */
+export function committedBandNote(adds, bandBps = REF_BAND_BPS) {
+  const off = [];
+  for (const a of adds) {
+    if (a.committedRefPrice == null || a.firstRefPrice == null) continue;
+    const c = big(a.committedRefPrice);
+    const t = big(a.firstRefPrice);
+    const span = (c * bandBps) / 10_000n;
+    if (t > c + span || t < c - span) off.push(`${a.symbol} ${((Math.abs(Number(t - c)) / Number(c)) * 100).toFixed(2)}%`);
+  }
+  if (off.length === 0) return null;
+  return `committed-price band: ${off.join(', ')} between today's first reference and the one committed at the announcement — more than the contract's ±${(Number(bandBps) / 100).toFixed(0)}%: the executor's first post after execute would revert; do not dispatch day7 (only a new announcement, which restarts the 7 days, changes a committed price)`;
 }
 
 /**
@@ -745,9 +892,12 @@ export async function buildPlan(o) {
   const log = (m) => console.log(`[plan:${index}] ${m}`);
 
   // ---- chain
-  const reader = await makeReader(o.rpc, { chainId: o.chainId });
+  // o.reader: a reader built elsewhere (keeper/test/vault-shapes.test.mjs runs the planner on a fake vault).
+  const reader = o.reader ?? await makeReader(o.rpc, { chainId: o.chainId });
   log(`rpc ${o.rpc} (chain ${reader.chainId}, multicall3 ${reader.hasMulticall ? 'yes' : 'NO — sequential reads'}, pace ${reader.pace} ms)`);
   const v = await readVault(reader, basket.vault);
+  const vaultAbi = await detectVaultAbi(reader.publicClient, v.vault);
+  log(`vault shape ${vaultAbi}: ${vaultAbi === 'priced-adds' ? 'announce(adds, addRefPrices, removes, sha) — each add\'s first reference is committed at the announcement; adds and removes in ascending address order' : 'announce(adds, removes, sha) — each add\'s first reference is posted after execute'}`);
   log(`vault ${v.vault}: ${v.assetCount} assets, supply ${(Number(v.totalSupply) / 1e18).toFixed(0)} shares, nav ${(Number(v.navPerShare) / 1e6).toFixed(6)}, pending ${v.pendingRegistryChange === `0x${'0'.repeat(64)}` ? 'none' : `${v.pendingRegistryChange} (eta ${new Date(Number(v.pendingRegistryEta) * 1000).toISOString()})`}, block ${v.block.number}`);
 
   // ---- the book and the registry, joined by symbol through the rulebook
@@ -898,13 +1048,28 @@ export async function buildPlan(o) {
       throw new Error(`book vs announced tuple differ — adds [${nowAdds.join(',')}] / announced [${prevTuple.adds.join(',')}], removes [${removesForTuple.join(',')}] / announced [${prevTuple.removes.join(',')}] — the announcement cannot be amended; execute it or wait it out`);
     }
     announceTuple = prevTuple;
+    if (vaultAbi === 'priced-adds') {
+      // The committed first references are on chain since the announcement
+      // (refPrice of a name not yet in the registry): read, not trusted from
+      // the previous plan. The announced tuple's addRefPrices, when the
+      // previous plan has them, must agree — a pending hash does not cover
+      // the prices.
+      const onChain = adds.length ? await reader.batch(adds.map((ad) => ({ address: v.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [ad.address] }))) : [];
+      adds.forEach((ad, i) => {
+        const k = prevTuple.adds.findIndex((x) => String(x).toLowerCase() === String(ad.address).toLowerCase());
+        const announced = prevTuple.addRefPrices && k >= 0 ? big(prevTuple.addRefPrices[k]) : null;
+        if (announced != null && announced !== onChain[i]) throw new Error(`${ad.symbol}: committed first reference on chain ${onChain[i]} != ${announced} in the announced tuple of ${carried.from} — an announcement no plan recorded`);
+        if (onChain[i] === 0n) throw new Error(`${ad.symbol}: no committed first reference on chain for an add of the pending change`);
+        ad.committedRefPrice = onChain[i];
+      });
+    }
   } else if (adds.length + removesForTuple.length === 0) {
     // A weight-only change (drift, cap, sleeve reset) has nothing to announce.
     // An empty announcement is accepted by the contract and blocks the vault's
     // auctions for REGISTRY_DELAY, so the tuple stays null even with a decision.
     announceTuple = null;
   } else if (adds.every((a) => a.address) && decisionSha256) {
-    announceTuple = { adds: adds.map((a) => a.address), removes: removesForTuple, decisionSha256: `0x${decisionSha256}` };
+    announceTuple = announceTupleFor({ shape: vaultAbi, adds, removes: removesForTuple, decisionSha256 });
   }
   const weightOnly = adds.length + removesForTuple.length === 0;
 
@@ -939,13 +1104,24 @@ export async function buildPlan(o) {
   if (guardNote) log(`  NOTE ${guardNote}`);
   // …and, for a plan that carries a pending change, the first-price gate on
   // the adds, which day7 also checks before it sends execute.
-  const gateNote = carried ? firstPriceGateNote(adds, policy.firstPriceTolBps) : null;
+  // On a priced-adds vault the first reference is committed at the
+  // announcement, so the same gate applies to a plan that will announce.
+  const gateNote = carried
+    ? firstPriceGateNote(adds, policy.firstPriceTolBps)
+    : vaultAbi === 'priced-adds' && adds.length
+      ? firstPriceGateNote(adds, policy.firstPriceTolBps, 'the executor will refuse to announce this plan (the first reference is committed at the announcement)')
+      : null;
   if (gateNote) log(`  NOTE ${gateNote}`);
+  const bandNote = carried && vaultAbi === 'priced-adds' ? committedBandNote(adds) : null;
+  if (bandNote) log(`  NOTE ${bandNote}`);
 
   const plan = {
     schema: 'basket-recon-plan/1',
     index, ticker: TICKER[index], date, generatedAt: new Date().toISOString(),
     chainId: reader.chainId, rpc: o.rpc, vault: v.vault,
+    // The announce shape read from the vault's code (detectVaultAbi); the
+    // executor reads it again and refuses a plan made for the other shape.
+    vaultAbi,
     block: v.block,
     keeperRun: process.env.GITHUB_RUN_ID ? { id: process.env.GITHUB_RUN_ID, workflow: process.env.GITHUB_WORKFLOW ?? null } : null,
     sources: {
@@ -989,6 +1165,8 @@ export async function buildPlan(o) {
       ...(gapNote ? [gapNote] : []),
       ...(guardNote ? [guardNote] : []),
       ...(gateNote ? [gateNote] : []),
+      ...(bandNote ? [bandNote] : []),
+      ...(vaultAbi === 'priced-adds' && adds.length ? [`priced-adds vault: ${carried ? 'each add\'s first reference was committed at the announcement (adds[].committedRefPrice, read from the chain); the first post after execute is today\'s firstRefPrice and must lie within the contract\'s ±15% band of it' : 'the announcement commits each add\'s first reference: announceTuple.addRefPrices[i] = that add\'s firstRefPrice (source A of this plan\'s date at the mock\'s decimals; the two-source gate applies at the announcement); adds and removes are listed in ascending address order'}`] : []),
       'The vault lags the index by REGISTRY_DELAY (7 days) at every registry change; the record does not wait. Publish the tracking difference.',
       ...(weightOnly ? ['nothing to announce (weight-only change): the registry is unchanged, so no announcement is made — auctions only'] : []),
       ...(announceTuple || weightOnly ? [] : [`announce tuple incomplete: ${adds.filter((a) => !a.address).map((a) => a.symbol).join(',') || 'addresses ok'}${decisionSha256 ? '' : '; decisionSha256 null (anchor the decision document first)'}`]),

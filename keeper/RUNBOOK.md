@@ -406,6 +406,44 @@ Every tool is a dry run unless `live` is ticked and `confirm` is `EXECUTE`.
   Local only — it refuses to run under Actions. It needs the day's
   `keeper/cache/` (run the planner once first).
 
+### Two vault shapes — announce with or without first prices (2026-10-13)
+
+The planner and the executor read the vault's code before they act
+(`detectVaultAbi` in `keeper/basket-plan.mjs`: the announce selector and the
+event topic) and use the call of that shape. A code with neither shape, or
+both, is refused.
+
+| | `unpriced-adds` — the index baskets deployed before 2026-10-01 | `priced-adds` — a vault built from the hardened source |
+| --- | --- | --- |
+| announce | `announceRegistryChange(adds, removes, sha)` | `announceRegistryChange(adds, addRefPrices, removes, sha)` |
+| event | `RegistryChangeAnnounced(adds, removes, sha, eta)` | `RegistryChangeAnnounced(adds, addRefPrices, removes, sha, eta)` |
+| tuple order | the plan's order | adds and removes ascending by address (else `NotAscending`) |
+| first price of an add | band-free `setRefPrice` after execute (first-prices) | committed at the announcement; first-prices posts today's price within ±15% of it |
+
+`pendingRegistryChange` is `keccak(adds, removes, sha)` on both: the prices
+are not in the hash, and `executeRegistryChange` is the same call.
+
+- The plan records the shape (`vaultAbi`). The executor reads the shape
+  again and refuses a plan made for the other one ("regenerate the plan").
+  A plan without `vaultAbi` counts as `unpriced-adds`.
+- `addRefPrices[i]` is the plan's `firstRefPrice` of that add: source A (the
+  CoinGecko snapshot of the plan date) at the deployed mock's decimals. The
+  two-source gate (A and B within 2%, decimals read from the mock) runs at
+  the announce stage, and announce refuses a plan not made today
+  (`--allow-plan-date` for a rehearsal). On a `priced-adds` vault: run
+  `plan` with the decision, then `announce`, on the same UTC day.
+- While the change is pending, the committed prices are on chain
+  (`refPrice(add)`). The day-7 plan reads them into `adds[].committedRefPrice`
+  and writes a "committed-price band" note when today's price is more than
+  ±15% away; `day7` then refuses before execute. Only a new announcement
+  (seven more days) changes a committed price.
+- After execute an add holds its committed price but has never been posted
+  (`refPriceUpdatedAt` 0). The auctions stage refuses until first-prices has
+  run, and first-prices posts even when today's price equals the committed one.
+- The ABI is inline in `keeper/basket-plan.mjs` (`ANNOUNCE_ABI`,
+  `vaultAbiFor`); no build artifact of the vault is read, so an artifact file
+  that changes after a deploy changes nothing here.
+
 ### Reads after a write, and re-runs (2026-10-01)
 
 The public endpoint (`https://sepolia-rpc.giwa.io`) is load-balanced: the
