@@ -382,7 +382,7 @@ export async function markBasket(args) {
       decisionSha256: null,
       decisionFile: `trackrecord/decisions/${date}-${index}-reconstitution.md (to be written, then anchored with scripts/anchor-decision.mjs; its sha256 replaces this null)`,
       calls: [
-        `announceRegistryChange(adds=[${adds.map((s) => listedAdd(s)?.address ?? '<new mock address>').join(', ')}], removes=[${removes.map((s) => assets.find((a) => a.symbol === s).address).join(', ')}], decisionSha256=<sha256 of the anchored decision>)  — owner, day 0; a vault built after 2026-10-01 (priced-adds) also takes addRefPrices, each add's first reference, and adds and removes in ascending address order — keeper/basket-plan.mjs writes the tuple for the vault's shape`,
+        `announceRegistryChange(adds=[${adds.map((s) => listedAdd(s)?.address ?? '<new mock address>').join(', ')}], removes=[${removes.map((s) => assets.find((a) => a.symbol === s).address).join(', ')}], decisionSha256=<sha256 of the anchored decision>)  — owner, day 0; a vault built from the hardened source (priced-adds) also takes addRefPrices, each add's first reference, and adds and removes in ascending address order — keeper/basket-plan.mjs writes the tuple for the vault's shape`,
         'executeRegistryChange(same adds, removes, decisionSha256)  — anyone, day 7 or later',
         ...removes.map((s) => `openAuction(sell=${s}, buy=<a member>, amount=<balance>, duration=<short>) … until balance is 0, then finalizeRemoval(${s})  — keeper; not implemented in this keeper`),
         ...adds.map((s) => `openAuction(sell=<an overweight member>, buy=${s}, …) after execute and a first setRefPrice(${s})  — keeper; not implemented in this keeper`),

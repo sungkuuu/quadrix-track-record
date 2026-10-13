@@ -223,6 +223,23 @@ test('priced-adds announce mined but not recorded: the re-run adopts it with the
   assert.equal(chain.sent.length, 1, 'nothing sent by the re-run');
 });
 
+test('priced-adds announce mined but not recorded, its log before the plan\'s block: the re-run records the prices committed on chain, and notes the one that is not the plan\'s', async () => {
+  const chain = newChain('priced-adds');
+  const t = basePlan(chain, 'priced-adds').announceTuple;
+  const REF_NEWT_ON_CHAIN = toRefPrice(3.03, 8);
+  chain.send(OWNER, { address: V, functionName: 'announceRegistryChange', args: [t.adds, [REF_NEWT_ON_CHAIN, REF_ASTER], t.removes, t.decisionSha256] });
+  chain.mine(); // the plan is made a block later, so the log search starts after the announcement
+  const f = planOn(chain, 'priced-adds');
+  await stageAnnounce(ctxFor(chain, f));
+  const p = loadPlan(f);
+  assert.equal(p.announce.adopted, true);
+  assert.equal(p.announce.txHash, null, 'the log was not found');
+  assert.deepEqual(p.announce.tuple.addRefPrices, [REF_NEWT_ON_CHAIN.toString(), REF_ASTER.toString()], 'refPrice on chain, not the plan\'s tuple');
+  assert.ok(p.announce.note.includes(`NEWT ${REF_NEWT_ON_CHAIN} (the plan's ${REF_NEWT}) — an announcement this plan did not make`), p.announce.note);
+  assert.ok(!p.announce.note.includes('ASTER'), 'ASTER was committed at the plan\'s own price');
+  assert.equal(chain.sent.length, 1, 'nothing sent by the re-run');
+});
+
 // ======================================================= day 7, priced
 async function announcedAndDue(chain, f) {
   await stageAnnounce(ctxFor(chain, f));
@@ -277,7 +294,8 @@ test('committedPostRefusal and committedBandNote: the same ±15% band, in the ex
   assert.match(committedPostRefusal(add, REF_ASTER + 1n, REF_ASTER), /is not the \d+ the announcement committed/);
   const at = (p) => ({ ...add, priceA: p, firstRefPrice: toRefPrice(p, 8), committedRefPrice: REF_ASTER });
   assert.equal(committedPostRefusal(at(1.2 * 1.149), REF_ASTER, REF_ASTER), null);
-  assert.match(committedPostRefusal(at(1.2 * 1.151), REF_ASTER, REF_ASTER), /outside the contract's ±15% band/);
+  assert.match(committedPostRefusal(at(1.2 * 1.151), REF_ASTER, REF_ASTER), /outside the contract's ±15% band — the post after execute would revert NavMoveTooLarge; only a new announcement/);
+  assert.match(committedPostRefusal(at(1.2 * 1.151), REF_ASTER, REF_ASTER, { executed: true }), /outside the contract's ±15% band — the post would revert NavMoveTooLarge; .*the daily mark steps the reference in band$/);
   assert.equal(committedBandNote([at(1.2 * 1.149)]), null);
   assert.match(committedBandNote([at(1.2 * 0.84)]), /^committed-price band: ASTER 16\.00% between today's first reference and the one committed/);
   assert.deepEqual(pricedTupleProblems({ adds: [NEWT, ASTER], prices: [REF_NEWT, REF_ASTER], removes: [CRV] }, basePlan(newChain('priced-adds'), 'priced-adds').adds), []);

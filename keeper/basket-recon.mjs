@@ -882,28 +882,34 @@ async function adoptAnnounce(ctx, { t: t0, v, entry, expectedHash }) {
   let txHash = null;
   let block = null;
   let how;
-  let evArgs = null;
   const fromSent = (await sentReceipts(ctx, /^announce$/)).map(({ receipt }) => ({ receipt, ev: eventsIn(receipt, VAULT_ABI, 'RegistryChangeAnnounced', plan.vault)[0]?.args }))
     .filter((x) => x.ev && tupleHashOf(x.ev) === expectedHash.toLowerCase() && x.ev.eta === v.pendingRegistryEta).at(-1);
   if (fromSent) {
     txHash = fromSent.receipt.transactionHash;
     block = fromSent.receipt.blockNumber;
     how = "the plan's own sent list";
-    evArgs = fromSent.ev;
   } else {
     const hit = (await vaultEvents(ctx, ['RegistryChangeAnnounced'])).filter((e) => tupleHashOf(e.args) === expectedHash.toLowerCase() && e.args.eta === v.pendingRegistryEta).at(-1);
-    if (hit) { txHash = hit.transactionHash; block = hit.blockNumber; how = 'the RegistryChangeAnnounced log'; evArgs = hit.args; }
+    if (hit) { txHash = hit.transactionHash; block = hit.blockNumber; how = 'the RegistryChangeAnnounced log'; }
   }
   // priced-adds: the prices the chain committed (the pending hash does not
-  // cover them), from the event when it was found.
-  if (evArgs?.addRefPrices) t = { ...t, prices: [...evArgs.addRefPrices] };
+  // cover them), read from refPrice(add) — the committed price while the
+  // change is pending — whether or not the announce log was found. A price
+  // that is not the plan's own is recorded as the chain has it, with a note.
+  let priceNote = null;
+  if ((await vaultShape(ctx)) === 'priced-adds') {
+    const committed = await batchNow(ctx, 'committed first references', t.adds.map((a) => ({ address: plan.vault, abi: VAULT_ABI, functionName: 'refPrice', args: [a] })));
+    const differ = t.adds.map((a, i) => (committed[i] === t0.prices?.[i] ? null : `${plan.adds.find((x) => x.address && getAddress(x.address) === a)?.symbol ?? a} ${committed[i]} (the plan's ${t0.prices?.[i] ?? 'none'})`)).filter(Boolean);
+    if (differ.length) priceNote = `committed first references on chain that are not this plan's: ${differ.join(', ')} — an announcement this plan did not make; the chain's are recorded`;
+    t = { ...t, prices: committed };
+  }
   let signer = v.owner; // announceRegistryChange is onlyOwner
   if (txHash) {
     const tx = await retryRead(() => ctx.pc.getTransaction({ hash: txHash }), { what: `tx ${txHash}` }).then((x) => x.value).catch(() => null);
     if (tx?.from) signer = getAddress(tx.from);
   }
   const at = v.pendingRegistryEta - v.registryDelay;
-  const found = txHash ? `tx ${txHash} (block ${block}, from ${how})` : `the announce tx was not found since the plan's block ${ctx.plan.block?.number ?? '—'}`;
+  const found = (txHash ? `tx ${txHash} (block ${block}, from ${how})` : `the announce tx was not found since the plan's block ${ctx.plan.block?.number ?? '—'}`) + (priceNote ? `; ${priceNote}` : '');
   if (!ctx.live) { log(`this plan's change is already pending on chain (${v.pendingRegistryChange}, eta ${iso(v.pendingRegistryEta)}) but not recorded in the plan — a live run adopts it (${found}); nothing is sent`); return; }
   plan.announce = announceRecord({ txHash, block, at, eta: v.pendingRegistryEta, pendingHash: v.pendingRegistryChange, t, entry, signer, adopted: true, note: `adopted from the chain by a later run: ${found}` });
   plan.announceTuple = plan.announce.tuple;
@@ -1031,14 +1037,16 @@ export function committedRefOf(plan, add) {
  * one), `committed` what the plan recorded the announcement committing — or
  * null. The post is today's toRefPrice(priceA) and the contract bands it
  * against the reference on chain (REF_BAND_BPS), so outside the band it
- * reverts with the registry already changed. Pure.
+ * reverts with the registry already changed. `executed`: asked after
+ * execute (first-prices), when the add is a registry asset and a new
+ * announcement can no longer carry it. Pure.
  */
-export function committedPostRefusal(add, onChain, committed) {
+export function committedPostRefusal(add, onChain, committed, { executed = false } = {}) {
   if (!(onChain > 0n)) return `${add.symbol}: no committed first reference on chain (refPrice ${onChain})`;
   if (committed != null && onChain !== committed) return `${add.symbol}: reference on chain ${onChain} is not the ${committed} the announcement committed (as the plan records it) — regenerate the plan`;
   const target = toRefPrice(add.priceA, add.decimals);
   const span = (onChain * REF_BAND_BPS) / 10_000n;
-  if (target > onChain + span || target < onChain - span) return `${add.symbol}: today's first reference ${target} is ${pct(Math.abs(Number(target - onChain)) / Number(onChain))} from the ${onChain} committed at the announcement, outside the contract's ±${Number(REF_BAND_BPS) / 100}% band — the post after execute would revert NavMoveTooLarge; only a new announcement (7 more days) changes a committed price`;
+  if (target > onChain + span || target < onChain - span) return `${add.symbol}: today's first reference ${target} is ${pct(Math.abs(Number(target - onChain)) / Number(onChain))} from the ${onChain} committed at the announcement, outside the contract's ±${Number(REF_BAND_BPS) / 100}% band — ${executed ? 'the post would revert NavMoveTooLarge; a new announcement cannot change the price of a registry asset (AlreadyRegistryAsset), so the daily mark steps the reference in band' : 'the post after execute would revert NavMoveTooLarge; only a new announcement (7 more days) changes a committed price'}`;
   return null;
 }
 
@@ -1063,7 +1071,7 @@ export async function stageFirstPrices(ctx) {
     // price equals the committed one — the post is what makes it fresh.
     const committedOnly = shape === 'priced-adds' && on.refPriceUpdatedAt === 0n;
     if (committedOnly) {
-      const why2 = committedPostRefusal(add, on.refPrice, committedRefOf(plan, add));
+      const why2 = committedPostRefusal(add, on.refPrice, committedRefOf(plan, add), { executed: true });
       if (why2) throw new Refused(why2);
       log(`  ${add.symbol}: entered at the reference committed at the announcement (${on.refPrice}); ${target} is inside the band — posting`);
     } else if (on.refPrice === target) {

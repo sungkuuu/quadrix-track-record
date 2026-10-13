@@ -185,8 +185,9 @@ export const ANNOUNCE_ABI = {
   ]),
 };
 export const VAULT_ABI_SHAPES = Object.keys(ANNOUNCE_ABI);
-/** The contract's NAV_BAND_BPS and MAX_REF_PRICE (constants of both shapes'
- *  source; the band binds a priced-adds vault's first post after execute). */
+/** The contract's NAV_BAND_BPS (of both sources) and MAX_REF_PRICE (of the
+ *  hardened source); the band binds a priced-adds vault's first post after
+ *  execute. */
 export const REF_BAND_BPS = 1_500n;
 export const MAX_REF_PRICE = 10n ** 30n;
 
