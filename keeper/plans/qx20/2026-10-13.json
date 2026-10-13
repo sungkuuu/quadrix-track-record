@@ -1481,6 +1481,142 @@
       "openTx": "0xab9aaa8c2165171bacbd35550295e5d833358b31c4ea0d8083f91ee129697d99",
       "fillTx": "0x80de498d350eb2acfd13d2fe2620b8bca5a9689cc667b503b381f2064c613505",
       "at": "2026-10-13T11:44:28.000Z"
+    },
+    {
+      "seq": 15,
+      "round": 1,
+      "auctionId": "14",
+      "sell": "ADA",
+      "buy": "NEAR",
+      "sellTaken": "157107909407",
+      "buyPaid": "71310065716",
+      "lossAtRef": "0",
+      "factorBps": 10003,
+      "elapsed": 1187,
+      "policy": "fair",
+      "bidder": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "openTx": "0x527a7471623225278a3dcdfe49082a9734682ccc98b41548959d66e5d1f2b63a",
+      "fillTx": "0x1963227372b71ab18c880c7e97cfef7a68ba117f5d805f56817dcf4fb19bbdf0",
+      "at": "2026-10-13T12:06:45.000Z"
+    },
+    {
+      "seq": 16,
+      "round": 1,
+      "auctionId": "15",
+      "sell": "RAIN",
+      "buy": "NEAR",
+      "sellTaken": "300952039640",
+      "buyPaid": "60832466315",
+      "lossAtRef": "0",
+      "factorBps": 10002,
+      "elapsed": 1189,
+      "policy": "fair",
+      "bidder": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "openTx": "0x7832e0de6122709e17be64fa59a9628a18d33357facbaa541349b76fdb598af5",
+      "fillTx": "0x2ec9cff9c48cbbe8e8fc28e25cbaed5d8bf4ed661f97970ee50c79c84f04c759",
+      "at": "2026-10-13T12:26:44.000Z"
+    },
+    {
+      "seq": 17,
+      "round": 1,
+      "auctionId": "16",
+      "sell": "XLM",
+      "buy": "NEAR",
+      "sellTaken": "126933189564",
+      "buyPaid": "46883474218",
+      "lossAtRef": "0",
+      "factorBps": 10002,
+      "elapsed": 1191,
+      "policy": "fair",
+      "bidder": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "openTx": "0xdc8e08a52a9e7dda5578ecd7952e0363f3070377c48b1364615c8b09bcb9ab27",
+      "fillTx": "0x03cab88ab6159a8def08f86856a9463fc2fbe84813aad552bde704573de6b579",
+      "at": "2026-10-13T12:46:44.000Z"
+    },
+    {
+      "seq": 18,
+      "round": 1,
+      "auctionId": "17",
+      "sell": "BCH",
+      "buy": "NEAR",
+      "sellTaken": "84132193662",
+      "buyPaid": "43699821094",
+      "lossAtRef": "0",
+      "factorBps": 10003,
+      "elapsed": 1185,
+      "policy": "fair",
+      "bidder": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "openTx": "0x323b67ffa32c3a2b286524d8a045797df354a67493ab055489abe0dbbdd1de90",
+      "fillTx": "0xa8820294caccb09db1b9558a2a8e2e7544a75b0ec1d64412540d848c64aca66f",
+      "at": "2026-10-13T13:06:40.000Z"
+    },
+    {
+      "seq": 19,
+      "round": 1,
+      "auctionId": "18",
+      "sell": "UNI",
+      "buy": "NEAR",
+      "sellTaken": "28399466207",
+      "buyPaid": "40222271360",
+      "lossAtRef": "0",
+      "factorBps": 10003,
+      "elapsed": 1186,
+      "policy": "fair",
+      "bidder": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "openTx": "0xbdd13d8d2a5bd58aa4cce8c39b82ee4efb33fa5f1943f600dd20c79d6934aed6",
+      "fillTx": "0x51a9077a428e95cc3fbc25967858aa948c9f3432efaecfe4793b4143e815d202",
+      "at": "2026-10-13T13:26:33.000Z"
+    },
+    {
+      "seq": 20,
+      "round": 1,
+      "auctionId": "19",
+      "sell": "CC",
+      "buy": "NEAR",
+      "sellTaken": "14856762772",
+      "buyPaid": "35021780940",
+      "lossAtRef": "0",
+      "factorBps": 10002,
+      "elapsed": 1189,
+      "policy": "fair",
+      "bidder": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "openTx": "0x22fc38b2a96f057b730d9785c7b46213e8b9ec01d7a5e5ff94170f3ad360ca75",
+      "fillTx": "0x1b487e6a83e84876de2e751a4086824fdb554dcc0a3bd269ff6beefe7f6122a7",
+      "at": "2026-10-13T13:46:30.000Z"
+    },
+    {
+      "seq": 21,
+      "round": 1,
+      "auctionId": "20",
+      "sell": "SUI",
+      "buy": "NEAR",
+      "sellTaken": "16186957458",
+      "buyPaid": "32870074232",
+      "lossAtRef": "0",
+      "factorBps": 10002,
+      "elapsed": 1191,
+      "policy": "fair",
+      "bidder": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "openTx": "0x375ac5face81aa24c5b91c9d418634c6753b7332ef98948f9c4619186282a850",
+      "fillTx": "0x7d9230cb0ebc055928038072d4ed2c98600c4f9822fb05a7eeb1bbe8c9339bdc",
+      "at": "2026-10-13T14:06:31.000Z"
+    },
+    {
+      "seq": 22,
+      "round": 1,
+      "auctionId": "21",
+      "sell": "AVAX",
+      "buy": "NEAR",
+      "sellTaken": "11422116718",
+      "buyPaid": "22829488326",
+      "lossAtRef": "0",
+      "factorBps": 10003,
+      "elapsed": 1187,
+      "policy": "fair",
+      "bidder": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "openTx": "0xe2e1f39f075aae6545cbca55ee73fc2fa68281c42ef62310a3f85ca4bfed3a33",
+      "fillTx": "0xb91effb8a5cb53427d7d7b0c25a1369d56a62b166c93b02d8fff605f0fad3f08",
+      "at": "2026-10-13T14:26:29.000Z"
     }
   ],
   "finalize": [
@@ -1575,7 +1711,137 @@
       ]
     }
   ],
-  "verify": null,
+  "verify": {
+    "at": "2026-10-13T14:26:50.257Z",
+    "block": "38556487",
+    "assetCount": 20,
+    "order": [
+      "0xfe90560cf3eE5f85493dca38fB2bF56179F0a4FE",
+      "0xdBb6c0f79935a8dD3cfAc88B4F8586F563320aC2",
+      "0x1607e70cAC3FAc0B413d0948D2117b12b1F78212",
+      "0x5C0F15100649789902ddF31D6991e38E29256266",
+      "0x47420cD0A6e2bBA16DebbC6a126Bf8a7af9c174d",
+      "0x4037f0608746d8AfEFaD786e62a8b567DB1A067A",
+      "0xe7007EE036b22880eCe81b959DF1c8a5458b0A96",
+      "0xCeF31a0a4a630B8D850E328C44B8D18718FB0D12",
+      "0x643F0b8b6D3F1543D622ab265d23d2647f0CC02A",
+      "0xf0Abf814683dbe1CF8cF423450ADFDcf85b744BC",
+      "0x466AE80FA247Da24764C9Cae9A1F8fDc240960C4",
+      "0x6d70C5084f5bf3F0CD94aDb803b958c456fB2324",
+      "0x358B0f199008dE9a2A6005698BBbc6950E19d22A",
+      "0x93765eBdf4b75d1d945c0EfA656A8802170040b6",
+      "0xf150Bc6654Ec9DAFd64f44B21CF5eB74fDDd5154",
+      "0x579Cc91336eA92E06F30e725D303625836aDdC6A",
+      "0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049",
+      "0x3C725e370f8Ab6557eC21d9b94e6F95269f71674",
+      "0x1fA38B14335e3052B5C27D59D0C4b0597483a99D",
+      "0xB6Ea7403356Ec41526D52E9C9051725930278464"
+    ],
+    "fails": [],
+    "pending": [],
+    "weights": [
+      {
+        "symbol": "BTC",
+        "weight": 0.6158974409809869,
+        "targetWeight": 0.615899373291
+      },
+      {
+        "symbol": "ETH",
+        "weight": 0.16557580152464393,
+        "targetWeight": 0.165576878955
+      },
+      {
+        "symbol": "BNB",
+        "weight": 0.053117862315894514,
+        "targetWeight": 0.053118207963
+      },
+      {
+        "symbol": "XRP",
+        "weight": 0.04652285045377197,
+        "targetWeight": 0.046523153186
+      },
+      {
+        "symbol": "SOL",
+        "weight": 0.03417760899140021,
+        "targetWeight": 0.034177831390999995
+      },
+      {
+        "symbol": "TRX",
+        "weight": 0.01678786481346444,
+        "targetWeight": 0.016787974055
+      },
+      {
+        "symbol": "HYPE",
+        "weight": 0.009910061549520469,
+        "targetWeight": 0.009910126036
+      },
+      {
+        "symbol": "DOGE",
+        "weight": 0.007103215254152343,
+        "targetWeight": 0.0071032614759999994
+      },
+      {
+        "symbol": "RAIN",
+        "weight": 0.004058822121543649,
+        "targetWeight": 0.0040588485329999995
+      },
+      {
+        "symbol": "LINK",
+        "weight": 0.005241703475330186,
+        "targetWeight": 0.005241737584
+      },
+      {
+        "symbol": "ADA",
+        "weight": 0.004821736271130368,
+        "targetWeight": 0.004821767647
+      },
+      {
+        "symbol": "XLM",
+        "weight": 0.003663213871835339,
+        "targetWeight": 0.003663237709
+      },
+      {
+        "symbol": "BCH",
+        "weight": 0.0029554224925551673,
+        "targetWeight": 0.0029554417239999998
+      },
+      {
+        "symbol": "UNI",
+        "weight": 0.002485727932945091,
+        "targetWeight": 0.002485744108
+      },
+      {
+        "symbol": "XMR",
+        "weight": 0.005426228741792711,
+        "targetWeight": 0.00542510131
+      },
+      {
+        "symbol": "CC",
+        "weight": 0.0026537175008115323,
+        "targetWeight": 0.002653734769
+      },
+      {
+        "symbol": "NEAR",
+        "weight": 0.0037014951882813557,
+        "targetWeight": 0.00370059809
+      },
+      {
+        "symbol": "AVAX",
+        "weight": 0.0025081574219909925,
+        "targetWeight": 0.0025081737430000003
+      },
+      {
+        "symbol": "ZEC",
+        "weight": 0.011037339534065384,
+        "targetWeight": 0.01103506355
+      },
+      {
+        "symbol": "SUI",
+        "weight": 0.0023537295638832263,
+        "targetWeight": 0.00235374488
+      }
+    ]
+  },
   "sent": [
     {
       "what": "execute",
@@ -2548,6 +2814,390 @@
       "status": "success",
       "gasUsed": "299515",
       "at": "2026-10-13T11:44:28.000Z"
+    },
+    {
+      "what": "open auction #15",
+      "call": "openAuction(0x466AE80FA247Da24764C9Cae9A1F8fDc240960C4, 0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 157107909407, 1800)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x527a7471623225278a3dcdfe49082a9734682ccc98b41548959d66e5d1f2b63a",
+      "sentAt": "2026-10-13T11:46:57.899Z",
+      "block": "38546902",
+      "status": "success",
+      "gasUsed": "132635",
+      "at": "2026-10-13T11:46:58.000Z"
+    },
+    {
+      "what": "re-post ADA (same value)",
+      "call": "setRefPrice(0x466AE80FA247Da24764C9Cae9A1F8fDc240960C4, 2400370000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xe62f4f2152126b825196147423d7a3c241ae2127566eda025ca64be816f8b62d",
+      "sentAt": "2026-10-13T12:06:32.560Z",
+      "block": "38548077",
+      "status": "success",
+      "gasUsed": "35664",
+      "at": "2026-10-13T12:06:33.000Z"
+    },
+    {
+      "what": "re-post NEAR (same value)",
+      "call": "setRefPrice(0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 5290000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xf923259e66b2be89b7d424fd711f9d1010fdc41bb2f9a53ae90d1ccacbf69c4f",
+      "sentAt": "2026-10-13T12:06:37.642Z",
+      "block": "38548082",
+      "status": "success",
+      "gasUsed": "35676",
+      "at": "2026-10-13T12:06:38.000Z"
+    },
+    {
+      "what": "fill #15 (auction 14)",
+      "call": "fill(14, 157107909407)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x1963227372b71ab18c880c7e97cfef7a68ba117f5d805f56817dcf4fb19bbdf0",
+      "sentAt": "2026-10-13T12:06:44.557Z",
+      "block": "38548089",
+      "status": "success",
+      "gasUsed": "299515",
+      "at": "2026-10-13T12:06:45.000Z"
+    },
+    {
+      "what": "open auction #16",
+      "call": "openAuction(0x643F0b8b6D3F1543D622ab265d23d2647f0CC02A, 0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 300952039640, 1800)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x7832e0de6122709e17be64fa59a9628a18d33357facbaa541349b76fdb598af5",
+      "sentAt": "2026-10-13T12:06:54.021Z",
+      "block": "38548099",
+      "status": "success",
+      "gasUsed": "132635",
+      "at": "2026-10-13T12:06:55.000Z"
+    },
+    {
+      "what": "re-post RAIN (same value)",
+      "call": "setRefPrice(0x643F0b8b6D3F1543D622ab265d23d2647f0CC02A, 1069072000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x27e2f08e03212785b713e5a535bbe812e2d3320bc69594009522f7dc89ec9893",
+      "sentAt": "2026-10-13T12:26:27.754Z",
+      "block": "38549272",
+      "status": "success",
+      "gasUsed": "35664",
+      "at": "2026-10-13T12:26:28.000Z"
+    },
+    {
+      "what": "re-post NEAR (same value)",
+      "call": "setRefPrice(0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 5290000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xba9707e780f2079c558054923f7e6231cd327f4219b41270b8b2f38baea852c9",
+      "sentAt": "2026-10-13T12:26:35.187Z",
+      "block": "38549280",
+      "status": "success",
+      "gasUsed": "35676",
+      "at": "2026-10-13T12:26:36.000Z"
+    },
+    {
+      "what": "fill #16 (auction 15)",
+      "call": "fill(15, 300952039640)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x2ec9cff9c48cbbe8e8fc28e25cbaed5d8bf4ed661f97970ee50c79c84f04c759",
+      "sentAt": "2026-10-13T12:26:43.852Z",
+      "block": "38549288",
+      "status": "success",
+      "gasUsed": "299515",
+      "at": "2026-10-13T12:26:44.000Z"
+    },
+    {
+      "what": "open auction #17",
+      "call": "openAuction(0x6d70C5084f5bf3F0CD94aDb803b958c456fB2324, 0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 126933189564, 1800)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xdc8e08a52a9e7dda5578ecd7952e0363f3070377c48b1364615c8b09bcb9ab27",
+      "sentAt": "2026-10-13T12:26:51.957Z",
+      "block": "38549297",
+      "status": "success",
+      "gasUsed": "132635",
+      "at": "2026-10-13T12:26:53.000Z"
+    },
+    {
+      "what": "re-post XLM (same value)",
+      "call": "setRefPrice(0x6d70C5084f5bf3F0CD94aDb803b958c456fB2324, 1953500000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xb62f827b06b12c37ad137a15f531f1d237b9a3ad9252444956ca66fd5f67295f",
+      "sentAt": "2026-10-13T12:46:28.185Z",
+      "block": "38550473",
+      "status": "success",
+      "gasUsed": "35664",
+      "at": "2026-10-13T12:46:29.000Z"
+    },
+    {
+      "what": "re-post NEAR (same value)",
+      "call": "setRefPrice(0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 5290000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x6cd78197bf894b31d7b049d4ab0d198a1d56a97cdd1d9be8cd88755df283c29b",
+      "sentAt": "2026-10-13T12:46:34.440Z",
+      "block": "38550479",
+      "status": "success",
+      "gasUsed": "35676",
+      "at": "2026-10-13T12:46:35.000Z"
+    },
+    {
+      "what": "fill #17 (auction 16)",
+      "call": "fill(16, 126933189564)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x03cab88ab6159a8def08f86856a9463fc2fbe84813aad552bde704573de6b579",
+      "sentAt": "2026-10-13T12:46:43.348Z",
+      "block": "38550488",
+      "status": "success",
+      "gasUsed": "299515",
+      "at": "2026-10-13T12:46:44.000Z"
+    },
+    {
+      "what": "open auction #18",
+      "call": "openAuction(0x358B0f199008dE9a2A6005698BBbc6950E19d22A, 0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 84132193662, 1800)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x323b67ffa32c3a2b286524d8a045797df354a67493ab055489abe0dbbdd1de90",
+      "sentAt": "2026-10-13T12:46:54.384Z",
+      "block": "38550499",
+      "status": "success",
+      "gasUsed": "132635",
+      "at": "2026-10-13T12:46:55.000Z"
+    },
+    {
+      "what": "re-post BCH (same value)",
+      "call": "setRefPrice(0x358B0f199008dE9a2A6005698BBbc6950E19d22A, 2746900000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x001f6e14f97f8f9717d084f45d3be390052f8368567b47cf0ea791e671bcf2dd",
+      "sentAt": "2026-10-13T13:06:28.578Z",
+      "block": "38551673",
+      "status": "success",
+      "gasUsed": "35664",
+      "at": "2026-10-13T13:06:29.000Z"
+    },
+    {
+      "what": "re-post NEAR (same value)",
+      "call": "setRefPrice(0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 5290000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xe2e8b704da25f7fa8b94d77affd46a12120d1ae104bb98f82d878a773232a49e",
+      "sentAt": "2026-10-13T13:06:33.894Z",
+      "block": "38551678",
+      "status": "success",
+      "gasUsed": "35676",
+      "at": "2026-10-13T13:06:34.000Z"
+    },
+    {
+      "what": "fill #18 (auction 17)",
+      "call": "fill(17, 84132193662)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xa8820294caccb09db1b9558a2a8e2e7544a75b0ec1d64412540d848c64aca66f",
+      "sentAt": "2026-10-13T13:06:39.302Z",
+      "block": "38551684",
+      "status": "success",
+      "gasUsed": "299515",
+      "at": "2026-10-13T13:06:40.000Z"
+    },
+    {
+      "what": "open auction #19",
+      "call": "openAuction(0x93765eBdf4b75d1d945c0EfA656A8802170040b6, 0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 28399466207, 1800)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xbdd13d8d2a5bd58aa4cce8c39b82ee4efb33fa5f1943f600dd20c79d6934aed6",
+      "sentAt": "2026-10-13T13:06:46.790Z",
+      "block": "38551691",
+      "status": "success",
+      "gasUsed": "132623",
+      "at": "2026-10-13T13:06:47.000Z"
+    },
+    {
+      "what": "re-post UNI (same value)",
+      "call": "setRefPrice(0x93765eBdf4b75d1d945c0EfA656A8802170040b6, 7490000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xb80d5c31eca037fd05a6ab69b5742186303c9ebd990ceb665580e98478ae5322",
+      "sentAt": "2026-10-13T13:26:21.883Z",
+      "block": "38552866",
+      "status": "success",
+      "gasUsed": "35664",
+      "at": "2026-10-13T13:26:22.000Z"
+    },
+    {
+      "what": "re-post NEAR (same value)",
+      "call": "setRefPrice(0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 5290000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x22720e3cd78bc4ccbb19fa935ce802893cf7a943abdd58e23ac5b83613baa9cd",
+      "sentAt": "2026-10-13T13:26:26.871Z",
+      "block": "38552871",
+      "status": "success",
+      "gasUsed": "35676",
+      "at": "2026-10-13T13:26:27.000Z"
+    },
+    {
+      "what": "fill #19 (auction 18)",
+      "call": "fill(18, 28399466207)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x51a9077a428e95cc3fbc25967858aa948c9f3432efaecfe4793b4143e815d202",
+      "sentAt": "2026-10-13T13:26:32.640Z",
+      "block": "38552877",
+      "status": "success",
+      "gasUsed": "299515",
+      "at": "2026-10-13T13:26:33.000Z"
+    },
+    {
+      "what": "open auction #20",
+      "call": "openAuction(0x579Cc91336eA92E06F30e725D303625836aDdC6A, 0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 14856762772, 1800)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x22fc38b2a96f057b730d9785c7b46213e8b9ec01d7a5e5ff94170f3ad360ca75",
+      "sentAt": "2026-10-13T13:26:40.685Z",
+      "block": "38552885",
+      "status": "success",
+      "gasUsed": "132635",
+      "at": "2026-10-13T13:26:41.000Z"
+    },
+    {
+      "what": "re-post CC (same value)",
+      "call": "setRefPrice(0x579Cc91336eA92E06F30e725D303625836aDdC6A, 12467600000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x2ad3353c0dcd6edba716478d00e6578c7890e3bc1fd0d39b7ebd27c8eb429664",
+      "sentAt": "2026-10-13T13:46:14.610Z",
+      "block": "38554059",
+      "status": "success",
+      "gasUsed": "35676",
+      "at": "2026-10-13T13:46:15.000Z"
+    },
+    {
+      "what": "re-post NEAR (same value)",
+      "call": "setRefPrice(0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 5290000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xc54cbfdcadc3d8de718cac8a595ed54d498307770bd72c459d575078745f262b",
+      "sentAt": "2026-10-13T13:46:20.913Z",
+      "block": "38554066",
+      "status": "success",
+      "gasUsed": "35676",
+      "at": "2026-10-13T13:46:22.000Z"
+    },
+    {
+      "what": "fill #20 (auction 19)",
+      "call": "fill(19, 14856762772)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x1b487e6a83e84876de2e751a4086824fdb554dcc0a3bd269ff6beefe7f6122a7",
+      "sentAt": "2026-10-13T13:46:28.733Z",
+      "block": "38554074",
+      "status": "success",
+      "gasUsed": "299515",
+      "at": "2026-10-13T13:46:30.000Z"
+    },
+    {
+      "what": "open auction #21",
+      "call": "openAuction(0xB6Ea7403356Ec41526D52E9C9051725930278464, 0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 16186957458, 1800)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x375ac5face81aa24c5b91c9d418634c6753b7332ef98948f9c4619186282a850",
+      "sentAt": "2026-10-13T13:46:39.057Z",
+      "block": "38554084",
+      "status": "success",
+      "gasUsed": "132635",
+      "at": "2026-10-13T13:46:40.000Z"
+    },
+    {
+      "what": "re-post SUI (same value)",
+      "call": "setRefPrice(0xB6Ea7403356Ec41526D52E9C9051725930278464, 10740000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x689ca1ca44fe72da09e336275f38648a52b611789e28d7eb5346cc85c0da18f8",
+      "sentAt": "2026-10-13T14:06:14.378Z",
+      "block": "38555259",
+      "status": "success",
+      "gasUsed": "35664",
+      "at": "2026-10-13T14:06:15.000Z"
+    },
+    {
+      "what": "re-post NEAR (same value)",
+      "call": "setRefPrice(0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 5290000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x4ef9729f1d683d620f6d09f342f455408ba4c5de00ce6ed6fd946021e64e61b7",
+      "sentAt": "2026-10-13T14:06:21.074Z",
+      "block": "38555266",
+      "status": "success",
+      "gasUsed": "35676",
+      "at": "2026-10-13T14:06:22.000Z"
+    },
+    {
+      "what": "fill #21 (auction 20)",
+      "call": "fill(20, 16186957458)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x7d9230cb0ebc055928038072d4ed2c98600c4f9822fb05a7eeb1bbe8c9339bdc",
+      "sentAt": "2026-10-13T14:06:30.030Z",
+      "block": "38555275",
+      "status": "success",
+      "gasUsed": "299515",
+      "at": "2026-10-13T14:06:31.000Z"
+    },
+    {
+      "what": "open auction #22",
+      "call": "openAuction(0x3C725e370f8Ab6557eC21d9b94e6F95269f71674, 0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 11422116718, 1800)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xe2e1f39f075aae6545cbca55ee73fc2fa68281c42ef62310a3f85ca4bfed3a33",
+      "sentAt": "2026-10-13T14:06:40.916Z",
+      "block": "38555286",
+      "status": "success",
+      "gasUsed": "132635",
+      "at": "2026-10-13T14:06:42.000Z"
+    },
+    {
+      "what": "re-post AVAX (same value)",
+      "call": "setRefPrice(0x3C725e370f8Ab6557eC21d9b94e6F95269f71674, 10570000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xa43621ad479a4a0013e7492810d26d2f2e78c3d12828b6904ad54a3e6ccc5033",
+      "sentAt": "2026-10-13T14:26:16.422Z",
+      "block": "38556461",
+      "status": "success",
+      "gasUsed": "35676",
+      "at": "2026-10-13T14:26:17.000Z"
+    },
+    {
+      "what": "re-post NEAR (same value)",
+      "call": "setRefPrice(0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049, 5290000000)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0x96f59671baf47238019fb45db51364e02e991c0c768eba26f9a09fe4b74ccadd",
+      "sentAt": "2026-10-13T14:26:20.668Z",
+      "block": "38556465",
+      "status": "success",
+      "gasUsed": "35676",
+      "at": "2026-10-13T14:26:21.000Z"
+    },
+    {
+      "what": "fill #22 (auction 21)",
+      "call": "fill(21, 11422116718)",
+      "to": "0x39F2993f7b21B85D857C9A19de07cDcca7A0a1C9",
+      "from": "0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902",
+      "hash": "0xb91effb8a5cb53427d7d7b0c25a1369d56a62b166c93b02d8fff605f0fad3f08",
+      "sentAt": "2026-10-13T14:26:28.010Z",
+      "block": "38556473",
+      "status": "success",
+      "gasUsed": "299515",
+      "at": "2026-10-13T14:26:29.000Z"
     }
   ]
 }
