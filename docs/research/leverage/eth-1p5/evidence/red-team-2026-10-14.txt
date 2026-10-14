@@ -1,0 +1,177 @@
+Red team proof-of-concept pass over the qETH1.5X keeper changes (R47)
+=====================================================================
+
+Date: 2026-10-14
+Series: qETH1.5X (series id qeth15), stage A rules-only level; inception 2026-10-16.
+
+Scope (files)
+-------------
+The change to the stage A leg on top of commit 712a6d02b4a151f2f54d5790625c0693b73956ac
+of the record repository, as a working tree (sha256 of the unified diff of the files below
+against that commit: 582ce000354452752afbaec90b1081df8c32e35db1e99867ffa5850a3595d3ad):
+
+  keeper/leverage-index.mjs        (first pass sha256 ff67cb786312f24763293679ba5bb963e703127e0ab60ccb03cda7686a672df8;
+                                    after the fixes 71b617af9e30a09f1f53a79854f81c9b886cac06bad48db01577dea0ad43fc59)
+  keeper/leverage-step.mjs         (first pass sha256 4aad2e8088ad2e375cdeb12d9114d87bad41bfc1c8a68517581fbe490b8e16f3;
+                                    after the fixes ababc503d9ef28cc98ff74e3fff1a6f6826f21bc174b341725fe62bcda0fa1f4)
+  scripts/verify.mjs               (first pass sha256 5f604b1764858fb328b3ec06da298dcb3fd97ad41323e6823ef27100f7804bcd;
+                                    after the fixes a346b0f51378638c5edba8d7b9f89588f0d1f2501a662b2ef30fecf9c5df8114)
+  scripts/watchdog-series.mjs
+  keeper/test/watchdog-series.test.mjs
+  .github/workflows/paper-index.yml
+  .github/workflows/leverage-dryrun.yml
+  keeper/rulebooks/qeth15.json     (new; sha256 b417ca3d96f897cf8ce926642d06ca0712d5122455ed3f54fcb1bd8e9e384fde)
+
+What changed: the target leverage is no longer fixed at 2 (TARGETS = [1.5, 2]; the verifier
+holds each series' target in its own table); a rulebook JSON that lists `pendingOwner` entries
+is a draft that the keeper refuses outside a rehearsal and the verifier refuses under a
+published line; the qeth15 series entry; qeth15 in the daily job, the dry-run job and the
+freshness alarm.
+
+Method
+------
+Everything ran offline: the record repository's own test doubles (a fake Binance, a fake
+JSON-RPC node, throwaway repository roots), keys made inside the process, no network call,
+no real key, no chain write. A finding counts only when a test in the file below reproduces
+it. Every refusal shown has a control next to it (the same input without the attack passes),
+so that no refusal is shown with an input that could not have passed anyway. A test that
+shows a weakness is marked `todo` and asserts the behaviour that would close it: it fails
+until the code changes, and the run stays green meanwhile. Each weakness below carries the
+objection one could raise against it and the answer; no second, independent objection was
+made in this pass.
+
+Questions asked
+---------------
+1. Is anything still fixed at 2 for a 1.5 book: the trigger comparison, the genesis book,
+   the reset, the verifier's recompute, the model-liquidation test?
+2. Can a qeth15 line pass as qETH2X or qBTC2X, or the reverse (cross-series), and can the
+   qeth15 rulebook file carry another series' rulebook or name another series' decision?
+3. Can the draft guard be passed: an empty list, another JSON type, a malformed entry, the
+   rehearsal flags?
+4. Can the series open before 2026-10-16, or without an anchored decision that pins the
+   rulebook JSON (NOT IN FORCE)?
+5. Workflow: step order, the step's condition and time limit, the files "Commit records"
+   stages, the failure alert.
+6. Can the freshness alarm or the verifier miss qeth15?
+7. What does the change do to qBTC2X, which already runs on the same files?
+8. Does the public verification command against the website's copy of the record keep
+   working once qeth15 has lines?
+
+Result
+------
+First pass: 20 tests, 15 pass, 5 todo (five of the six weaknesses below; the sixth is shown by a
+passing test of the mechanism), 0 fail; Node 22.23.1 and Node 20.15.0 gave the same result.
+After the fixes in the same change (F3, F4, F5, F6 below): 20 tests, 19 pass, 1 todo (F1, which
+closes when this series' inception decision is anchored), 0 fail.
+
+No wrong level from honest inputs was found. Nothing in the arithmetic assumes 2: at 1.5 the
+genesis book is {A: 1.5, C: -0.5, E: 1}, every reset and trigger trades back to 1.5, the same
+bar that liquidates a 2 book (low -42%) only moves a 1.5 book, and a 1.5 book liquidates at a
+deeper low (-62%). The verifier holds the target per series: qeth15 lines offered as qETH2X or
+qBTC2X, qETH2X lines offered as qeth15, a qeth15 rulebook file holding the qETH2X rulebook, a
+qeth15 rulebook at target 2, a qETH2X rulebook at target 1.5 and a qeth15 rulebook that names
+the qeth2x decision are all stopped, and the keeper writes nothing because it runs the
+verifier before it appends a line. The draft guard refuses every non-array form of
+`pendingOwner` before the ledger or the exchange is read. The series does not open the second
+before 2026-10-16 00:00 UTC, nor before the source has closed the first bar of that day, nor
+on a decision whose effective date or pinned sha256 differs from the rulebook JSON. The daily
+step, its staging of the qeth15 files, its alert lines and the freshness alarm cover qeth15,
+and the live leg writes only files that "Commit records" stages. On the same bars the qBTC2X
+day computation of the changed files equals that of the files the qBTC2X inception decision
+pins, both verifiers accept the same qBTC2X series and both reject it with one level changed,
+and the recorded qBTC2X lines verify under the changed files.
+
+Findings
+--------
+F1  medium, closed by the inception decision once anchored (test 17, todo until then). The qBTC2X inception decision (anchored) pins
+    keeper/leverage-index.mjs, keeper/leverage-step.mjs and scripts/verify.mjs by sha256.
+    The change replaces all three while qBTC2X runs on them; nothing in the code compares
+    those sha256 values, so the series continues, and the anchored text then names bytes
+    that no longer run. Test 16 shows the replacement does not change a qBTC2X level. The
+    test closes when an anchored decision states the re-pin (names the pinned and the new
+    sha256 of each file). Objection: the level is unchanged, so nothing is wrong. Answer:
+    the decision says the rules are "as implemented in" those exact bytes; a reader who
+    checks the sha256 of the running files finds a difference no record explains.
+    Action: the qETH1.5X inception decision names, for each of the three files, the sha256
+    the qBTC2X decision pins and the new sha256, and states that the qBTC2X rule, level and
+    lines do not change (test 16). Test 17 passes once that decision is in the ledger.
+
+F2  medium, open — outside this repository (test 18 shows the mechanism). To close before
+    2026-10-17 00:00 UTC.
+    `node scripts/verify.mjs --base https://quadrix.finance` reads record-qeth15.jsonl and
+    rulebook-qeth15.json from the website's copy of the record. The website's mirror list
+    does not carry them yet. From 2026-10-17 00:00 UTC (the end of the inception day) the
+    command then fails with "is anchored but record-qeth15.jsonl is missing"; with the record
+    copied but not the rulebook JSON, every line fails as "a rulebook changed after
+    inception", which points at the wrong cause. Objection: the website is not part of the
+    keeper. Answer: the README gives this command as the public check.
+
+F3  low, fixed in this change (test 6): the shape check now requires each entry to be an
+    object with a string key, so the run ends with the exit 2 refusal. A `pendingOwner` entry that is not an object ([null]) still
+    stops a live run with nothing written, but as a TypeError (exit 1, "Cannot read
+    properties of null") instead of the exit 2 refusal that names the file.
+
+F4  low, fixed in this change (test 7): the verifier now fails a line whose rulebook has a
+    pendingOwner that is not an array. The verifier and the keeper disagree on a non-array
+    `pendingOwner`: the keeper refuses an object as a shape error, the verifier reads
+    `.length`, finds none, and accepts a published line pinned to that rulebook JSON.
+    The keeper cannot write such a line; the gap is in the independent check.
+
+F5  low, fixed in this change (test 8; code older than this change): isLocalRpc reads the
+    host with a URL parser and refuses userinfo. isLocalRpc accepts
+    http://127.0.0.1:1@host/ and http://localhost:1@host/, whose host is elsewhere, so
+    --rpc with such a URL and --from counts as a local fork rehearsal. That unlocks the
+    draft guard and the throwaway values for that run only; its lines still go to
+    keeper/dryrun with a rehearsal mark, no key is read, and the published verifier fails a
+    rehearsal line (test 19).
+
+F6  low, documentation, fixed in this change (test 20). The README's --series list of the verifier
+    names qbtc2x and qeth2x but not qeth15.
+
+Noted, not counted as a finding: a draft rulebook committed before its decision is anchored
+makes the daily job fail on every run (exit 2), not report NOT IN FORCE (test 19). That is
+the guard's stated purpose; the job's single failure issue then stays open for all series.
+
+How to run
+----------
+From a checkout of the record repository with this change and `npm ci` done, run:
+
+  node --test --test-reporter=tap keeper/test/leverage-redteam-eth15.test.mjs
+
+The run takes about seven seconds and needs no network. Test 16 reads the files the qBTC2X
+inception decision pins from the commit it names (with the version-control tool) and is
+skipped in a shallow clone.
+
+Test file: keeper/test/leverage-redteam-eth15.test.mjs
+  sha256 ec6992e3db80e51fbc73aaeb157b579979601abbe4e94d42efb6f2193f32d5d8
+
+TAP summary after the fixes (Node 22.23.1)
+--------------------------
+ok 1 - shipped files: a ledger entry for the qeth15 inception decision whose document does not name the rulebook sha256 stalls the opening with a refusal (exit 2), not a quiet NOT IN FORCE; once the document names it, the day before is NOT IN FORCE and 2026-10-16 writes the genesis line that verify.mjs accepts
+ok 2 - cross-series: qeth15 lines offered as qETH2X or qBTC2X fail the verifier on index and target; re-labelled as a 2x series they fail on the 1.5 genesis book; qETH2X lines offered as qeth15 fail the same way
+ok 3 - cross-rulebook: keeper/rulebooks/qeth15.json holding the qETH2X rulebook (ticker qETH2X, target 2) passes the keeper's own checks and a decision that pins it, and is stopped only by the recompute (exit 1, nothing written)
+ok 4 - cross-decision: a qeth15 rulebook whose inception.decision names another index's decision (…-qeth2x-paper-inception) passes the keeper's ledger check and is stopped by the recompute (exit 1, nothing written)
+ok 5 - pendingOwner, keeper: every non-array form is a shape refusal (exit 2) before the ledger or the exchange is read; an empty array is "nothing pending" and the pinned rulebook runs
+ok 6 - pendingOwner, keeper: an entry that is not an object ([null]) is refused as a shape error (exit 2, naming the file) with nothing written and no request (finding F3, fixed)
+ok 7 - pendingOwner, verifier: a published qeth15 genesis line pinned to a rulebook with pendingOwner entries fails ("is a draft"); the same rulebook with pendingOwner as an object — which the keeper refuses as a shape error — is refused by the verifier too (finding F4, fixed)
+ok 8 - rehearsal flag: isLocalRpc reads the host as a URL parser does — a URL whose userinfo is 127.0.0.1 or localhost while its host is elsewhere is not local, so --rpc http://127.0.0.1:1@host/ --from 0x… is refused (finding F5, fixed)
+ok 9 - NOT IN FORCE edges: the second before the inception day, and a source that has not closed the first bar of the day, write nothing (exit 0); an inception.date edited away from the anchored decision is a refusal (exit 2); a ledger without the decision is NOT IN FORCE (exit 0)
+ok 10 - target: the trigger must sit above the series' own target (1.7 for qeth15 is accepted, 1.5 is not; 1.7 for qbtc2x is not); an index id in another spelling is refused
+ok 11 - target: a qETH2X rulebook that says 1.5 and a qeth15 rulebook that says 2 both pass the keeper's shape check (TARGETS) and are stopped by the verifier's table — no line written (exit 1)
+ok 12 - arithmetic at 1.5: the trigger and the model liquidation follow from the target, nothing is fixed at 2 — the same bar liquidates a 2 book and only triggers a 1.5 book; a 1.5 book liquidates at a deeper low
+ok 13 - watchdog: qeth15 is watched — pending until 16 h after its inception day begins, then "no record" is a problem; a written series goes stale after 40 h; the qeth2x pattern does not claim the qeth15 decision
+ok 14 - verifier states for qeth15: no file and no decision = not started (exit 0); a decision effective in the future and no file = pending (exit 0); a decision effective in the past and no file = FAIL (exit 1)
+ok 15 - wiring: paper-index.yml runs the qeth15 leg after qBTC2X with its own 20-minute limit on the same not-cancelled condition, stages its three files in "Commit records", and tails its log in the failure alert; leverage-dryrun.yml offers qeth15; the three tables (keeper INDEXES, verify.mjs, watchdog) and the rulebook agree
+ok 16 - qBTC2X under the changed files: the qBTC2X inception decision pins keeper/leverage-index.mjs, keeper/leverage-step.mjs and scripts/verify.mjs by sha256 at a commit; the files at that commit and the files here give the same 2x book, check log and level on the same bars, both verifiers accept the series, and the recorded qBTC2X lines verify under the files here
+not ok 17 - qBTC2X pins: every file the qBTC2X inception decision pins by sha256 either still has that sha256 here, or an anchored decision in trackrecord/decisions.jsonl names both the pinned and the current sha256 (a stated re-pin) # TODO medium: the three shared files change under a running series; the anchored qBTC2X text names the earlier bytes and no anchored decision names the new ones yet
+ok 18 - the website copy: verify.mjs --base needs record-qeth15.jsonl and rulebook-qeth15.json next to decisions.jsonl — without the rulebook every published line fails as "a rulebook changed after inception", without the record the series fails once its inception day has passed; with both it passes
+ok 19 - the live leg writes only files that "Commit records" stages (a tracked file outside that list would stop the push of every series); a draft qeth15 rulebook before any decision is a refusal (exit 2) every run, not NOT IN FORCE; draft dry-run lines placed in trackrecord/ fail the public verifier
+ok 20 - README: the --series list of scripts/verify.mjs names every series the verifier knows, qeth15 included (finding F6, fixed)
+1..20
+# tests 20
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 1

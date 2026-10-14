@@ -1,0 +1,36 @@
+qETH1.5X (index qeth15) — keeper day-by-day level against the registered ETH 1.5x test engine, 2026-10-13
+engine: leverage-eth15.mjs sha256 63157268d03014703dc4ac073ed9f3204827dcf63b81e56f9c3a0e7cb569d596 (registration d7fec51)
+input: ethusdt-15m.csv.gz sha256 323831dd73c6266320931fed8c5bf86fdb5df11ce05b1ee269a26eb33a7e6478
+rulebook values: keeper/rulebooks/qeth15.json — target 1.5, 15 min, trigger 2.3, 30 bp · 4.5% (and 30 bp · 6%)
+test: keeper/test/leverage-engine-diff-eth15.test.mjs (node --test, TAP below)
+
+TAP version 13
+# 2020-03 30bp/4.5%: 31 days equal, 1 trigger(s)
+# 2020-03 30bp/6%: 31 days equal, 1 trigger(s)
+# 2021-05 30bp/4.5%: 31 days equal, 0 trigger(s)
+# 2021-05 30bp/6%: 31 days equal, 0 trigger(s)
+# 2025-10 30bp/4.5%: 31 days equal, 0 trigger(s)
+# 2025-10 30bp/6%: 31 days equal, 0 trigger(s)
+# qeth15 15/2.3 30bp/4.5%: 3316 day-end equities equal; 1 triggers; final equity 0.8115115505163987
+# qeth15 15/2.3 30bp/6%: 3316 day-end equities equal; 1 triggers; final equity 0.7579201115058127
+# Subtest: qeth15 T1: the shipped pair (15 min · 2.3, target 1.5) x three months x (30 bp · 4.5%, 30 bp · 6%), every day-end equity === the engine
+ok 1 - qeth15 T1: the shipped pair (15 min · 2.3, target 1.5) x three months x (30 bp · 4.5%, 30 bp · 6%), every day-end equity === the engine
+  ---
+  duration_ms: 1203.590625
+  type: 'test'
+  ...
+# Subtest: qeth15 T1e: the shipped pair over the whole decision region 2017-09-01 … 2026-09-29 at 30 bp · 4.5% and 30 bp · 6%
+ok 2 - qeth15 T1e: the shipped pair over the whole decision region 2017-09-01 … 2026-09-29 at 30 bp · 4.5% and 30 bp · 6%
+  ---
+  duration_ms: 2069.990459
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3782.908333

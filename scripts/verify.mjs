@@ -27,17 +27,18 @@
  * genesis (separate chains on purpose — spec §8): the DRY_RUN rehearsal
  * (record.jsonl, 2026-08-13 → 08-30, closed), the LIVE series (record-live.jsonl,
  * genesis 2026-09-01), the five paper-index series (record-{qrev,qdefi,qai,
- * barbell,triens}.jsonl, anchor prefix `qxpi-<index>:`), the two leverage
- * series (record-{qbtc2x,qeth2x}.jsonl, same prefix form; reported as "not
- * started" while neither file nor an inception decision exists), and qX20's
+ * barbell,triens}.jsonl, anchor prefix `qxpi-<index>:`), the leverage
+ * series (record-{qbtc2x,qeth2x,qeth15}.jsonl, same prefix form; reported as
+ * "not started" while neither file nor an inception decision exists), and qX20's
  * daily closes (qx20-daily.jsonl). qX20 is not hash-chained: each close names the
  * keeper's setNav transaction, and the check is that the transaction exists,
  * succeeded, went to a qX20 vault, carries the stated level, and sits in the
  * stated block at the stated time. It does not prove the close was the day's
  * last mark — the vault's full transaction list on the explorer shows that.
  *
- * The leverage series (qBTC2X, qETH2X — keeper/leverage-index.mjs) are also
- * RECOMPUTED: each line's level, book, check log and day statistics follow
+ * The leverage series (qBTC2X, qETH2X and qETH1.5X, series id qeth15 —
+ * keeper/leverage-index.mjs) are also RECOMPUTED, each against its own target
+ * leverage: each line's level, book, check log and day statistics follow
  * from the previous line's book, this line's 15-minute bars and the rule the
  * line states, by the arithmetic written out below (leverage section) — this
  * file does not import the keeper's code, so the two implementations check
@@ -60,7 +61,7 @@
  *   --base <url>     fetch <base>/trackrecord/… (the site's mirror)
  *   --dir <path>     read the files from a local directory
  *   --series <name>  dry | live | qrev | qdefi | qai | barbell | triens | qbtc2x |
- *                    qeth2x | qx20 | all (default: all). The paper indexes are
+ *                    qeth2x | qeth15 | qx20 | all (default: all). The paper indexes are
  *                    keeper/paper-index.mjs's rules-only levels: same hash-chain
  *                    shape, anchor prefix `qxpi-<index>:`, no `decisions` field.
  *   --rpc <url>      JSON-RPC endpoint (default: https://sepolia-rpc.giwa.io)
@@ -181,11 +182,12 @@ const SERIES_FILES = {
   qai: { label: 'QAI', records: 'record-qai.jsonl', anchors: 'anchors-qai.jsonl', anchorPrefix: 'qxpi-qai:', checkDecisions: false },
   barbell: { label: 'QDUO (barbell)', records: 'record-barbell.jsonl', anchors: 'anchors-barbell.jsonl', anchorPrefix: 'qxpi-barbell:', checkDecisions: false },
   triens: { label: 'QTRI (triens)', records: 'record-triens.jsonl', anchors: 'anchors-triens.jsonl', anchorPrefix: 'qxpi-triens:', checkDecisions: false },
-  // Leverage stage A (keeper/leverage-index.mjs): a synthetic daily-reset 2x
-  // level computed from Binance spot bars. Same chain and anchor shape, plus
-  // the recompute (leverage section below).
-  qbtc2x: { label: 'QBTC2X', records: 'record-qbtc2x.jsonl', anchors: 'anchors-qbtc2x.jsonl', anchorPrefix: 'qxpi-qbtc2x:', checkDecisions: false, leverage: { index: 'qbtc2x', ticker: 'qBTC2X', symbol: 'BTCUSDT' } },
-  qeth2x: { label: 'QETH2X', records: 'record-qeth2x.jsonl', anchors: 'anchors-qeth2x.jsonl', anchorPrefix: 'qxpi-qeth2x:', checkDecisions: false, leverage: { index: 'qeth2x', ticker: 'qETH2X', symbol: 'ETHUSDT' } },
+  // Leverage stage A (keeper/leverage-index.mjs): a synthetic daily-reset
+  // level (target leverage `target`) computed from Binance spot bars. Same
+  // chain and anchor shape, plus the recompute (leverage section below).
+  qbtc2x: { label: 'QBTC2X', records: 'record-qbtc2x.jsonl', anchors: 'anchors-qbtc2x.jsonl', anchorPrefix: 'qxpi-qbtc2x:', checkDecisions: false, leverage: { index: 'qbtc2x', ticker: 'qBTC2X', symbol: 'BTCUSDT', target: 2 } },
+  qeth2x: { label: 'QETH2X', records: 'record-qeth2x.jsonl', anchors: 'anchors-qeth2x.jsonl', anchorPrefix: 'qxpi-qeth2x:', checkDecisions: false, leverage: { index: 'qeth2x', ticker: 'qETH2X', symbol: 'ETHUSDT', target: 2 } },
+  qeth15: { label: 'QETH1.5X', records: 'record-qeth15.jsonl', anchors: 'anchors-qeth15.jsonl', anchorPrefix: 'qxpi-qeth15:', checkDecisions: false, leverage: { index: 'qeth15', ticker: 'qETH1.5X', symbol: 'ETHUSDT', target: 1.5 } },
 };
 const ALL = [...Object.keys(SERIES_FILES), 'qx20'];
 if (SERIES !== 'all' && !ALL.includes(SERIES)) {
@@ -355,7 +357,7 @@ async function verifySeries(key) {
 }
 
 // ------------------------------------------------------------------ leverage
-// qBTC2X / qETH2X stage A. A line D carries the 15-minute bars of UTC day
+// qBTC2X / qETH2X / qETH1.5X stage A. A line D carries the 15-minute bars of UTC day
 // D - 1 and the book left at its end; the previous line's book plus this
 // line's bars and rule determine everything else in it. Written here from the
 // rule's text (not from keeper/leverage-step.mjs) so that the keeper's line
@@ -483,7 +485,7 @@ async function verifyLeverage(f, records) {
   if (g.seq !== 0 || g.prevHash !== null) bad(g, 'the first line is not a genesis line (seq 0, prevHash null)');
   if (g.index !== L.ticker) bad(g, `index ${g.index}, expected ${L.ticker}`);
   if (rehearsal !== null && !ALLOW_REHEARSAL) bad(g, `marked as a rehearsal ("${rehearsal}") — not a published series line (pass --allow-rehearsal for keeper/dryrun/ output)`);
-  if (!rule || rule.target !== 2 || rule.reset !== 'daily-00:00-utc' || rule.barMinutes !== 15 || !(rule.lltv > 0 && rule.lltv < 1)) bad(g, `rule ${JSON.stringify(rule)} is not a daily-reset 2x rule on 15-minute bars`);
+  if (!rule || rule.target !== L.target || rule.reset !== 'daily-00:00-utc' || rule.barMinutes !== 15 || !(rule.lltv > 0 && rule.lltv < 1)) bad(g, `rule ${JSON.stringify(rule)} is not a daily-reset ${L.target}x rule on 15-minute bars`);
   else if (!(Number.isInteger(rule.checkMinutes) && rule.checkMinutes >= 15 && rule.checkMinutes < 1440 && rule.checkMinutes % 15 === 0 && 1440 % rule.checkMinutes === 0) || !(rule.trigger > rule.target) || !(rule.costBp >= 0) || !(rule.ratePct >= 0)) bad(g, `rule values ${JSON.stringify(rule)} are outside the allowed grid`);
   const startBook = { A: rule.target, C: 1 - rule.target, E: 1 };
   const gb = g.bars?.[0];
@@ -540,6 +542,8 @@ async function verifyLeverage(f, records) {
         };
         if (!lev.same(rule, want)) bad(g, `rule ${JSON.stringify(rule)} is not the rulebook JSON's ${JSON.stringify(want)}`);
         if (rb.ticker !== L.ticker || rb.underlying?.symbol !== L.symbol || rb.inception?.date !== g.date || rb.inception?.decision !== inc.decision) bad(g, `rulebook JSON names ${rb.ticker} ${rb.underlying?.symbol}, inception ${rb.inception?.date} ${rb.inception?.decision} — not this series`);
+        if (Array.isArray(rb.pendingOwner) && rb.pendingOwner.length) bad(g, `rulebook JSON is a draft — it still lists ${rb.pendingOwner.length} pending owner decision(s) (pendingOwner); a published line cannot rest on it`);
+        else if (rb.pendingOwner !== undefined && !Array.isArray(rb.pendingOwner)) bad(g, `rulebook JSON is a draft — its pendingOwner is not an array (${JSON.stringify(rb.pendingOwner).slice(0, 80)}); a published line cannot rest on it`);
       }
     }
     const d = decisions.find((x) => x.id === inc.decision);

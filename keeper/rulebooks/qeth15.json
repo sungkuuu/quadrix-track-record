@@ -1,0 +1,50 @@
+{
+  "ticker": "qETH1.5X",
+  "track": "trading-tool",
+  "name": "ETH 1.5x",
+  "kind": "leverage-synthetic",
+  "status": "in force from 2026-10-16 once the inception decision 2026-10-16-qeth15-paper-inception is anchored (see decisions.jsonl) — stage A: a rules-only synthetic level of a daily-reset 1.5x book from Binance spot bars, one line per UTC day; nothing is borrowed, swapped or liquidated, and no vault follows the level yet.",
+  "asOf": "2026-10-13",
+  "_doc": "Stage A rules for ETH 1.5x (keeper/leverage-index.mjs). The rulebook is rulebooks/qeth15.md in this repository; the inception decision pins this file's sha256. check.minutes and check.trigger are the output of the pre-registered ETH 1.5x daily-reset test (site repository, registration commit d7fec51, result row trk_asset_outcome,ETH,A,miss1,all: sole survivor of the filter, ETH|1.5|daily|L>=2.3|15) on the 'miss one check' track, which the owner chose on 2026-10-13 after the results. The product definition (target 1.5, daily reset at 00:00 UTC, back to 1.5 after a trigger, no intraday re-leverage) was set by the owner on 2026-10-13: the 2x definition, at 1.5. The values hold for stage A only: a real borrowing book needs a new verdict against the real liquidation line. Changing any value after a decision pinned this file is a rule change: a new decision, never an edit.",
+  "underlying": {
+    "symbol": "ETHUSDT",
+    "source": "binance-spot-rest",
+    "host": "https://data-api.binance.vision",
+    "path": "/api/v3/klines",
+    "interval": "1m",
+    "barMinutes": 15,
+    "_doc": "As qETH2X: closed 1-minute bars of the UTC day, aggregated to 15-minute bars by the test engines' --build rule; no fallback source; a day with fewer than 1,440 bars halts until a person accepts it in keeper/leverage-gaps.json."
+  },
+  "product": {
+    "target": 1.5,
+    "reset": "daily-00:00-utc",
+    "intradayReleverage": false,
+    "_doc": "Product definition (owner 2026-10-13: the 2x definition, at 1.5): one and a half times the UTC-day return of ETH, leverage brought back to 1.5 at every 00:00 UTC close; between resets the trigger only reduces leverage, back to 1.5."
+  },
+  "check": {
+    "minutes": 15,
+    "trigger": 2.3,
+    "_doc": "ETH 1.5x test output, 'miss one check' track (a variant qualifies only if the margin holds with the unchecked window doubled to 30 minutes), chosen by the owner on 2026-10-13 after the results: chosen ETH|1.5|daily|L>=T|n = ETH|1.5|daily|L>=2.3|15. The free track returns 15 minutes and 2.4. Check times are every 15 minutes from 00:00 UTC, i.e. every bar close."
+  },
+  "model": {
+    "lltv": 0.86,
+    "lltvNote": "placeholder, as qETH2X and as the ETH 1.5x test — no market's value is confirmed; the tests count a liquidation at a bar low at this LTV as a total loss"
+  },
+  "level": {
+    "primary": {
+      "costBp": 30,
+      "ratePct": 4.5
+    },
+    "also": [],
+    "_doc": "The cost convention of the recorded level, set by the owner on 2026-10-13 — the same convention as qBTC2X (30 bp, 4.5% a year; the test's headline is 6%): costBp per unit of traded notional, charged out of equity at each trade; at every 15-minute bar the debt is multiplied by (1 + ratePct / 100 / 365) ^ (elapsed minutes / 1440). level.also = further conventions recorded on the same line, each with its own book (none)."
+  },
+  "fees": {
+    "managementBps": 100,
+    "_doc": "1% a year (owner, 2026-10-13): a price, not a tested value, and it can only be lowered. It is not applied to the stage A level (the published level is before the fee) and nothing collects it — there is no vault. This key records the decision and drives nothing."
+  },
+  "genesisLevel": 100,
+  "inception": {
+    "date": "2026-10-16",
+    "decision": "2026-10-16-qeth15-paper-inception"
+  }
+}

@@ -1,0 +1,548 @@
+qETH1.5X keeper tests, 2026-10-14 (node --test, TAP; Node 22.23.1) — local checkout paths shown as <checkout>
+files: keeper/test/leverage-eth15.test.mjs leverage-draft.test.mjs leverage-step.test.mjs leverage-redteam-fixes.test.mjs watchdog-series.test.mjs leverage-redteam-eth15.test.mjs leverage-index.test.mjs
+result: 81 tests, 79 pass, 0 fail, 1 skipped (a real-bar comparison that needs a local data file), 1 todo (red team F1 — closes when the qETH1.5X inception decision, which re-pins the three shared files, is anchored)
+
+TAP version 13
+# Subtest: keeper: a rulebook that lists pendingOwner is refused outside a rehearsal (exit 2), nothing written, no exchange or chain request; a dry run still runs
+ok 1 - keeper: a rulebook that lists pendingOwner is refused outside a rehearsal (exit 2), nothing written, no exchange or chain request; a dry run still runs
+  ---
+  duration_ms: 320.855792
+  type: 'test'
+  ...
+# Subtest: verify: a published genesis line pinned to a draft rulebook JSON fails ("is a draft"), and for that reason only
+ok 2 - verify: a published genesis line pinned to a draft rulebook JSON fails ("is a draft"), and for that reason only
+  ---
+  duration_ms: 325.506166
+  type: 'test'
+  ...
+# Subtest: target: a qBTC2X rulebook that says 1.5 passes the keeper's shape check (1.5 is in TARGETS), but the verifier holds qBTC2X at 2 — no line is written (exit 1)
+ok 3 - target: a qBTC2X rulebook that says 1.5 passes the keeper's shape check (1.5 is in TARGETS), but the verifier holds qBTC2X at 2 — no line is written (exit 1)
+  ---
+  duration_ms: 428.989583
+  type: 'test'
+  ...
+# Subtest: qeth15: the shipped rulebook has the owner values and no pending decision; before its inception decision is anchored a live run stops with NOT IN FORCE (exit 0), nothing written, no exchange or chain request
+ok 4 - qeth15: the shipped rulebook has the owner values and no pending decision; before its inception decision is anchored a live run stops with NOT IN FORCE (exit 0), nothing written, no exchange or chain request
+  ---
+  duration_ms: 72.508083
+  type: 'test'
+  ...
+# Subtest: qeth15 dry run (THROWAWAY n = 120 · T = 1.7): target 1.5 comes from the rulebook alone; verify.mjs holds the target of the series
+ok 5 - qeth15 dry run (THROWAWAY n = 120 · T = 1.7): target 1.5 comes from the rulebook alone; verify.mjs holds the target of the series
+  ---
+  duration_ms: 902.1925
+  type: 'test'
+  ...
+# REFUSED: check.minutes — must be an integer n with 15 <= n < 1440, n % 15 = 0 and 1440 % n = 0 (got null); a live run uses the rulebook only (the sixth test fills check.*, the owner level.primary)
+# REFUSED: check.trigger — must be a number above product.target 2 (got null); a live run uses the rulebook only (the sixth test fills check.*, the owner level.primary)
+# REFUSED: level.primary — must be {costBp >= 0, ratePct >= 0} (got null); a live run uses the rulebook only (the sixth test fills check.*, the owner level.primary)
+# REFUSED: check.minutes — must be an integer n with 15 <= n < 1440, n % 15 = 0 and 1440 % n = 0 (got 20); a live run uses the rulebook only (the sixth test fills check.*, the owner level.primary)
+# REFUSED: check.minutes — must be an integer n with 15 <= n < 1440, n % 15 = 0 and 1440 % n = 0 (got 1440); a live run uses the rulebook only (the sixth test fills check.*, the owner level.primary)
+# REFUSED: check.trigger — must be a number above product.target 2 (got 2); a live run uses the rulebook only (the sixth test fills check.*, the owner level.primary)
+# REFUSED: throwaway values are accepted only with --dry-run or a local fork rehearsal (--rpc 127.0.0.1 --from …)
+# REFUSED: throwaway values are accepted only with --dry-run or a local fork rehearsal (--rpc 127.0.0.1 --from …)
+# REFUSED: --from is for an unlocked account on a local fork (--rpc http://127.0.0.1:… or localhost)
+# Binance BTCUSDT 2030-05-02: 1439 of 1,440 1-minute bars (missing 13:07–13:07; canonical sha256 67c39cdd57ac70ef5f33a16f33dff1657122d4b2cc10be30ff7a345e70f79419) — halted, nothing written for 2030-05-03 or later. Missing bars are never filled: a person confirms the gap and adds {id, index, day, sha256, missing, note, confirmedAt} to keeper/leverage-gaps.json, with id a name of its own, e.g. "qbtc2x-2030-05-02" (keeper/RUNBOOK.md, leverage gaps).
+# Binance BTCUSDT 2030-05-02: 1439 of 1,440 1-minute bars (missing 13:07–13:07; canonical sha256 67c39cdd57ac70ef5f33a16f33dff1657122d4b2cc10be30ff7a345e70f79419) — halted, nothing written for 2030-05-03 or later. Missing bars are never filled: a person confirms the gap and adds {id, index, day, sha256, missing, note, confirmedAt} to keeper/leverage-gaps.json, with id a name of its own, e.g. "qbtc2x-2030-05-02" (keeper/RUNBOOK.md, leverage gaps).
+# Subtest: T4: an empty or invalid tested value, or a throwaway value outside a dry run, is refused with exit 2 — no file written, no exchange or chain request
+ok 6 - T4: an empty or invalid tested value, or a throwaway value outside a dry run, is refused with exit 2 — no file written, no exchange or chain request
+  ---
+  duration_ms: 126.6485
+  type: 'test'
+  ...
+# Subtest: T4b: the two shipped rulebooks carry one level convention (level.primary, owner 2026-10-05) and record no management fee in stage A
+ok 7 - T4b: the two shipped rulebooks carry one level convention (level.primary, owner 2026-10-05) and record no management fee in stage A
+  ---
+  duration_ms: 0.748833
+  type: 'test'
+  ...
+# Subtest: T4: the shipped rulebooks (values filled 2026-10-05) pass the rule checks and stay NOT IN FORCE until their inception decision is in the ledger — exit 0, nothing written, no exchange or chain request
+ok 8 - T4: the shipped rulebooks (values filled 2026-10-05) pass the rule checks and stay NOT IN FORCE until their inception decision is in the ledger — exit 0, nothing written, no exchange or chain request
+  ---
+  duration_ms: 14.5175
+  type: 'test'
+  ...
+# Subtest: not in force: no decision, a named decision not yet anchored, or before the inception date — exit 0, nothing written
+ok 9 - not in force: no decision, a named decision not yet anchored, or before the inception date — exit 0, nothing written
+  ---
+  duration_ms: 19.460542
+  type: 'test'
+  ...
+# Subtest: review r1: once the series has lines, a rulebook edited after inception is a refusal (exit 2, the failure issue opens), not a silent NOT IN FORCE
+ok 10 - review r1: once the series has lines, a rulebook edited after inception is a refusal (exit 2, the failure issue opens), not a silent NOT IN FORCE
+  ---
+  duration_ms: 243.597625
+  type: 'test'
+  ...
+# Subtest: review r2: an ANCHORED inception decision that the files do not satisfy is a refusal before the genesis line too (exit 2, the failure issue opens) — not a silent NOT IN FORCE on the opening day
+ok 11 - review r2: an ANCHORED inception decision that the files do not satisfy is a refusal before the genesis line too (exit 2, the failure issue opens) — not a silent NOT IN FORCE on the opening day
+  ---
+  duration_ms: 26.575334
+  type: 'test'
+  ...
+# Subtest: T5: a day is not written before the next day's first 1-minute bar has closed
+ok 12 - T5: a day is not written before the next day's first 1-minute bar has closed
+  ---
+  duration_ms: 122.986083
+  type: 'test'
+  ...
+# Subtest: T6: a run that wakes late computes the missed days in order, from the same bars — only the timing fields differ; a second run writes nothing
+ok 13 - T6: a run that wakes late computes the missed days in order, from the same bars — only the timing fields differ; a second run writes nothing
+  ---
+  duration_ms: 613.349167
+  type: 'test'
+  ...
+# Subtest: T7: 1,439 bars halt the series (exit 1, nothing written, later days neither); an accepted gap with the same sha256 is computed and recorded; a different sha256 or two differing fetches halt
+ok 14 - T7: 1,439 bars halt the series (exit 1, nothing written, later days neither); an accepted gap with the same sha256 is computed and recorded; a different sha256 or two differing fetches halt
+  ---
+  duration_ms: 388.756084
+  type: 'test'
+  ...
+# independent recompute (scripts/verify.mjs --recompute-only) rejected line 2030-05-02 — nothing appended:
+#   FAIL  injected
+# Subtest: T8: every line is anchored with calldata qxpi-qbtc2x:<hash>, signed locally (the node is never asked to sign); a line left unanchored is anchored first
+ok 15 - T8: every line is anchored with calldata qxpi-qbtc2x:<hash>, signed locally (the node is never asked to sign); a line left unanchored is anchored first
+  ---
+  duration_ms: 3526.73575
+  type: 'test'
+  ...
+# Subtest: T8: when the independent recompute rejects the new line nothing is appended or anchored (exit 1)
+ok 16 - T8: when the independent recompute rejects the new line nothing is appended or anchored (exit 1)
+  ---
+  duration_ms: 71.909375
+  type: 'test'
+  ...
+# Subtest: T9: after the anchor the vault is marked to round(E × 1e6) in contract-bounded steps; marks are skipped without an address or a gate
+ok 17 - T9: after the anchor the vault is marked to round(E × 1e6) in contract-bounded steps; marks are skipped without an address or a gate
+  ---
+  duration_ms: 14782.102917
+  type: 'test'
+  ...
+# Subtest: review r1: T9 on a load-balanced endpoint — a node behind the last step answers the next simulation from the old navPerShare; the simulation runs at a block >= the last receipt, so the steps still go through
+ok 18 - review r1: T9 on a load-balanced endpoint — a node behind the last step answers the next simulation from the old navPerShare; the simulation runs at a block >= the last receipt, so the steps still go through
+  ---
+  duration_ms: 61641.627625
+  type: 'test'
+  ...
+# Subtest: review r2: --no-new-lines (lines pushed before anything goes on chain, keeper-clock G2) — a keyless run writes the lines, a second run with --anchor --no-new-lines anchors every unanchored line in order and marks, computes no line and calls no exchange even when another day has ended
+ok 19 - review r2: --no-new-lines (lines pushed before anything goes on chain, keeper-clock G2) — a keyless run writes the lines, a second run with --anchor --no-new-lines anchors every unanchored line in order and marks, computes no line and calls no exchange even when another day has ended
+  ---
+  duration_ms: 7930.699792
+  type: 'test'
+  ...
+# qBTC2X vault marks FAILED after line \#2 was written and anchored: setNav step 2/4 reverted (0x1cf16502d94436f2a23d112a4d91764496c2ad71894b327bfd6c168bb12f14a0)
+# Subtest: T9: a mark that fails keeps the line and its anchor and exits 1; the next run finishes the steps
+ok 20 - T9: a mark that fails keeps the line and its anchor and exits 1; the next run finishes the steps
+  ---
+  duration_ms: 8806.222333
+  type: 'test'
+  ...
+# qBTC2X vault marks FAILED after line \#2 was written and anchored: MARK HALTED: the level moves the vault -62.54% (navPerShare 1000000 → 374585), beyond the ±15% gate — nothing sent; a person decides (keeper/RUNBOOK.md, leverage marks)
+# Subtest: T9: gate {mode: halt, pct: 15} stops a mark beyond 15% (exit 1, nothing sent) — the alternative the owner may choose
+ok 21 - T9: gate {mode: halt, pct: 15} stops a mark beyond 15% (exit 1, nothing sent) — the alternative the owner may choose
+  ---
+  duration_ms: 3482.468542
+  type: 'test'
+  ...
+# Subtest: T9 (owner 2026-10-06): a model liquidation halts the series until a person accepts it — nothing written, anchored or marked (exit 1); an entry with another bar, LTV or sha256, a gap entry, or one without an id does not accept it
+ok 22 - T9 (owner 2026-10-06): a model liquidation halts the series until a person accepts it — nothing written, anchored or marked (exit 1); an entry with another bar, LTV or sha256, a gap entry, or one without an id does not accept it
+  ---
+  duration_ms: 3466.547208
+  type: 'test'
+  ...
+# Subtest: T9: an accepted model liquidation ends the series: level 0 with liquidationAccepted, anchored, the vault stepped to the floor (46 steps) and paused; the next run sends and writes nothing; verify fails the line without the id
+ok 23 - T9: an accepted model liquidation ends the series: level 0 with liquidationAccepted, anchored, the vault stepped to the floor (46 steps) and paused; the next run sends and writes nothing; verify fails the line without the id
+  ---
+  duration_ms: 54004.961875
+  type: 'test'
+  ...
+# Subtest: T2: scripts/verify.mjs recomputes 31 days of the leg's lines field for field; a tampered line fails it
+ok 24 - T2: scripts/verify.mjs recomputes 31 days of the leg's lines field for field; a tampered line fails it
+  ---
+  duration_ms: 3472.418625
+  type: 'test'
+  ...
+# Subtest: T2 on real bars: 2020-03 (BTC, with the 2020-03-04 exchange gap accepted) through the leg and verify
+ok 25 - T2 on real bars: 2020-03 (BTC, with the 2020-03-04 exchange gap accepted) through the leg and verify # SKIP real-bar comparison missing — set LEVERAGE_V6_DIR (or LEVERAGE_V6_ENGINE) to the sixth test directory
+  ---
+  duration_ms: 0.145958
+  type: 'test'
+  ...
+# Subtest: review r1: verify — between an anchored inception decision and the genesis line the series is "pending"; after that UTC day a missing file fails
+ok 26 - review r1: verify — between an anchored inception decision and the genesis line the series is "pending"; after that UTC day a missing file fails
+  ---
+  duration_ms: 146.95575
+  type: 'test'
+  ...
+# Subtest: review r1: verify — a genesis line carrying checks, a renumbered seq, or a price host other than the rule's fails even when re-hashed
+ok 27 - review r1: verify — a genesis line carrying checks, a renumbered seq, or a price host other than the rule's fails even when re-hashed
+  ---
+  duration_ms: 635.017834
+  type: 'test'
+  ...
+# Subtest: shipped files: a ledger entry for the qeth15 inception decision whose document does not name the rulebook sha256 stalls the opening with a refusal (exit 2), not a quiet NOT IN FORCE; once the document names it, the day before is NOT IN FORCE and 2026-10-16 writes the genesis line that verify.mjs accepts
+ok 28 - shipped files: a ledger entry for the qeth15 inception decision whose document does not name the rulebook sha256 stalls the opening with a refusal (exit 2), not a quiet NOT IN FORCE; once the document names it, the day before is NOT IN FORCE and 2026-10-16 writes the genesis line that verify.mjs accepts
+  ---
+  duration_ms: 283.569375
+  type: 'test'
+  ...
+# Subtest: cross-series: qeth15 lines offered as qETH2X or qBTC2X fail the verifier on index and target; re-labelled as a 2x series they fail on the 1.5 genesis book; qETH2X lines offered as qeth15 fail the same way
+ok 29 - cross-series: qeth15 lines offered as qETH2X or qBTC2X fail the verifier on index and target; re-labelled as a 2x series they fail on the 1.5 genesis book; qETH2X lines offered as qeth15 fail the same way
+  ---
+  duration_ms: 1186.88575
+  type: 'test'
+  ...
+# Subtest: cross-rulebook: keeper/rulebooks/qeth15.json holding the qETH2X rulebook (ticker qETH2X, target 2) passes the keeper's own checks and a decision that pins it, and is stopped only by the recompute (exit 1, nothing written)
+ok 30 - cross-rulebook: keeper/rulebooks/qeth15.json holding the qETH2X rulebook (ticker qETH2X, target 2) passes the keeper's own checks and a decision that pins it, and is stopped only by the recompute (exit 1, nothing written)
+  ---
+  duration_ms: 181.622667
+  type: 'test'
+  ...
+# Subtest: cross-decision: a qeth15 rulebook whose inception.decision names another index's decision (…-qeth2x-paper-inception) passes the keeper's ledger check and is stopped by the recompute (exit 1, nothing written)
+ok 31 - cross-decision: a qeth15 rulebook whose inception.decision names another index's decision (…-qeth2x-paper-inception) passes the keeper's ledger check and is stopped by the recompute (exit 1, nothing written)
+  ---
+  duration_ms: 84.229709
+  type: 'test'
+  ...
+# Subtest: pendingOwner, keeper: every non-array form is a shape refusal (exit 2) before the ledger or the exchange is read; an empty array is "nothing pending" and the pinned rulebook runs
+ok 32 - pendingOwner, keeper: every non-array form is a shape refusal (exit 2) before the ledger or the exchange is read; an empty array is "nothing pending" and the pinned rulebook runs
+  ---
+  duration_ms: 94.062958
+  type: 'test'
+  ...
+# Subtest: pendingOwner, keeper: an entry that is not an object ([null]) is refused as a shape error (exit 2, naming the file) with nothing written and no request (finding F3, fixed)
+ok 33 - pendingOwner, keeper: an entry that is not an object ([null]) is refused as a shape error (exit 2, naming the file) with nothing written and no request (finding F3, fixed)
+  ---
+  duration_ms: 4.991333
+  type: 'test'
+  ...
+# Subtest: pendingOwner, verifier: a published qeth15 genesis line pinned to a rulebook with pendingOwner entries fails ("is a draft"); the same rulebook with pendingOwner as an object — which the keeper refuses as a shape error — is refused by the verifier too (finding F4, fixed)
+ok 34 - pendingOwner, verifier: a published qeth15 genesis line pinned to a rulebook with pendingOwner entries fails ("is a draft"); the same rulebook with pendingOwner as an object — which the keeper refuses as a shape error — is refused by the verifier too (finding F4, fixed)
+  ---
+  duration_ms: 294.83125
+  type: 'test'
+  ...
+# Subtest: rehearsal flag: isLocalRpc reads the host as a URL parser does — a URL whose userinfo is 127.0.0.1 or localhost while its host is elsewhere is not local, so --rpc http://127.0.0.1:1@host/ --from 0x… is refused (finding F5, fixed)
+ok 35 - rehearsal flag: isLocalRpc reads the host as a URL parser does — a URL whose userinfo is 127.0.0.1 or localhost while its host is elsewhere is not local, so --rpc http://127.0.0.1:1@host/ --from 0x… is refused (finding F5, fixed)
+  ---
+  duration_ms: 20.670958
+  type: 'test'
+  ...
+# Subtest: NOT IN FORCE edges: the second before the inception day, and a source that has not closed the first bar of the day, write nothing (exit 0); an inception.date edited away from the anchored decision is a refusal (exit 2); a ledger without the decision is NOT IN FORCE (exit 0)
+ok 36 - NOT IN FORCE edges: the second before the inception day, and a source that has not closed the first bar of the day, write nothing (exit 0); an inception.date edited away from the anchored decision is a refusal (exit 2); a ledger without the decision is NOT IN FORCE (exit 0)
+  ---
+  duration_ms: 87.057042
+  type: 'test'
+  ...
+# Subtest: target: the trigger must sit above the series' own target (1.7 for qeth15 is accepted, 1.5 is not; 1.7 for qbtc2x is not); an index id in another spelling is refused
+ok 37 - target: the trigger must sit above the series' own target (1.7 for qeth15 is accepted, 1.5 is not; 1.7 for qbtc2x is not); an index id in another spelling is refused
+  ---
+  duration_ms: 5.841875
+  type: 'test'
+  ...
+# Subtest: target: a qETH2X rulebook that says 1.5 and a qeth15 rulebook that says 2 both pass the keeper's shape check (TARGETS) and are stopped by the verifier's table — no line written (exit 1)
+ok 38 - target: a qETH2X rulebook that says 1.5 and a qeth15 rulebook that says 2 both pass the keeper's shape check (TARGETS) and are stopped by the verifier's table — no line written (exit 1)
+  ---
+  duration_ms: 160.835542
+  type: 'test'
+  ...
+# Subtest: arithmetic at 1.5: the trigger and the model liquidation follow from the target, nothing is fixed at 2 — the same bar liquidates a 2 book and only triggers a 1.5 book; a 1.5 book liquidates at a deeper low
+ok 39 - arithmetic at 1.5: the trigger and the model liquidation follow from the target, nothing is fixed at 2 — the same bar liquidates a 2 book and only triggers a 1.5 book; a 1.5 book liquidates at a deeper low
+  ---
+  duration_ms: 0.251625
+  type: 'test'
+  ...
+# Subtest: watchdog: qeth15 is watched — pending until 16 h after its inception day begins, then "no record" is a problem; a written series goes stale after 40 h; the qeth2x pattern does not claim the qeth15 decision
+ok 40 - watchdog: qeth15 is watched — pending until 16 h after its inception day begins, then "no record" is a problem; a written series goes stale after 40 h; the qeth2x pattern does not claim the qeth15 decision
+  ---
+  duration_ms: 1.368916
+  type: 'test'
+  ...
+# Subtest: verifier states for qeth15: no file and no decision = not started (exit 0); a decision effective in the future and no file = pending (exit 0); a decision effective in the past and no file = FAIL (exit 1)
+ok 41 - verifier states for qeth15: no file and no decision = not started (exit 0); a decision effective in the future and no file = pending (exit 0); a decision effective in the past and no file = FAIL (exit 1)
+  ---
+  duration_ms: 297.382708
+  type: 'test'
+  ...
+# Subtest: wiring: paper-index.yml runs the qeth15 leg after qBTC2X with its own 20-minute limit on the same not-cancelled condition, stages its three files in "Commit records", and tails its log in the failure alert; leverage-dryrun.yml offers qeth15; the three tables (keeper INDEXES, verify.mjs, watchdog) and the rulebook agree
+ok 42 - wiring: paper-index.yml runs the qeth15 leg after qBTC2X with its own 20-minute limit on the same not-cancelled condition, stages its three files in "Commit records", and tails its log in the failure alert; leverage-dryrun.yml offers qeth15; the three tables (keeper INDEXES, verify.mjs, watchdog) and the rulebook agree
+  ---
+  duration_ms: 1.728167
+  type: 'test'
+  ...
+# Subtest: qBTC2X under the changed files: the qBTC2X inception decision pins keeper/leverage-index.mjs, keeper/leverage-step.mjs and scripts/verify.mjs by sha256 at a commit; the files at that commit and the files here give the same 2x book, check log and level on the same bars, both verifiers accept the series, and the recorded qBTC2X lines verify under the files here
+ok 43 - qBTC2X under the changed files: the qBTC2X inception decision pins keeper/leverage-index.mjs, keeper/leverage-step.mjs and scripts/verify.mjs by sha256 at a commit; the files at that commit and the files here give the same 2x book, check log and level on the same bars, both verifiers accept the series, and the recorded qBTC2X lines verify under the files here
+  ---
+  duration_ms: 897.482584
+  type: 'test'
+  ...
+# keeper/leverage-index.mjs: pinned 1e2a1e6a7e13…, here 71b617af9e30… (changed)
+# keeper/leverage-step.mjs: pinned 0266e0f33981…, here ababc503d9ef… (changed)
+# scripts/verify.mjs: pinned ecc5d13bee9e…, here a346b0f51378… (changed)
+# recorded qBTC2X lines: 1
+# Subtest: qBTC2X pins: every file the qBTC2X inception decision pins by sha256 either still has that sha256 here, or an anchored decision in trackrecord/decisions.jsonl names both the pinned and the current sha256 (a stated re-pin)
+not ok 44 - qBTC2X pins: every file the qBTC2X inception decision pins by sha256 either still has that sha256 here, or an anchored decision in trackrecord/decisions.jsonl names both the pinned and the current sha256 (a stated re-pin) # TODO medium: the three shared files change under a running series; the anchored qBTC2X text names the earlier bytes and no anchored decision names the new ones yet
+  ---
+  duration_ms: 6.373
+  type: 'test'
+  location: '<checkout>/keeper/test/leverage-redteam-eth15.test.mjs:620:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+    + [
+    +   'keeper/leverage-index.mjs: pinned 1e2a1e6a7e13…, here 71b617af9e30…',
+    +   'keeper/leverage-step.mjs: pinned 0266e0f33981…, here ababc503d9ef…',
+    +   'scripts/verify.mjs: pinned ecc5d13bee9e…, here a346b0f51378…'
+    + ]
+    - []
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+    0: 'keeper/leverage-index.mjs: pinned 1e2a1e6a7e13…, here 71b617af9e30…'
+    1: 'keeper/leverage-step.mjs: pinned 0266e0f33981…, here ababc503d9ef…'
+    2: 'scripts/verify.mjs: pinned ecc5d13bee9e…, here a346b0f51378…'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<checkout>/keeper/test/leverage-redteam-eth15.test.mjs:637:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: the website copy: verify.mjs --base needs record-qeth15.jsonl and rulebook-qeth15.json next to decisions.jsonl — without the rulebook every published line fails as "a rulebook changed after inception", without the record the series fails once its inception day has passed; with both it passes
+ok 45 - the website copy: verify.mjs --base needs record-qeth15.jsonl and rulebook-qeth15.json next to decisions.jsonl — without the rulebook every published line fails as "a rulebook changed after inception", without the record the series fails once its inception day has passed; with both it passes
+  ---
+  duration_ms: 656.644917
+  type: 'test'
+  ...
+# Subtest: the live leg writes only files that "Commit records" stages (a tracked file outside that list would stop the push of every series); a draft qeth15 rulebook before any decision is a refusal (exit 2) every run, not NOT IN FORCE; draft dry-run lines placed in trackrecord/ fail the public verifier
+ok 46 - the live leg writes only files that "Commit records" stages (a tracked file outside that list would stop the push of every series); a draft qeth15 rulebook before any decision is a refusal (exit 2) every run, not NOT IN FORCE; draft dry-run lines placed in trackrecord/ fail the public verifier
+  ---
+  duration_ms: 2579.8495
+  type: 'test'
+  ...
+# Subtest: README: the --series list of scripts/verify.mjs names every series the verifier knows, qeth15 included (finding F6, fixed)
+ok 47 - README: the --series list of scripts/verify.mjs names every series the verifier knows, qeth15 included (finding F6, fixed)
+  ---
+  duration_ms: 0.701708
+  type: 'test'
+  ...
+# Subtest: F02a: a source clock days ahead does not make the keeper write tomorrow — only the line of the day that began on the runner's clock
+ok 48 - F02a: a source clock days ahead does not make the keeper write tomorrow — only the line of the day that began on the runner's clock
+  ---
+  duration_ms: 855.308375
+  type: 'test'
+  ...
+# Subtest: F02b: a source that still calls the day open a full day after it ended is a failure (exit 1), not a quiet "not final"
+ok 49 - F02b: a source that still calls the day open a full day after it ended is a failure (exit 1), not a quiet "not final"
+  ---
+  duration_ms: 14.755042
+  type: 'test'
+  ...
+# Subtest: C1: a Binance failure names the host and the day and says nothing was written; the next run writes the day
+ok 50 - C1: a Binance failure names the host and the day and says nothing was written; the next run writes the day
+  ---
+  duration_ms: 102.831625
+  type: 'test'
+  ...
+# Subtest: F09: every Binance request is bounded, body included — a source that never answers, or never finishes its body, ends in a failure, not a hang
+ok 51 - F09: every Binance request is bounded, body included — a source that never answers, or never finishes its body, ends in a failure, not a hang
+  ---
+  duration_ms: 353.726083
+  type: 'test'
+  ...
+# Subtest: C2: an anchored decision the rulebook JSON no longer matches is refused with what does not match — not "not anchored"
+ok 52 - C2: an anchored decision the rulebook JSON no longer matches is refused with what does not match — not "not anchored"
+  ---
+  duration_ms: 4.9375
+  type: 'test'
+  ...
+# Subtest: F05a: a registry entry that names another index's vault is refused before any mark (exit 1); the right symbol marks
+ok 53 - F05a: a registry entry that names another index's vault is refused before any mark (exit 1); the right symbol marks
+  ---
+  duration_ms: 5712.919291
+  type: 'test'
+  ...
+# Subtest: F05d: a vault at navPerShare 3 cannot move — a non-liquidated level is a failure (exit 1, nothing sent), not "already there"
+ok 54 - F05d: a vault at navPerShare 3 cannot move — a non-liquidated level is a failure (exit 1, nothing sent), not "already there"
+  ---
+  duration_ms: 2356.773833
+  type: 'test'
+  ...
+# Subtest: F03: the verifier fails a series under another rule, another decision, another genesis bar, an empty file, or a line written before its day — and passes the honest one
+ok 55 - F03: the verifier fails a series under another rule, another decision, another genesis bar, an empty file, or a line written before its day — and passes the honest one
+  ---
+  duration_ms: 1027.348792
+  type: 'test'
+  ...
+# Subtest: F03 D: with an RPC, an anchor whose block is older than the line's day fails, a late anchor prints how late, and a block seconds before observedAt is printed, not failed
+ok 56 - F03 D: with an RPC, an anchor whose block is older than the line's day fails, a late anchor prints how late, and a block seconds before observedAt is printed, not failed
+  ---
+  duration_ms: 810.275417
+  type: 'test'
+  ...
+# Subtest: the keeper's own recompute carries the rulebook JSON (a line under the shipped rule is accepted end to end, nothing else written)
+ok 57 - the keeper's own recompute carries the rulebook JSON (a line under the shipped rule is accepted end to end, nothing else written)
+  ---
+  duration_ms: 332.715375
+  type: 'test'
+  ...
+# Subtest: (a) level vs an independent brute force in price space — three synthetic days with a crash, THROWAWAY pairs and conventions
+ok 58 - (a) level vs an independent brute force in price space — three synthetic days with a crash, THROWAWAY pairs and conventions
+  ---
+  duration_ms: 79.28125
+  type: 'test'
+  ...
+# Subtest: (a) the crash day of the synthetic window does trigger (the comparison above is not vacuous)
+ok 59 - (a) the crash day of the synthetic window does trigger (the comparison above is not vacuous)
+  ---
+  duration_ms: 7.524667
+  type: 'test'
+  ...
+# Subtest: aggregation: the engine rule, and a slot without a minute has no bar
+ok 60 - aggregation: the engine rule, and a slot without a minute has no bar
+  ---
+  duration_ms: 5.530875
+  type: 'test'
+  ...
+# Subtest: (b) T3: λ exactly T triggers (≥)
+ok 61 - (b) T3: λ exactly T triggers (≥)
+  ---
+  duration_ms: 0.142417
+  type: 'test'
+  ...
+# Subtest: (b) T3: at the day-end bar λ ≥ T counts once, as the reset
+ok 62 - (b) T3: at the day-end bar λ ≥ T counts once, as the reset
+  ---
+  duration_ms: 0.172042
+  type: 'test'
+  ...
+# Subtest: (b) T3: a reset at λ = 2 exactly trades nothing and costs nothing
+ok 63 - (b) T3: a reset at λ = 2 exactly trades nothing and costs nothing
+  ---
+  duration_ms: 0.188958
+  type: 'test'
+  ...
+# Subtest: (b) T3: a gap covering two grid times is judged once (gridTimes 2); the bar after it accrues d = 5 steps of interest
+ok 64 - (b) T3: a gap covering two grid times is judged once (gridTimes 2); the bar after it accrues d = 5 steps of interest
+  ---
+  duration_ms: 0.145959
+  type: 'test'
+  ...
+# Subtest: (b) T3: LTV at the low exactly 0.86 is a model liquidation (level 0, series ends)
+ok 65 - (b) T3: LTV at the low exactly 0.86 is a model liquidation (level 0, series ends)
+  ---
+  duration_ms: 0.0925
+  type: 'test'
+  ...
+# Subtest: (b) T3: a day whose last bar is not 23:45 (gap to midnight) resets at that bar's close
+ok 66 - (b) T3: a day whose last bar is not 23:45 (gap to midnight) resets at that bar's close
+  ---
+  duration_ms: 0.645666
+  type: 'test'
+  ...
+# Subtest: ruleProblem: the refusal grid (spec §1-6 1–3)
+ok 67 - ruleProblem: the refusal grid (spec §1-6 1–3)
+  ---
+  duration_ms: 1.468834
+  type: 'test'
+  ...
+# Subtest: (c) T9 steps: −69.34% from 1.000000 is five contract-bounded steps ending on round(E × 1e6)
+ok 68 - (c) T9 steps: −69.34% from 1.000000 is five contract-bounded steps ending on round(E × 1e6)
+  ---
+  duration_ms: 0.257042
+  type: 'test'
+  ...
+# Subtest: (c) T9 steps: a model liquidation steps down to the floor, 3 units, in 46 steps
+ok 69 - (c) T9 steps: a model liquidation steps down to the floor, 3 units, in 46 steps
+  ---
+  duration_ms: 0.063792
+  type: 'test'
+  ...
+# Subtest: watches the five paper series and the two leverage levels; stale after 40 h, missing after 16 h
+ok 70 - watches the five paper series and the two leverage levels; stale after 40 h, missing after 16 h
+  ---
+  duration_ms: 2.706292
+  type: 'test'
+  ...
+# Subtest: a series with neither a file nor an inception decision has not started — no problem
+ok 71 - a series with neither a file nor an inception decision has not started — no problem
+  ---
+  duration_ms: 0.977917
+  type: 'test'
+  ...
+# Subtest: missing: inception anchored, no record file — clear at 15.98 h after I 00:00 UTC, flagged at 16.02 h (the 18:47 UTC watchdog run of day I)
+ok 72 - missing: inception anchored, no record file — clear at 15.98 h after I 00:00 UTC, flagged at 16.02 h (the 18:47 UTC watchdog run of day I)
+  ---
+  duration_ms: 0.833542
+  type: 'test'
+  ...
+# Subtest: a postponed opening: the latest inception decision counts, so the earlier date raises no false alarm (red team F07b)
+ok 73 - a postponed opening: the latest inception decision counts, so the earlier date raises no false alarm (red team F07b)
+  ---
+  duration_ms: 24.091292
+  type: 'test'
+  ...
+# Subtest: a series ended by a model liquidation is not "stale" (red team F07c); its unanchored lines are still flagged
+ok 74 - a series ended by a model liquidation is not "stale" (red team F07c); its unanchored lines are still flagged
+  ---
+  duration_ms: 16.535334
+  type: 'test'
+  ...
+# Subtest: an empty record file counts as missing, and a decision for another index does not count
+ok 75 - an empty record file counts as missing, and a decision for another index does not count
+  ---
+  duration_ms: 2.761792
+  type: 'test'
+  ...
+# Subtest: stale: last line dated D — clear at D + 39.98 h, flagged at D + 40.02 h
+ok 76 - stale: last line dated D — clear at D + 39.98 h, flagged at D + 40.02 h
+  ---
+  duration_ms: 1.343958
+  type: 'test'
+  ...
+# Subtest: unanchored: a line with no anchor, or an anchor without a 0x… transaction hash, is flagged
+ok 77 - unanchored: a line with no anchor, or an anchor without a 0x… transaction hash, is flagged
+  ---
+  duration_ms: 1.159833
+  type: 'test'
+  ...
+# Subtest: a record file with no anchors file: every line is flagged
+ok 78 - a record file with no anchors file: every line is flagged
+  ---
+  duration_ms: 1.25825
+  type: 'test'
+  ...
+# Subtest: each --simulate name trips exactly one problem on an otherwise clear folder; an unknown name is refused
+ok 79 - each --simulate name trips exactly one problem on an otherwise clear folder; an unknown name is refused
+  ---
+  duration_ms: 12.496291
+  type: 'test'
+  ...
+# Subtest: a simulate name with nothing it applies to still produces a problem (an alarm test that trips nothing must not pass)
+ok 80 - a simulate name with nothing it applies to still produces a problem (an alarm test that trips nothing must not pass)
+  ---
+  duration_ms: 2.15225
+  type: 'test'
+  ...
+# Subtest: this repository's own series are clear at a fixed clock of 2026-10-05T12:00Z (paper series fresh and anchored; leverage not started or pending)
+ok 81 - this repository's own series are clear at a fixed clock of 2026-10-05T12:00Z (paper series fresh and anchored; leverage not started or pending)
+  ---
+  duration_ms: 15.64125
+  type: 'test'
+  ...
+1..81
+# tests 81
+# suites 0
+# pass 79
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 1
+# duration_ms 163944.482709

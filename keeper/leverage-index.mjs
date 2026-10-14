@@ -1,7 +1,9 @@
 /**
- * Leverage stage A — the daily leg of qBTC2X / qETH2X (a step of the
- * existing paper-index workflow: same KEEPER_PK, same schedule, same
- * `keeper-key` concurrency group; no new key, scheduler or group).
+ * Leverage stage A — the daily leg of qBTC2X / qETH2X / qETH1.5X (index
+ * qeth15) (a step of the existing paper-index workflow: same KEEPER_PK, same
+ * schedule, same `keeper-key` concurrency group; no new key, scheduler or
+ * group). A draft rulebook (one that still lists owner decisions in
+ * `pendingOwner`) runs here only as a dry run or a local fork rehearsal.
  *
  * One run, per index:
  *   1. refuse if the rule cannot run (check.minutes, check.trigger,
@@ -42,7 +44,7 @@
  *        --throwaway-level 30:6 --anchor --rpc http://127.0.0.1:8545 --from 0x<anvil account>   # fork rehearsal
  *
  * Options:
- *   --index qbtc2x|qeth2x   required
+ *   --index qbtc2x|qeth2x|qeth15   required
  *   --anchor                anchor each new line (live: KEEPER_PK; fork rehearsal: --from)
  *   --no-new-lines          write no line: anchor the lines already written but not anchored
  *                           (with --anchor), then mark. For a workflow that pushes the lines to
@@ -80,7 +82,7 @@ import { retryRead, blockAtLeast, notYetReason } from './readback.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.join(HERE, '..');
 export const VERIFY_SCRIPT = path.join(REPO_ROOT, 'scripts', 'verify.mjs');
-export const INDEXES = ['qbtc2x', 'qeth2x'];
+export const INDEXES = ['qbtc2x', 'qeth2x', 'qeth15'];
 export const GIWA_RPC = 'https://sepolia-rpc.giwa.io';
 export const GIWA_CHAIN_ID = 91342;
 export const BINANCE_HOST = 'https://data-api.binance.vision';
@@ -107,7 +109,10 @@ class Exit extends Error {
 const refuse = (msg) => new Exit(2, `REFUSED: ${msg}`);
 
 export function isLocalRpc(rpc) {
-  return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/.test(String(rpc));
+  // The host as a URL parser reads it: userinfo (`http://127.0.0.1:1@host/`) does not make a remote host local.
+  let u;
+  try { u = new URL(String(rpc)); } catch { return false; }
+  return (u.protocol === 'http:' || u.protocol === 'https:') && ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname) && !u.username && !u.password;
 }
 
 // ------------------------------------------------------------------ arguments
@@ -464,6 +469,8 @@ async function runInner(argv, deps) {
   const rulebookSha256 = sha256(rbBytes);
   const shape = rulebookShapeProblem(rb);
   if (shape) throw refuse(`keeper/rulebooks/${o.index}.json: ${shape}`);
+  // A draft rulebook names the owner decisions it still waits for; it never runs outside a rehearsal.
+  if (rb.pendingOwner?.length && !o.rehearsalMode) throw refuse(`keeper/rulebooks/${o.index}.json is a draft — it still waits for ${rb.pendingOwner.length} owner decision(s) (pendingOwner: ${rb.pendingOwner.map((x) => x.key).join(', ')}); only --dry-run or a local fork rehearsal may use it`);
 
   // §1-6 1–3: the two tested values and the level convention. A live run may
   // use only the rulebook's own values.
