@@ -538,10 +538,12 @@ vault, not as errors:
 - **References at the open.** For an auction that waits for its fair point,
   both legs are re-posted at their chain values right before `openAuction`,
   and again right before our fill. The auction is fillable from its first
-  block until `maxRefAge` (3,600 s; a 1,800 s auction fits). A reference that
-  moved since the trade read it stops the run before the open (same guard as
-  the pre-fill re-post). `--fill open`/`natural` and remnants fill at once:
-  their one pair of re-posts right after the open is unchanged.
+  block until `maxRefAge` (the vault's value, recorded in the plan as
+  `vaultState.maxRefAge`; 3,600 s when this was written, so a 1,800 s
+  auction fits). A reference that moved since the trade read it stops the
+  run before the open (same guard as the pre-fill re-post).
+  `--fill open`/`natural` and remnants fill at once: their one pair of
+  re-posts right after the open is unchanged.
 - **Before our fill** the auction's `sellRemaining` and the vault's balance
   are read at one block. Our fill takes the smaller. Fills by others found
   there are recorded in `plan.fills` first, under the trade's seq, with
