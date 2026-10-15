@@ -387,9 +387,13 @@ Every tool is a dry run unless `live` is ticked and `confirm` is `EXECUTE`.
   line of a day carries every decision effective by then, and a document
   anchored later than its date would be missing from a line already written
   (`verify.mjs` would fail it for good). `scripts/anchor-decision.mjs`
-  refuses a back-dated file, a file with the DRAFT or TO FILL line, and one
-  that still says `_to be deployed_`. If the day has passed, run the `plan`
-  stage again and regenerate the draft that day.
+  refuses a back-dated file, a file with the DRAFT or TO FILL line, one
+  that still says `_to be deployed_`, and one with any other draft banner or
+  unfilled value (⟦ ⟧ ⟨ ⟩ 〔 〕 ［ ］ {{ }}, TODO / TBD, a YYYY-MM-DD date, an
+  empty sha256 — the full list is in `scripts/decision-guard.mjs`); it names
+  each line it refused. `node scripts/decision-guard.mjs <file>` runs the same
+  check without a key. If the day has passed, run the `plan` stage again and
+  regenerate the draft that day.
 - **After the session.** The same day, on main: add each new mock to the
   rulebook's `basket.assets` (the daily mark prices only what the rulebook
   names — an unlisted registry asset is "not posted" and its reference goes

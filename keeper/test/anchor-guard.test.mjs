@@ -47,7 +47,8 @@ test('a TO FILL / TO-FILL-… marker in the body is refused although the draft c
   for (const marker of ['Counts: (TO FILL: counts at the tool commit).', 'Anchored on TO-FILL-DATE.', '| qX20 | TO FILL | 0.00 pt |']) {
     const r = anchor(`${FINAL}\n${marker}\n`);
     assert.equal(r.status, 1, marker);
-    assert.match(r.out, /is not final \(.*\\bTO\[- \]FILL\\b.*\)/, marker);
+    // The refusal names the rule, the line and the line itself.
+    assert.match(r.out, /is not final[\s\S]*line 7 \[TO FILL marker\]/, marker);
     assert.doesNotMatch(r.out, /KEEPER_PK not set/, marker);
   }
 });
