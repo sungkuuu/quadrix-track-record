@@ -593,7 +593,7 @@ test('runTrade on a lagging node: the same sent calls and the same plan records 
   const clean = await runOn(0);
   const lag = await runOn(5);
   assert.deepEqual(lag.sent, clean.sent, 'what is sent is the same');
-  // Both references are re-posted before each open (owner answer 2 of 2026-10-13) and again before each fill.
+  // Both references are re-posted before each open (decided 2026-10-13) and again before each fill.
   assert.deepEqual(clean.sent.map((s) => s.fn), ['setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'setRefPrice', 'setRefPrice', 'openAuction', 'setRefPrice', 'setRefPrice', 'fill', 'finalizeRemoval']);
   assert.equal(clean.sent[5].args[0], '1', 'fill(1, …): the id from AuctionOpened');
   const norm = (p) => ({ fills: p.fills.map((x) => ({ ...x, openTx: null, fillTx: null })), finalize: p.finalize.map((x) => ({ ...x, txHash: null })) });

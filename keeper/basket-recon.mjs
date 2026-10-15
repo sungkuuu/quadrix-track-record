@@ -81,7 +81,7 @@
  * takes min(auction amount, the vault's live balance), so a redemption in
  * the window shrinks the fill instead of reverting it, and the unfilled rest
  * of the auction is cancelled.
- * Other bidders (owner answers of 2026-10-13): once bidding is open, anyone
+ * Other bidders (decided 2026-10-13): once bidding is open, anyone
  * may fill our auctions. Both references are therefore re-posted (same
  * value) right before an auction that waits for its fair point is opened,
  * as well as right before our fill, so the auction is fillable from its
@@ -1396,7 +1396,7 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
   // opened right after both references are re-posted.
   const buyWorst = (amount * pSell * (10_000n + v.premiumBps) + pBuy * 10_000n - 1n) / (pBuy * 10_000n);
   await ensureInventory(ctx, buy, t.buy, buyWorst);
-  // Owner answer 2 of 2026-10-13: an auction that waits for its fair point
+  // Decided 2026-10-13: an auction that waits for its fair point
   // opens with both references just re-posted, so another bidder can fill it
   // from its first block until maxRefAge — not only in the seconds after our
   // pre-fill re-posts. Same value, same guard as those (this script never
@@ -1430,7 +1430,7 @@ export async function runTrade(ctx, v, t, round, attemptNo = 1) {
   if (getAddress(oev.sellAsset) !== sell || getAddress(oev.buyAsset) !== buy || oev.sellAmount !== amount) throw new Error(`auction ${id} opened in ${opened.hash} is ${oev.sellAmount} ${oev.sellAsset} → ${oev.buyAsset}, not this trade — the next auctions run cancels it`);
   const startTime = opened.blockTimestamp ?? BigInt((await readNow(ctx, `auction ${id}`, { address: plan.vault, abi: VAULT_ABI, functionName: 'auctions', args: [id] }, opened.receipt.blockNumber))[3]);
 
-  // What other bidders took of this auction (owner answer 1 of 2026-10-13):
+  // What other bidders took of this auction (decided 2026-10-13):
   // the sellRemaining this run has accounted for, and the last fill of theirs.
   let remainingSeen = amount;
   let lastOther = null;

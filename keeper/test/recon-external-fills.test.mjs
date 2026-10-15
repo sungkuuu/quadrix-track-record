@@ -1,5 +1,5 @@
 /**
- * keeper/basket-recon.mjs with other bidders on the vault (owner answers of
+ * keeper/basket-recon.mjs with other bidders on the vault (decided
  * 2026-10-13: accept fills by others; re-post both references when an
  * auction opens). Against keeper/test/fake-chain.mjs — no network, no key.
  *
@@ -47,7 +47,7 @@ function newChain() {
       { address: ASTER, symbol: 'mASTER', decimals: 8, balance: 0n },
     ],
   });
-  c.head.state.biddingOpen = true; // anyone may fill (owner answer 4: new vaults open bidding from deploy)
+  c.head.state.biddingOpen = true; // anyone may fill (bidding is open on this vault)
   c.strictRefAge = true; // fills revert RefPriceStale past maxRefAge, as on the contract
   for (const t of [AAA, BBB, CRV, ASTER]) {
     c.head.state.balances[lc(t)][lc(OWNER)] = 10n ** 15n;
