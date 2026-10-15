@@ -96,6 +96,7 @@ without trusting this repository.
 | `keeper/update-nav.mjs` | the qX20 index keeper (scheduled every six hours in CI; see Timing) |
 | `keeper/state.json` | the keeper's working file — overwritten each run, **not** a record |
 | `keeper/RUNBOOK.md` | what to do when the keeper fails |
+| `keeper/plans/<vault>/<date>.json` | basket sessions: the announced plan, every auction opened, every fill (price vs reference, loss at reference, open and fill txs) and the vault read back after the session — one file per vault per run; `keeper/plans/README.md` says which file is the executed session |
 
 ## Rules that make this worth reading
 
