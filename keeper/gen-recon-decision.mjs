@@ -135,6 +135,10 @@ else {
   if (plan.vaultAbi === 'priced-adds') {
     // A vault built from the hardened source takes each entering name's first
     // reference price in the announcement itself (addRefPrices).
+    // PENDING REVIEW: the sentence that ends "the prices above are those of
+    // {date}" is not final. The committed price is read again on the day of
+    // the announcement and can differ from the table; the wording must be
+    // settled before the first decision for a priced-adds vault is anchored.
     lines.push(`The announcement commits the first reference price of each new asset: \`announceRegistryChange\` takes the price with the address and writes it on chain at once, so holders can read it for the whole notice. Only a new announcement, which restarts the ${days} days, can change it before execution. Policy: the keeper commits a price only when two independent sources agree within ${pct(plan.policy.firstPriceTolBps / 10_000)} and the mock's \`decimals()\` on chain equals the value above (a wrong decimal is a 10× price), and only from a plan made on the day of the announcement; the prices above are those of ${plan.date}. On the execution day the keeper's first post must lie within ±15% of the committed price, as every later post must lie within ±15% of the one before it.`);
   } else {
     lines.push(`The first reference price of a new asset is band-free by construction (\`setRefPrice\` applies the ±15% band only from the second post), so it is the one number in this change that nothing on chain bounds. Policy: it is posted only when two independent sources agree within ${pct(plan.policy.firstPriceTolBps / 10_000)} and the mock's \`decimals()\` on chain equals the value above; a wrong decimal is a 10× price and the band then needs about fifteen steps to walk it back. The price posted is taken from the two sources on the execution day, when the plan is regenerated; the prices above are those of ${plan.date}.`);
