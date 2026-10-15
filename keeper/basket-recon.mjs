@@ -608,7 +608,8 @@ function tuple(plan) {
  * priced-adds: what the contract would refuse in a tuple — a price list that
  * is not one positive price ≤ MAX_REF_PRICE per add, adds or removes not in
  * strictly ascending address order (NotAscending) — and an add whose price is
- * not the plan's firstRefPrice for it. Pure; [] when the tuple is fine.
+ * not the plan's firstRefPrice for it, or that is not one of the plan's adds
+ * at all. Pure; [] when the tuple is fine.
  */
 export function pricedTupleProblems(t, adds) {
   const out = [];
@@ -622,6 +623,7 @@ export function pricedTupleProblems(t, adds) {
     if (p == null) return;
     const add = adds.find((x) => x.address && getAddress(x.address) === a);
     const sym = add?.symbol ?? a;
+    if (!add) out.push(`${a}: not one of the plan's adds — no first reference to check the price against`);
     if (!(p > 0n) || p > MAX_REF_PRICE) out.push(`${sym}: addRefPrice ${p} outside (0, 1e30] (PriceOutOfRange)`);
     if (add && big(add.firstRefPrice) !== p) out.push(`${sym}: addRefPrice ${p} != the plan's firstRefPrice ${add.firstRefPrice}`);
   });

@@ -302,6 +302,11 @@ test('committedPostRefusal and committedBandNote: the same ±15% band, in the ex
   assert.match(pricedTupleProblems({ adds: [NEWT, ASTER], prices: [REF_NEWT], removes: [] }, []).join(), /1 addRefPrices for 2 adds/);
   assert.match(pricedTupleProblems({ adds: [NEWT], prices: [10n ** 30n + 1n], removes: [] }, []).join(), /outside \(0, 1e30\]/);
   assert.match(pricedTupleProblems({ adds: [], prices: [], removes: [CRV, CRV] }, []).join(), /removes not in strictly ascending/);
+  // A tuple add that is not one of the plan's adds is a problem of its own,
+  // reported instead of passed on to the two-source gate.
+  const planAdds = basePlan(newChain('priced-adds'), 'priced-adds').adds;
+  const onlyAster = planAdds.filter((x) => x.address && getAddress(x.address) === ASTER);
+  assert.deepEqual(pricedTupleProblems({ adds: [NEWT, ASTER], prices: [REF_NEWT, REF_ASTER], removes: [] }, onlyAster), [`${NEWT}: not one of the plan's adds — no first reference to check the price against`]);
 });
 
 // ========================================================= the plan file
