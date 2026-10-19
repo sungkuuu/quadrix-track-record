@@ -203,9 +203,7 @@ lines.push(`- Every weight change goes through the vault's bounded dutch auction
 // may fill anywhere on the curve, so the sentence about share value covers
 // only our own fills and the open case is stated beside it. The curve's ends
 // are the contract's, read from the plan's vault state, never typed here.
-// PENDING REVIEW: the wording of this sentence and of the share-value
-// sentence below is not final; it must be confirmed before the first decision
-// for a vault with open bidding is anchored.
+// Wording of this sentence and of the share-value sentence below: decided 2026-10-19.
 const biddingOpenNote = plan.vaultState.biddingOpen === true
   ? ` Bidding on this vault is open: any address may fill these auctions anywhere on the contract's curve (+${Number(plan.vaultState.premiumBps) / 100}% to −${Number(plan.vaultState.maxFillLossBps) / 100}% of the reference), so a fill by another bidder can raise or lower share value at reference prices — below the reference by at most the per-fill floor and the daily budget; each such fill is recorded with its bidder and factor.`
   : '';
