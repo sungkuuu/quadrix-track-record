@@ -738,11 +738,16 @@ line; a leverage run that caught up several days needs this path instead.)
 
 **The vault** (`keeper/deploy-mark-vault.mjs`, workflow `mark-vault-setup`,
 dry run unless `live` + `EXECUTE`): a QuadrixIndexVault deployed with deposit
-cap 0. Its address goes to `keeper/leverage-vaults.json`; the leg marks it
-when that entry has an address and a `gate`. The gate is `{"mode":"step"}`
-(owner, 2026-10-05): contract-bounded steps, never stopping on size. The leg
-marks only a vault whose `symbol()` is the index's ticker. There is no unpause
-action in `mark-vault-setup`: a pause stays until a workflow change.
+cap 0, then its guardian appointed (`setGuardian`, a second transaction). The
+artifact is first compared with the code of the qBTC2X vault named in
+`keeper/leverage-vaults.json` (which must answer `symbol()` qBTC2X and a
+guardian other than 0), and the guardian must not be 0, the keeper or the
+owner. Its address goes to `keeper/leverage-vaults.json` only after both
+transactions are read back; the leg marks it when that entry has an address
+and a `gate`. qBTC2X's gate is `{"mode":"step"}` (owner, 2026-10-05):
+contract-bounded steps, never stopping on size. The leg marks only a vault
+whose `symbol()` is the index's ticker. There is no unpause action in
+`mark-vault-setup`: a pause stays until a workflow change.
 
 **Freshness** (`scripts/watchdog-series.mjs`, check 5 of the six-hourly
 watchdog): it reads only the outputs, so it also catches a job that never ran.
@@ -771,6 +776,8 @@ watchdog): it reads only the outputs, so it also catches a job that never ran.
 | watchdog: `<index>: stale — latest line is D …` | no new line 40 h after D 00:00 UTC (a series ended by a model liquidation is not reported) | read the last `paper-index` run; if it did not run, dispatch it once (see "Dispatching by hand"). The missed days are written `late`. |
 | watchdog: `<index>: line seq N (D) has no anchor txHash` | a line was written without the key, or the anchor failed after it | the next run with the key anchors it first. If it persists, check the `KEEPER_PK` secret and the keeper's gas. |
 | `REFUSED: a deployment of qbtc2x on chain 91342 was already sent (tx …)` from `mark-vault-setup` / `deploy-mark-vault.mjs` | an earlier deploy was sent (it is in `keeper/mark-vaults.jsonl`) but its address never reached `keeper/leverage-vaults.json` — the run died waiting for the receipt, or the read-back disagreed | do not deploy again. Look the transaction up on the explorer: if it created the vault, write that address (and `deployTx`, `block`) into the registry after the same read-back checks by hand; if it failed or is to be dropped, append `{"index","chainId","tx","status":"abandoned","note"}` to `keeper/mark-vaults.jsonl` (a commit to the public repository). |
+| `deployed at 0x… (tx …, logged) but setGuardian did not complete` from `mark-vault-setup` / `deploy-mark-vault.mjs` | the vault exists with guardian 0; the registry was not written, so the leg does not mark it | do not deploy again. Check the vault by hand (owner, keeper, cap 0), write its address (and `deployTx`, `block`) into `keeper/leverage-vaults.json` (a commit to the public repository), then run `mark-vault-setup` with task `set-guardian` and the same guardian. |
+| `REFUSED: … the reference vault …` (no code, another symbol, guardian 0, or the code differs) | the registry's qBTC2X line does not name a vault running the artifact's code | nothing was sent. Check the qBTC2X address in `keeper/leverage-vaults.json` against the redeployment record; on a fork, take the fork at a block after the redeployment. |
 | `MARK HALTED: … beyond the ±15% gate` | only with `gate: {"mode":"halt"}` | a person compares the line's level with Binance and decides; the halt gate has no override flag — changing the gate is the owner's decision. |
 | `<ticker> <day>: MODEL LIQUIDATION NOT WRITTEN — the bar HH:MM UTC has a low of … at which debt ÷ collateral is …`, exit 1 | the day's bars would end the series (LTV at a bar low ≥ the LLTV placeholder). A model-liquidation line waits for a person (owner, 2026-10-06) | nothing was written for that day or later, nothing anchored, the vault not marked (it keeps its last price; deposits and redemptions still settle at it). The failure issue opens and every later run halts the same way. Compare the low of the 1-minute bar the message names with other venues' 1-minute bars for the same minutes and with Binance's web chart. **If the low is real:** add `{id, index, day, sha256, liquidation: {bar, ltvLow}, note, confirmedAt}` to `keeper/leverage-gaps.json` with the values the message printed and an `id` of its own (e.g. `qbtc2x-2026-10-12-liquidation`) — a commit to the public repository, so an owner confirmation. The next run writes the level-0 line naming that id (`liquidationAccepted`), anchors it, steps the vault to its floor and pauses deposits. **If the low is not real:** add nothing. The series stays halted: the code to continue from a corrected book is not written, and continuing needs an anchored correction decision. |
 | `keeper/leverage-gaps.json: the accepted model liquidation of … has no "id"`, exit 1 | the entry above was added without `id` | add the `id`; nothing was written. |

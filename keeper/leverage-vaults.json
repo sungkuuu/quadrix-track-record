@@ -17,5 +17,12 @@
     },
     "deployTx": null,
     "block": null
+  },
+  "qeth15": {
+    "chainId": 91342,
+    "address": null,
+    "gate": null,
+    "deployTx": null,
+    "block": null
   }
 }

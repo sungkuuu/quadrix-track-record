@@ -1,14 +1,16 @@
 name: mark-vault-setup
 
-# The testnet mark vault of a leverage series (qBTC2X, qETH2X), by hand from
-# the Actions tab. Never scheduled.
+# The testnet mark vault of a leverage series (qBTC2X, qETH2X, qETH1.5X), by
+# hand from the Actions tab. Never scheduled.
 #
-#   deploy         keeper/deploy-mark-vault.mjs — QuadrixIndexVault (the qX20
-#                  tracking vault's contract, checked against chain) with
-#                  deposit cap 0: nobody can deposit until open-deposits.
-#                  Writes the address to keeper/leverage-vaults.json and
-#                  leaves its mark gate as it is: {"mode":"step"} (owner,
-#                  2026-10-05), so the daily leg marks the vault from seq 1.
+#   deploy         keeper/deploy-mark-vault.mjs — QuadrixIndexVault (checked
+#                  against the code of the qBTC2X vault in
+#                  keeper/leverage-vaults.json) with deposit cap 0: nobody can
+#                  deposit until open-deposits; then setGuardian(guardian),
+#                  read back. Writes the address to keeper/leverage-vaults.json
+#                  only after both, and leaves its mark gate as it is.
+#   set-guardian   setGuardian(guardian) on the registry's vault — owner only;
+#                  for a deployment that stopped before its guardian was set.
 #   open-deposits  setDepositCap(cap) — owner only.
 #   pause          setDepositsPaused(true) — owner only.
 #
@@ -24,17 +26,25 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: 'deploy | open-deposits | pause'
+        description: 'deploy | set-guardian | open-deposits | pause'
         required: true
         type: choice
-        options: [deploy, open-deposits, pause]
+        options: [deploy, set-guardian, open-deposits, pause]
       index:
-        description: 'qbtc2x | qeth2x'
+        description: 'qbtc2x | qeth2x | qeth15'
         required: true
         type: choice
-        options: [qbtc2x, qeth2x]
+        options: [qbtc2x, qeth2x, qeth15]
       manager:
-        description: 'deploy: constructor manager_ (becomes owner and keeper)'
+        description: 'deploy: constructor manager_ (becomes owner and keeper; must be the keeper key, which also sends setGuardian)'
+        required: false
+        default: ''
+      guardian:
+        description: 'deploy, set-guardian: the guardian (not 0, not the keeper, not the owner)'
+        required: false
+        default: ''
+      timelock:
+        description: 'deploy, set-guardian (optional): a timelock on which the guardian must hold no role'
         required: false
         default: ''
       cap:
@@ -61,6 +71,8 @@ env:
   TASK: ${{ inputs.task }}
   INDEX: ${{ inputs.index }}
   MANAGER_IN: ${{ inputs.manager }}
+  GUARDIAN_IN: ${{ inputs.guardian }}
+  TIMELOCK_IN: ${{ inputs.timelock }}
   CAP_IN: ${{ inputs.cap }}
 
 jobs:
@@ -115,6 +127,16 @@ jobs:
           if [ "$TASK" = "deploy" ]; then
             if ! printf '%s' "$MANAGER_IN" | grep -Eq '^0x[0-9a-fA-F]{40}$'; then echo "::error::manager must be an address"; exit 1; fi
             args+=(--manager "$MANAGER_IN")
+          fi
+          if [ "$TASK" = "deploy" ] || [ "$TASK" = "set-guardian" ]; then
+            if ! printf '%s' "$GUARDIAN_IN" | grep -Eq '^0x[0-9a-fA-F]{40}$'; then echo "::error::guardian must be an address"; exit 1; fi
+            args+=(--guardian "$GUARDIAN_IN")
+            if [ -n "$TIMELOCK_IN" ]; then
+              if ! printf '%s' "$TIMELOCK_IN" | grep -Eq '^0x[0-9a-fA-F]{40}$'; then echo "::error::timelock must be an address"; exit 1; fi
+              args+=(--timelock "$TIMELOCK_IN")
+            fi
+          elif [ -n "$TIMELOCK_IN" ]; then
+            echo "::error::timelock is for deploy and set-guardian"; exit 1
           fi
           if [ "$TASK" = "open-deposits" ]; then
             if ! printf '%s' "$CAP_IN" | grep -Eq '^[0-9]+$'; then echo "::error::cap must be an integer"; exit 1; fi

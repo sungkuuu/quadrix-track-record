@@ -14,7 +14,11 @@
  * values only, labelled: BTC n = 120 · T = 2.2, ETH n = 60 · T = 2.1, cost
  * 30 bp · 6% a year; T = 9 to force the model liquidation.
  *
- *   1  deploy both mark vaults with the real tool (--live --confirm EXECUTE --from)
+ *   1  deploy the three mark vaults (qBTC2X, qETH2X, qETH1.5X) with the real tool (--live --confirm EXECUTE --from),
+ *      guardian = the second fresh address (setGuardian, read back). The tool
+ *      compares its artifact with the qBTC2X vault of the committed registry,
+ *      so the fork must be taken at a block where that vault runs the
+ *      artifact's code (after the redeployment)
  *   2  the contract refuses: setNav by a non-keeper, setNav(0), a 26% move,
  *      deposit at cap 0, deposit while paused
  *   3  qBTC2X: genesis 2020-03-10 + lines 2020-03-11/12 (run 1), line 2020-03-13
@@ -56,7 +60,7 @@ fs.mkdirSync(OUT, { recursive: true });
 // someone else's code and reverts.
 const fresh = () => getAddress(`0x${crypto.randomBytes(20).toString('hex')}`);
 const ACCT0 = fresh(); // manager / keeper / owner
-const ACCT1 = fresh(); // a user
+const ACCT1 = fresh(); // a user; also the vaults' guardian (not the keeper, not the owner)
 const MOCK_USD = getAddress('0xf70B2b744eE604728D661b7D07460843DBD1be76');
 const chain = defineChain({ id: 91342, name: 'fork', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [RPC] } } });
 const pc = createPublicClient({ chain, transport: http(RPC), pollingInterval: 100 });
@@ -65,6 +69,7 @@ const w1 = createWalletClient({ account: ACCT1, chain, transport: http(RPC) });
 const VAULT = parseAbi([
   'function setNav(uint256,uint256)', 'function navPerShare() view returns (uint256)', 'function deposit(uint256,address) returns (uint256)', 'function redeem(uint256,address) returns (uint256)',
   'function setDepositCap(uint256)', 'function setDepositsPaused(bool)', 'function depositsPaused() view returns (bool)', 'function balanceOf(address) view returns (uint256)', 'function owner() view returns (address)',
+  'function guardian() view returns (address)',
 ]);
 const USD = parseAbi(['function faucet()', 'function approve(address,uint256) returns (bool)', 'function balanceOf(address) view returns (uint256)']);
 const NAV_UPDATED = parseAbiItem('event NavUpdated(uint256 navPerShare, uint256 indexLevel)');
@@ -115,17 +120,20 @@ say(`rehearsal ${new Date().toISOString()} · rpc ${RPC} (${await pc.request({ m
 
 // ------------------------------------------------------------------ 1 deploy
 const A = copyRepo('copy-a');
-for (const index of ['qbtc2x', 'qeth2x']) {
-  const r = node(A, ['{root}/keeper/deploy-mark-vault.mjs', '--index', index, '--manager', ACCT0, '--live', '--confirm', 'EXECUTE', '--rpc', RPC, '--from', ACCT0], `1-deploy-${index}`);
-  check(`1 deploy ${index} with the real tool (cap 0, owner = keeper = the fresh keeper address), read back`, r.code === 0 && /read back ok/.test(r.out), r.out.split('\n').filter((l) => /deployed|REFUSED|disagrees/.test(l)).join(' ').slice(0, 300));
+for (const index of ['qbtc2x', 'qeth2x', 'qeth15']) {
+  const r = node(A, ['{root}/keeper/deploy-mark-vault.mjs', '--index', index, '--manager', ACCT0, '--guardian', ACCT1, '--live', '--confirm', 'EXECUTE', '--rpc', RPC, '--from', ACCT0], `1-deploy-${index}`);
+  check(`1 deploy ${index} with the real tool (cap 0, owner = keeper = the fresh keeper address, guardian = the second fresh address), read back`, r.code === 0 && /read back ok/.test(r.out) && /guardian 0x[0-9a-fA-F]{40} set/.test(r.out), r.out.split('\n').filter((l) => /deployed|REFUSED|disagrees/.test(l)).join(' ').slice(0, 300));
 }
 const log = readJsonl(path.join(A, 'keeper', 'dryrun', 'mark-vaults.jsonl'));
-check('1 every deployment logged "sent" before "mined"', log.filter((l) => l.status === 'sent').length === 2 && log.findIndex((l) => l.status === 'sent') < log.findIndex((l) => l.status === 'mined'));
+check('1 every deployment and setGuardian logged "sent" before "mined"', log.filter((l) => l.status === 'sent' && l.what === 'deploy').length === 3 && log.filter((l) => l.status === 'sent' && l.what === 'setGuardian').length === 3 && log.findIndex((l) => l.status === 'sent') < log.findIndex((l) => l.status === 'mined'));
 const vBtc = setGate(A, 'qbtc2x', { mode: 'step' });
 const vEth = setGate(A, 'qeth2x', { mode: 'halt', pct: 15 });
-results.vaults = { qbtc2x: vBtc, qeth2x: vEth };
+const vEth15 = getAddress(JSON.parse(fs.readFileSync(path.join(A, 'keeper', 'dryrun', 'leverage-vaults.json'), 'utf8')).qeth15.address);
+results.vaults = { qbtc2x: vBtc, qeth2x: vEth, qeth15: vEth15 };
+check('1 qeth15 symbol() = qETH1.5X', (await pc.readContract({ address: vEth15, abi: parseAbi(['function symbol() view returns (string)']), functionName: 'symbol' })) === 'qETH1.5X');
+for (const [index, v] of [['qbtc2x', vBtc], ['qeth2x', vEth], ['qeth15', vEth15]]) check(`1 ${index} guardian() = the second fresh address`, getAddress(await pc.readContract({ address: v, abi: VAULT, functionName: 'guardian' })) === ACCT1);
 // constructor arguments as cast abi-encode would give them
-const deployTx = await pc.getTransaction({ hash: log.find((l) => l.index === 'qbtc2x' && l.status === 'sent').tx });
+const deployTx = await pc.getTransaction({ hash: log.find((l) => l.index === 'qbtc2x' && l.what === 'deploy' && l.status === 'sent').tx });
 const ctorArgs = encodeAbiParameters([{ type: 'address' }, { type: 'string' }, { type: 'string' }, { type: 'uint256' }, { type: 'address' }], [MOCK_USD, 'Quadrix BTC 2x Vault', 'qBTC2X', 0n, ACCT0]);
 check('1 the creation input ends with the ABI-encoded constructor arguments (usd, name, symbol, cap 0, manager)', deployTx.input.endsWith(ctorArgs.slice(2)));
 const cast = spawnSync(path.join(os.homedir(), '.foundry', 'bin', 'cast'), ['abi-encode', 'constructor(address,string,string,uint256,address)', MOCK_USD, 'Quadrix BTC 2x Vault', 'qBTC2X', '0', ACCT0], { encoding: 'utf8' });
@@ -209,7 +217,7 @@ check('5 deposit 10,000 mUSD → 15 marks up (×28.4) → redeeming all reverts 
 
 // ------------------------------------------------------------------ 6 model liquidation (synthetic bars, a deep low)
 const B = copyRepo('copy-b');
-r = node(B, ['{root}/keeper/deploy-mark-vault.mjs', '--index', 'qbtc2x', '--manager', ACCT0, '--live', '--confirm', 'EXECUTE', '--rpc', RPC, '--from', ACCT0], '6a-deploy-liq');
+r = node(B, ['{root}/keeper/deploy-mark-vault.mjs', '--index', 'qbtc2x', '--manager', ACCT0, '--guardian', ACCT1, '--live', '--confirm', 'EXECUTE', '--rpc', RPC, '--from', ACCT0], '6a-deploy-liq');
 const vLiq = setGate(B, 'qbtc2x', { mode: 'step' });
 const { run } = await import(pathToFileURL(path.join(B, 'keeper', 'leverage-index.mjs')).href);
 const H = await import(pathToFileURL(path.join(B, 'keeper', 'test', 'leverage-helpers.mjs')).href);
