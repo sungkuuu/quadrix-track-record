@@ -555,13 +555,15 @@ vault, not as errors:
   `sellRemaining` fell. The run reads the auction again (a refusal at the
   block the simulation ran at, a revert at a block ≥ its receipt's), records
   their fill and fills what is left (at most 3 times in a row, then it stops
-  with the auction open; a re-run records their fills and cancels it; round 1
+  with the auction open; a re-run cancels it, then records their fills; round 1
   counts that trade as done, and the residual rounds trade what the bound
   still needs). The reverted fill stays in `sent` as `reverted`.
 - **After a cancel.** A fill can also land between our read and our cancel
   (a missed fair window, nothing left to sell, the unfilled rest after a
-  partial fill of ours). After every cancel the auction is read again at a
-  block ≥ the cancel's and fills by others are recorded. A missed window
+  partial fill of ours, an auction a re-run finds left open). After every
+  cancel the auction is read again at a block ≥ the cancel's and fills by
+  others are recorded; a re-run cancels what was left open before it records
+  any fill or stops on a HALT. A missed window
   reopens only what the auction had left; nothing left → the trade is done
   (a drain then finalizes).
 - **HALT.** Our bidder keeps the fill policy (fair window, `lossAtRef` 0).

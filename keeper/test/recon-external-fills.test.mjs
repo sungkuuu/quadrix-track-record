@@ -496,3 +496,44 @@ test('re-run: an auction with one recorded fill and one that is not — the seco
     assert.deepEqual(p.fills.map((x) => [x.seq, x.round, x.bidder, x.external]), [[1, 1, EXT, true], [1, 1, OWNER, false]], 'recorded before the HALT, as planned #1 round 1');
   }
 });
+
+// ================================================ orphans: cancel first, then record
+test('re-run with an orphan: the auction an earlier run left open is cancelled before any fill is recorded and read again after the cancel — a fill by another bidder that lands between our read and the cancel is recorded in this run, so round 1 does not trade it again; a HALT comes only after the orphan is cancelled', async () => {
+  const setup = (chain) => {
+    chain.send(OWNER, { address: V, functionName: 'setRefPrice', args: [AAA, REF_AAA] });
+    chain.send(OWNER, { address: V, functionName: 'setRefPrice', args: [ASTER, REF_ASTER] });
+    chain.send(OWNER, { address: V, functionName: 'openAuction', args: [AAA, ASTER, 100n * U, 1800n] });
+    return lastId(chain);
+  };
+  // (a) another bidder fills 40 of 100 right before our cancel is sent.
+  {
+    const chain = newChain();
+    const pend = await priced(chain);
+    const f = planOn(chain, pend, [T1]);
+    const id = setup(chain);
+    const ctx = ctxFor(chain, f);
+    let late = false;
+    ctx.hook = async (point, info) => { if (point === 'before-orphan-cancel' && !late) { late = true; fillBy(chain, EXT, info.auctionId, 40n * U); } };
+    const n0 = chain.sent.length;
+    const seqs = await reconcileSession(ctx, await readVault(ctx.reader, V), { cancelOrphans: true, halt: true });
+    assert.ok(late, 'the hook ran');
+    assert.deepEqual(calls(chain, n0), ['fill@ext', 'cancelAuction'], 'their fill, then our cancel');
+    assert.equal(chain.head.state.auctions[Number(id)].open, false, 'the orphan is closed');
+    assert.deepEqual([...seqs], [1], 'planned #1 is adopted: round 1 does not trade it again');
+    assert.deepEqual(loadPlan(f).fills.map((x) => [x.seq, x.round, x.bidder, x.external, x.sellTaken]), [[1, 1, EXT, true, (40n * U).toString()]]);
+  }
+  // (b) a fill of ours outside the fair window HALTs — after the orphan is cancelled.
+  {
+    const chain = newChain();
+    const pend = await priced(chain);
+    const f = planOn(chain, pend, [T1]);
+    const id = setup(chain);
+    fillBy(chain, OWNER, id, 30n * U);
+    const ctx = ctxFor(chain, f);
+    const n0 = chain.sent.length;
+    await assert.rejects(reconcileSession(ctx, await readVault(ctx.reader, V), { cancelOrphans: true, halt: true }), /HALT: adopted fill 0x[0-9a-f]+ landed at factor 10\d\d\d, outside \[10000, 10010\]/);
+    assert.deepEqual(calls(chain, n0), ['cancelAuction'], 'the orphan is cancelled before the HALT');
+    assert.equal(chain.head.state.auctions[Number(id)].open, false);
+    assert.deepEqual(loadPlan(f).fills.map((x) => [x.seq, x.round, x.bidder, x.external]), [[1, 1, OWNER, false]], 'recorded before the HALT');
+  }
+});

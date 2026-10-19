@@ -1794,8 +1794,10 @@ const symOf = (plan, a) => {
  *     block's time. With `halt`, a fill is held to fillHalt: ours to the
  *     same rules as a fill made now, an external one to the contract's curve.
  *   - ORPHANS (`cancelOrphans`, the auctions stage): an auction opened since
- *     the plan's block that is still open is cancelled before anything is
- *     opened — a re-run never leaves one beside a new one.
+ *     the plan's block that is still open is cancelled first — before any
+ *     fill is recorded, any HALT is thrown or anything is opened — and read
+ *     again after the cancel, so a fill that lands before the cancel is
+ *     recorded in this run; a re-run never leaves one beside a new one.
  *   - FINALIZED REMOVALS: a removal that has left the registry but is not in
  *     plan.finalize is recorded from its RemovalFinalized event.
  * `write` false (a dry run) prints what a live run would record or send.
@@ -1804,15 +1806,51 @@ const symOf = (plan, a) => {
 export async function reconcileSession(ctx, v, { cancelOrphans = false, halt = false, write = ctx.live } = {}) {
   const { plan, log, o } = ctx;
   const vault = getAddress(plan.vault);
-  const events = await vaultEvents(ctx, ['AuctionOpened', 'AuctionFilled', 'AuctionCancelled', 'RemovalFinalized']);
-  // The plan's own receipts too: a log search on a node behind our last block can miss them.
   const key = (e) => `${e.transactionHash.toLowerCase()}:${e.logIndex}`;
-  const seen = new Set(events.map(key));
-  for (const { receipt } of await sentReceipts(ctx, /^(fill |open auction |cancel |finalize )/)) {
-    for (const e of parseEventLogs({ abi: EVENT_ABI, logs: receipt.logs.filter((l) => getAddress(l.address) === vault) })) {
-      if (!seen.has(key(e))) { seen.add(key(e)); events.push(e); }
+  const collect = async () => {
+    const events = await vaultEvents(ctx, ['AuctionOpened', 'AuctionFilled', 'AuctionCancelled', 'RemovalFinalized']);
+    // The plan's own receipts too: a log search on a node behind our last block can miss them.
+    const seen = new Set(events.map(key));
+    for (const { receipt } of await sentReceipts(ctx, /^(fill |open auction |cancel |finalize )/)) {
+      for (const e of parseEventLogs({ abi: EVENT_ABI, logs: receipt.logs.filter((l) => getAddress(l.address) === vault) })) {
+        if (!seen.has(key(e))) { seen.add(key(e)); events.push(e); }
+      }
+    }
+    return events;
+  };
+  let events = await collect();
+
+  // Orphans first: an auction left open by an earlier run is cancelled before
+  // any fill is recorded or any HALT is thrown, and read again at a block at
+  // or after the cancel's — a fill by another bidder that lands between our
+  // read and the cancel is in the events below (the log sum must match what
+  // the auction's sellRemaining says was taken).
+  if (cancelOrphans) {
+    const opened = events.filter((e) => e.eventName === 'AuctionOpened');
+    const states = opened.length ? await batchNow(ctx, 'auctions opened since the plan', opened.map((e) => ({ address: vault, abi: VAULT_ABI, functionName: 'auctions', args: [e.args.id] }))) : [];
+    const cancelled = [];
+    for (let i = 0; i < opened.length; i++) {
+      if (!states[i][5]) continue;
+      const id = opened[i].args.id;
+      log(`  auction ${id} (${symOf(plan, states[i][0])} → ${symOf(plan, states[i][1])}, ${states[i][2]} left, opened in ${opened[i].transactionHash}) is still open from an earlier run — ${write ? 'cancelling it' : 'a live run cancels it'} before anything is opened`);
+      if (!write) continue;
+      await runHook(ctx, 'before-orphan-cancel', { auctionId: id });
+      await call(ctx, { who: 'keeper', to: vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id} (left open by an earlier run)` });
+      cancelled.push(opened[i]);
+    }
+    if (cancelled.length) {
+      events = await collect();
+      const seen = new Set(events.map(key));
+      for (const op of cancelled) {
+        const id = op.args.id;
+        const st = await auctionState(ctx, id, op.args.sellAsset, symOf(plan, op.args.sellAsset));
+        for (const e of await auctionFills(ctx, id, op.blockNumber, st.block, op.args.sellAmount - st.remaining)) {
+          if (!seen.has(key(e))) { seen.add(key(e)); events.push(e); }
+        }
+      }
     }
   }
+
   const adoptedSeqs = new Set();
   const isRecorded = recordedFillMatcher(plan);
   const ours = ourBidders(ctx, v);
@@ -1847,17 +1885,6 @@ export async function reconcileSession(ctx, v, { cancelOrphans = false, halt = f
     }
   }
   if (halts.length) throw new Error(halts.join('; '));
-
-  if (cancelOrphans) {
-    const opened = events.filter((e) => e.eventName === 'AuctionOpened');
-    const states = opened.length ? await batchNow(ctx, 'auctions opened since the plan', opened.map((e) => ({ address: vault, abi: VAULT_ABI, functionName: 'auctions', args: [e.args.id] }))) : [];
-    for (let i = 0; i < opened.length; i++) {
-      if (!states[i][5]) continue;
-      const id = opened[i].args.id;
-      log(`  auction ${id} (${symOf(plan, states[i][0])} → ${symOf(plan, states[i][1])}, ${states[i][2]} left, opened in ${opened[i].transactionHash}) is still open from an earlier run — ${write ? 'cancelling it' : 'a live run cancels it'} before anything is opened`);
-      if (write) await call(ctx, { who: 'keeper', to: vault, functionName: 'cancelAuction', args: [id], gas: GAS.openAuction, what: `cancel auction ${id} (left open by an earlier run)` });
-    }
-  }
 
   const inRegistry = new Set(v.assets.map((a) => a.address));
   for (const r of plan.removes) {
