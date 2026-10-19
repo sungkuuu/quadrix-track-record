@@ -21,7 +21,7 @@
   "qeth15": {
     "chainId": 91342,
     "address": null,
-    "gate": null,
+    "gate": {"mode":"step"},
     "deployTx": null,
     "block": null
   }
