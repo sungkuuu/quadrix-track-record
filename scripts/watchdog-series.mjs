@@ -1,6 +1,6 @@
 /**
  * Freshness of the daily series that scripts/watchdog.mjs did not watch: the
- * five paper indexes and the two leverage levels (run sheet option 18, design
+ * five paper indexes and the leverage levels (run sheet option 18, design
  * checklist D14 "an alarm that catches the job not running at all").
  *
  * A job that never starts raises no failure of its own, so this reads only the
@@ -35,7 +35,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const SERIES = ['qrev', 'qdefi', 'barbell', 'triens', 'qai', 'qbtc2x', 'qeth2x'];
+export const SERIES = ['qrev', 'qdefi', 'barbell', 'triens', 'qai', 'qbtc2x', 'qeth2x', 'qeth15'];
 export const LIMIT_H = 40; // stale: hours after D 00:00 UTC of the last line
 export const LIMIT_MISSING_H = 16; // missing: hours after I 00:00 UTC of the inception
 export const SIMULATE = ['series-missing', 'series-stale', 'series-anchor'];

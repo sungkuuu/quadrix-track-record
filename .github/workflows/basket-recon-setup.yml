@@ -75,7 +75,18 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     steps:
+      # The mocks file and the bidder log written by a live run are committed
+      # to main; a run dispatched on another ref would push that ref's commits
+      # to main. Main only, and main as it is when the job starts.
+      - name: Run only on main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::basket-recon-setup runs only on main (dispatched on $GITHUB_REF)"
+            exit 1
+          fi
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -130,8 +141,41 @@ jobs:
           git config user.email "keeper@quadrix.finance"
           for p in keeper/mocks keeper/bidder-log.jsonl; do [ -e "$p" ] && git add "$p"; done
           git diff --cached --quiet || git commit -m "basket-recon-setup: $TASK $(date -u +%Y-%m-%d)"
-          git pull --rebase origin main
-          git push
+          # Rebase on main and push, up to five tries. Another commit can land on
+          # main between checkout and push (ots is outside the keeper-key group;
+          # basket-reconstitution and hand pushes also write to main), and a plain
+          # push is then rejected and the record is lost. A rebase conflict means
+          # another commit changed the same file: stop and fail, never resolve it
+          # automatically and never force-push. An append-only file that only this
+          # workflow appends to rebases cleanly, with its lines and their order
+          # unchanged; two appends at the end of the same file conflict and fail.
+          # A tracked file changed but not committed would also stop the rebase,
+          # so it is checked first and reported as what it is.
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "::error::tracked files changed but not committed — the rebase cannot run. Stage them in this step. Nothing was pushed."
+            git status --short --untracked-files=no
+            git show --format='%H %s' HEAD -- keeper/mocks keeper/bidder-log.jsonl
+            exit 1
+          fi
+          for i in 1 2 3 4 5; do
+            if ! git fetch origin main; then
+              echo "::warning::fetch attempt $i of 5 failed — trying again"
+              sleep $((i * 5))
+              continue
+            fi
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "::error::rebase onto main conflicted — another commit changed the same file. Nothing was pushed and nothing was overwritten. The local commit is printed below; apply it on main by hand."
+              git show --format='%H %s' HEAD -- keeper/mocks keeper/bidder-log.jsonl
+              exit 1
+            fi
+            git push origin HEAD:main && exit 0
+            echo "::warning::push attempt $i of 5 rejected — trying again"
+            sleep $((i * 5))
+          done
+          echo "::error::the mocks file and the bidder log could not be pushed to main after five tries. The local commit is printed below; apply it on main by hand."
+          git show --format='%H %s' HEAD -- keeper/mocks keeper/bidder-log.jsonl
+          exit 1
 
       - name: Summary
         if: ${{ !cancelled() }}

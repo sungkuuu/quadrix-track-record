@@ -1,0 +1,143 @@
+{
+  "schema": "quadrix-gate-report/2",
+  "index": "qeth15",
+  "track": "trading-tool",
+  "stage": "paper",
+  "rulebook": {
+    "path": "rulebooks/qeth15.md",
+    "repo": "record",
+    "sha256": "c48aaec5595a2ee4423f13597e8aaf441bde5f47d2f2e2af319e7b3ecdb27409"
+  },
+  "keeperJson": {
+    "path": "keeper/rulebooks/qeth15.json",
+    "sha256": "b417ca3d96f897cf8ce926642d06ca0712d5122455ed3f54fcb1bd8e9e384fde"
+  },
+  "provenance": {
+    "path": "keeper/rulebooks/qeth15.provenance.json",
+    "sha256": "49d7b93ae7991857e95756bd30c613f7c9df480539c9dac750f912025a2f2543"
+  },
+  "checklistRun": {
+    "path": "docs/methodology/checklist-runs/qeth15/2026-10-13.json",
+    "sha256": "e3ca50416599f6bdab0228755a43616c124ad16a8af5976dec0bc2bd7793895a"
+  },
+  "siteCommit": "119b02c6d07d7bd4b8c7697557678170495cebf6",
+  "siteCommitPushed": true,
+  "base": "main",
+  "counts": {
+    "tested": 2,
+    "partial": 0,
+    "definition": 4,
+    "definitionNumeric": 0,
+    "price": 1,
+    "absent": 0,
+    "exposureLimit": 0,
+    "exception": {
+      "product-definition": 5,
+      "model-assumption": 5,
+      "no-data": 0,
+      "stage-only": 0
+    },
+    "reference": 0,
+    "inheritedUntested": 0,
+    "untested": 1
+  },
+  "changedParams": [
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P09",
+    "P11",
+    "P12",
+    "P13",
+    "P14",
+    "P15",
+    "P16",
+    "P17",
+    "P18",
+    "P22",
+    "P25"
+  ],
+  "exceptionsAmongChanged": 10,
+  "exposureAmongChanged": 0,
+  "exceptions": [
+    {
+      "id": "P04",
+      "reason": "product-definition"
+    },
+    {
+      "id": "P05",
+      "reason": "product-definition"
+    },
+    {
+      "id": "P09",
+      "reason": "model-assumption"
+    },
+    {
+      "id": "P11",
+      "reason": "model-assumption"
+    },
+    {
+      "id": "P12",
+      "reason": "product-definition"
+    },
+    {
+      "id": "P13",
+      "reason": "product-definition"
+    },
+    {
+      "id": "P14",
+      "reason": "product-definition"
+    },
+    {
+      "id": "P15",
+      "reason": "model-assumption"
+    },
+    {
+      "id": "P16",
+      "reason": "model-assumption"
+    },
+    {
+      "id": "P17",
+      "reason": "model-assumption"
+    }
+  ],
+  "pendingSteps": [
+    {
+      "id": "D11",
+      "after": "gate",
+      "closeBy": "관문 보고의 result가 통과",
+      "record": "docs/methodology/checklist-runs/qeth15/2026-10-13.json"
+    },
+    {
+      "id": "D13",
+      "after": "anchor",
+      "closeBy": "개시 결정문의 앵커 tx와 첫 기록 줄(2026-10-16)",
+      "record": "docs/methodology/checklist-runs/qeth15/2026-10-13.json"
+    },
+    {
+      "id": "D17",
+      "after": "launch",
+      "closeBy": "사이트 반영(staging 규율) 뒤 프로덕션 재확인. 마크 볼트는 배포하지 않았다(§13)",
+      "record": "docs/methodology/checklist-runs/qeth15/2026-10-13.json"
+    },
+    {
+      "id": "D18",
+      "after": "launch",
+      "closeBy": "첫 출시 후 감사 기록",
+      "record": "docs/methodology/checklist-runs/qeth15/2026-10-13.json"
+    }
+  ],
+  "judgments": [],
+  "untestedAmongChanged": 1,
+  "checksSkipped": [],
+  "result": "fail",
+  "violationsByCheck": {
+    "C4": 3,
+    "C6": 1,
+    "C10": 20
+  }
+}

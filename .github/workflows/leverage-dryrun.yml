@@ -1,6 +1,6 @@
 name: leverage-dryrun
 
-# Replays a leverage series (qBTC2X, qETH2X) from Binance bars in CI — by hand
+# Replays a leverage series (qBTC2X, qETH2X, qETH1.5X) from Binance bars in CI — by hand
 # from the Actions tab, never scheduled — and recomputes it with
 # scripts/verify.mjs. Output: keeper/dryrun/ as an artifact.
 #
@@ -17,10 +17,10 @@ on:
   workflow_dispatch:
     inputs:
       index:
-        description: 'qbtc2x | qeth2x'
+        description: 'qbtc2x | qeth2x | qeth15'
         required: true
         type: choice
-        options: [qbtc2x, qeth2x]
+        options: [qbtc2x, qeth2x, qeth15]
       replay:
         description: 'FROM..TO (FROM = the replayed inception date, TO = the last line date), e.g. 2020-03-10..2020-03-13'
         required: true

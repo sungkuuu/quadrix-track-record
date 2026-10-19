@@ -30,7 +30,7 @@ const lines = (from, n) => Array.from({ length: n }, (_, seq) => ({ seq, date: n
 const anchorsFor = (recs) => recs.map((r) => ({ date: r.date, seq: r.seq, headHash: 'b'.repeat(64), txHash: TX(100 + r.seq) }));
 
 test('watches the five paper series and the two leverage levels; stale after 40 h, missing after 16 h', () => {
-  assert.deepEqual(SERIES, ['qrev', 'qdefi', 'barbell', 'triens', 'qai', 'qbtc2x', 'qeth2x']);
+  assert.deepEqual(SERIES, ['qrev', 'qdefi', 'barbell', 'triens', 'qai', 'qbtc2x', 'qeth2x', 'qeth15']);
   assert.equal(LIMIT_H, 40);
   assert.equal(LIMIT_MISSING_H, 16);
 });
@@ -126,5 +126,5 @@ test('a simulate name with nothing it applies to still produces a problem (an al
 test("this repository's own series are clear at a fixed clock of 2026-10-05T12:00Z (paper series fresh and anchored; leverage not started or pending)", () => {
   const r = checkSeries({ dir: path.join(REPO, 'trackrecord'), now: at('2026-10-05T12:00:00Z') });
   assert.deepEqual(r.problems, []);
-  assert.equal(r.summary.length, 7);
+  assert.equal(r.summary.length, SERIES.length);
 });

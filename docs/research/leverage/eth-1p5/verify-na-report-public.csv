@@ -1,0 +1,48 @@
+check,compared,differing,pass,detail
+depth-1m.csv sha256 = registered,1,0,true,dde89502ed853a3189abe39eceffe3f700190056b86a1fa8945b959322b780c0
+"parts: part_param (registered engine, MC set, inputs, seeds, paths) and part_check all true",10,0,true,
+"merged: merge_param = post-registration changes 1 and 2 (merging engine = patched copy p2, parts accepted at the registered engine)",2,0,true,"{'merge_engine_sha256': '17ad7a04cf5d68866ef88cebae9c6f87b955923de49e632d7a8665f46e8b1292', 'part_engine_sha256_accepted': '63157268d03014703dc4ac073ed9f3204827dcf63b81e56f9c3a0e7cb569d596', 'post_registration_change': 'post-registration-change-1.md (owner 2026-10-07 path 1): (a) E14 (i) relative 1e"
+merged: sanity rows pass (blank = information rows),59,0,true,
+merged: merge_check rows pass (blank = information rows),61,0,true,
+"static margin (k = 1.25, R) and 「한 번 놓쳐도」 from depth-1m.csv = README 「격자」 table (54 · 37, highest trigger per period)",121,0,true,counts 54 / 37; ltv within 1e-9 of the line: []
+Monte Carlo set = static passers (trk_windows variants of every scenario part),54,0,true,headline part has 54
+"inputs of A1 / B1 present (historical 3 windows, mc_liq 4 L, depth_stress k = 1.25 3 windows per MC variant and scenario)",1134,0,true,
+information: MC variants lost to A1 / B1 (README: the static margin implies none),14,0,info,
+"trk_pairwise: every pair x L (decision seed x 7 scenarios, report seeds x headline), wins + losses + ties = paths",51516,0,true,
+"trk_windows: three finite Q per MC variant and scenario, days = 3194 · 2098 · 1368",378,0,true,
+"trk_x (decision seed, 2 rules x 3 tracks x 2 grids x 7 scenarios): X, window dominators, dominators, F, recursive F, classes, P present",3626,0,true,
+"trk_dominance: pairs meeting (a), L = 6 wins / losses / ties, dominates",62340,0,true,
+"P over X / F / G sum to 1 at every L, equal inside a class, classes transitive",336,0,true,
+"trk_outcome (2 rules x 3 tracks x 2 grids x 7 headline seats): kind, chosen, counts, simplest in X / F, F = recursive F",84,0,true,
+trk_asset_outcome (headline): kind and chosen,12,0,true,
+"trk_x_seed (report seeds, headline): F, dominators, classes, pG present",1036,0,true,
+"trk_outcome_seed (decision + two report seeds): counts, simplest in F, class with P_G > 0.5 at every L, max P_G, same F",36,0,true,
+trk_filter_seed: dominators and F on each seed,1554,0,true,
+"trk_near_threshold (a) margin <= 0.03 and (b) max over classes of min_L P_G in 0.47-0.53 (headline, grid all)",296,0,true,
+놀람 1: a track empty at the headline (information),12,0,info,[]
+"놀람 3: output trigger is not the highest passing trigger of its period (rule A, grid all, headline; information)",3,3,info,own: ETH|1.5|daily|L>=2.4|15 (highest passing 2.5); free: ETH|1.5|daily|L>=2.4|15 (highest passing 2.5); miss1: ETH|1.5|daily|L>=2.3|15 (highest passing 2.5)
+"놀람 4: same period, lower trigger, strictly lower Q in a window (headline): MC set pairs (cells) / all decision variants pairs (cells) (information)",41,20,info,MC set 20 (24); all 21 (25): ETH|1.5|daily|L>=1.7|15 < 2; ETH|1.5|daily|L>=1.7|15 < 2.1; ETH|1.5|daily|L>=1.8|15 < 2; ETH|1.5|daily|L>=1.8|15 < 2.1; ETH|1.5|daily|L>=1.9|15 < 2; ETH|1.5|daily|L>=1.9|15 < 2.1; ETH|1.5|daily|L>=2.4|15 < 2.5; ETH|1.5|daily|L>=1.7|30 < 2; ETH|1.5|daily|L>=1.7|30 < 2.1; ETH|1.5|daily|L>=1.8|30 < 1.9
+"놀람 5: grid tup output != grid all output, or rule B != rule A (information)",48,0,info,
+"놀람 6: class >= 2 in G_H, F differs on a report seed, seat outputs differ (rule A; information; report-seed outcome kinds are in trk_outcome_seed)",6,6,info,"own all: seven seats give 2 outputs; own tup: seven seats give 2 outputs; free all: seven seats give 2 outputs; free tup: seven seats give 2 outputs; miss1 all: class of 2 ['ETH|1.5|daily|L>=2.3|15', 'ETH|1.5|daily|L>=2.2|15']; miss1 tup: class of 2 ['ETH|1.5|daily|L>=2.3|15', 'ETH|1.5|daily|L>=2.2|15']"
+"놀람 7: near-threshold mark at the place that set the output (rule A, grid all; information)",3,0,info,
+information: headline outputs (rule A / B x track x grid),12,0,info,A own all: sole ETH|1.5|daily|L>=2.4|15; A own tup: sole ETH|1.5|daily|L>=2.4|15; A free all: sole ETH|1.5|daily|L>=2.4|15; A free tup: sole ETH|1.5|daily|L>=2.4|15; A miss1 all: sole ETH|1.5|daily|L>=2.3|15; A miss1 tup: sole ETH|1.5|daily|L>=2.3|15; B own all: sole ETH|1.5|daily|L>=2.4|15; B own tup: sole ETH|1.5|daily|L>=2.4|15; B free all: sole ETH|1.5|daily|L>=2.4|15; B free tup: sole ETH|1.5|daily|L>=2.4|15; B miss1 all: sole ETH|1.5|daily|L>=2.3|15; B miss1 tup: sole ETH|1.5|daily|L>=2.3|15
+"disclosure numbers: mc_path in s0 / s2 / x45 for every MC variant (L = 6, seed 20261611, 3,333 values), mc_path_hold two rows in s0",164,0,true,
+"disclosure numbers: mc_end rows for 8 scenario parts x 4 L x every MC variant, path_days = 2100",1728,0,true,[]
+"disclosure numbers: mc_end at L = 6 (s0 / s2 / x45) recomputed from the engine's mc_path: counts, odd-N median, hold columns",162,0,true,
+disclosure numbers: mc_end at L = 6 quantiles p05 p25 p75 p95 with the linear method (method not registered; information),162,0,info,
+"disclosure numbers: mc_cost (headline and reference; L = 6 per-path paired cost median and share, every L difference of medians and share)",432,0,true,
+(나) input ethusdt-15m.csv.gz sha256 = registered,1,0,true,323831dd73c6266320931fed8c5bf86fdb5df11ce05b1ee269a26eb33a7e6478
+(나) day table: days in region R (2017-09-01 .. 2026-09-29) / seconds,3316,0,info,"2017-09-01 .. 2026-09-29, 4.3 s"
+(나) day table: leverage at a trigger or LTV at the line within 1e-9 (rounding-level fire / liquidation decisions; information),8,0,info,[]
+"(나) windows: Q (rel 1e-9 or abs 1e-12, trk_windows), net multiple (historical, printed digits), trigger fires (trk_hist), 54 x 7 x 3",1134,0,true,"Q 0, net 0, fires 0; "
+(나) windows: liquidated MC variant (README: none),1134,0,true,
+"(나) paths evaluated (jobs, seconds)",40,0,info,"27.6 s, workers 4"
+(나) path draw: first path block starts = README E7 (12 seed x L),12,0,true,[]
+(나) path statistics vs part_param (information: which of drawn / used the engine counts is not registered),12,0,info,decision L1: 2020-03 drawn 9454 used 9454 (engine 9454); distinct months 51.3720 (engine 51.37); decision L3: 2020-03 drawn 3251 used 3218 (engine 3218); distinct months 51.6550 (engine 52.13); decision L6: 2020-03 drawn 1670 used 1641 (engine 1641); distinct months 51.8536 (engine 53.14); decision L12: 2020-03 drawn 931 used 905 (engine 905); distinct months 52.3893 (engine 53.82); r1 L1: 2020-03 drawn 9474 used 9474 (engine 9474); distinct months 51.4139 (engine 51.41); r1 L3: 2020-03 drawn 3289 used 3246 (engine 3246); distinct months 51.6297 (engine 52.12); r1 L6: 2020-03 drawn 1660 used 1620 (engine 1620); distinct months 51.9961 (engine 53.32); r1 L12: 2020-03 drawn 909 used 886 (engine 886); distinct months 52.4931 (engine 53.90); r2 L1: 2020-03 drawn 9539 used 9539 (engine 9539); distinct months 51.3905 (engine 51.39); r2 L3: 2020-03 drawn 3261 used 3226 (engine 3226); distinct months 51.6118 (engine 52.11); r2 L6: 2020-03 drawn 1728 used 1680 (engine 1680); distinct months 51.9649 (engine 53.31); r2 L12: 2020-03 drawn 890 used 869 (engine 869); distinct months 52.2537 (engine 53.63)
+"(나) trk_pairwise: wins / losses / ties of q per pair (decision seed x 7 scenarios x 4 L, report seeds x headline x 4 L)",51516,0,true,pairs explained by rounding-level paths: 0; 
+"(나) P over X / F / G (every rule x track x grid x scenario x L; report seeds at the headline) vs trk_x / trk_x_seed, abs 1e-9",20184,0,true,
+(나) liquidated paths = 0 for every MC variant (mine and mc_liq),2160,0,true,
+"(나) mc_path: every path end multiple (s0 / s2 / x45, L = 6, rel 1e-8 -- 10 significant digits) and mc_path_hold underlying multiple",163,0,true,
+"(나) mc_end (8 scenario parts x 4 L): counts, liquidated, odd-N medians, hold columns from own paths",1728,0,true,
+(나) mc_end quantiles with the linear method and even-N medians (method not registered; information),1728,0,info,
+seconds,1,0,info,35.9

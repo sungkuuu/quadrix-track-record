@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import {
   custom, keccak256, parseTransaction, recoverTransactionAddress, decodeFunctionData, encodeFunctionResult, getAddress, toHex, hexToString,
 } from 'viem';
-import { VAULT_ABI } from '../leverage-index.mjs';
+import { VAULT_ABI, INDEXES } from '../leverage-index.mjs';
 import { sha256 } from '../leverage-step.mjs';
 
 export const KEEPER_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -238,7 +238,7 @@ export function tempRoot({ index = 'qbtc2x', fill = null, inception = null, vaul
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lev-root-'));
   fs.mkdirSync(path.join(root, 'keeper', 'rulebooks'), { recursive: true });
   fs.mkdirSync(path.join(root, 'trackrecord', 'decisions'), { recursive: true });
-  for (const ix of ['qbtc2x', 'qeth2x']) {
+  for (const ix of INDEXES) {
     const rb = JSON.parse(fs.readFileSync(path.join(KEEPER_DIR, 'rulebooks', `${ix}.json`), 'utf8'));
     if (ix === index && fill) {
       rb._doc = 'THROWAWAY test values — not a tested value, never published';

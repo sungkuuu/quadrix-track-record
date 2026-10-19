@@ -1,0 +1,59 @@
+Public word scan — the files this change adds or changes against main (origin/main), as staged
+pattern: the internal list (site repository, private), sha256 60d8254003e515db9b30d4be2906770db72ae9bcc2d4dd64fccdcf316c749668 (case-insensitive extended regular expression)
+match counts per file (.gz scanned decompressed), with the sha256 of each file as scanned:
+  0 .github/workflows/leverage-dryrun.yml sha256 f879a15b02c194bbd98e83a4228bcc758e531abd91feab4333ffb58255f366c7
+  0 .github/workflows/paper-index.yml sha256 63fac3a0b6252a2574989d9e45deb51b84d3fc7c6ddaec8b4c69f03d00404f3a
+  0 README.md sha256 6c036639d4c1add679466319cf5d9fee836667beef304c97edc9e7b60708d24d
+  0 docs/research/leverage/eth-1p5/MANIFEST-notes.md sha256 20ec3bbd8bdb2a76a26ce80158ad50e6a39e3b1ca4a92872e10d308e2e1d9ca5
+  0 docs/research/leverage/eth-1p5/MANIFEST.sha256 sha256 c9422b0dbe8cb529e3536a1aff2895cf794457651a4ee7fc39ac4654194d367a
+  1 docs/research/leverage/eth-1p5/README-public.md sha256 4297018ab08b3eea639cbb06cd15bbbf26afcd67e29f187cb8804c3dfa93141e
+  0 docs/research/leverage/eth-1p5/REGISTRATION-public sha256 fbdf5f3a3792996701a8493e8837554531051f21db6e88906753b9f9f6911e5a
+  0 docs/research/leverage/eth-1p5/evidence/dryrun-2026-10-13.txt sha256 3cbc617e1f446cd1d53459c7ec392b7376c42ff6bb45ac4bcab9d3c145efc08c
+  0 docs/research/leverage/eth-1p5/evidence/engine-diff-2026-10-13.txt sha256 51c2fd1eefb6cfb9257e1ee5ddf55097c1e62ea586ec249a6543d09e77653e07
+  12 docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt sha256 2a762b149965746c77995fef5221f6f1bb9bc119b413c927c2da974351a7d99e
+  0 docs/research/leverage/eth-1p5/evidence/red-team-2026-10-14.txt sha256 7edebe7ec1ed05cc1d1de424cbc950e71ed22a22d209a96e6e4a3558fb14391d
+  2 docs/research/leverage/eth-1p5/evidence/verify-full-2026-10-14.txt sha256 1612c3fbfe5db9fef63634ce89a4624170444dc8acf56b1b0aa5824ab4d2f8c8
+  0 docs/research/leverage/eth-1p5/post-registration-change-1-public.md sha256 0296ec391a18e4be08dc85156d427ffffa364b5b9f7b24b18ea7b7b01d5df878
+  0 docs/research/leverage/eth-1p5/post-registration-change-2-public.md sha256 cbe99591943811ef642c3bd484025d5e35d295802199df085c921ce1111a797c
+  0 docs/research/leverage/eth-1p5/results-1.5-p2-public.csv.gz sha256 31886fbd30539434c04bb7ba385675758f86160a8aa17863c9c1a65e23821e32
+  1 docs/research/leverage/eth-1p5/results-1.5-public.md sha256 c51f1894c29c270dd1f0179d6cc17559a501af076b8568a44d75e55042ad2410
+  0 docs/research/leverage/eth-1p5/verify-ga-report-public.csv sha256 ca4e9625786bf376fa80024912fc94560066825914b03649576e7729c7f77cf1
+  0 docs/research/leverage/eth-1p5/verify-na-report-public.csv sha256 3538f2df2b849816eaaa17f79fb444e76798cf19b772a183fadfbdc8a6b725b5
+  1 keeper/leverage-index.mjs sha256 71b617af9e30a09f1f53a79854f81c9b886cac06bad48db01577dea0ad43fc59
+  0 keeper/leverage-step.mjs sha256 ababc503d9ef28cc98ff74e3fff1a6f6826f21bc174b341725fe62bcda0fa1f4
+  0 keeper/rulebooks/qeth15.json sha256 b417ca3d96f897cf8ce926642d06ca0712d5122455ed3f54fcb1bd8e9e384fde
+  0 keeper/test/leverage-draft.test.mjs sha256 28ef10882bbe5d5c2e23ddcdae707e2322e39bc32a9b7bbe73c0a8eb2aabc618
+  0 keeper/test/leverage-engine-diff-eth15.test.mjs sha256 1c5e3c2083894fad5730fa2f74d90d468c1b26c9addc09cee283893ee2aa1c05
+  0 keeper/test/leverage-eth15.test.mjs sha256 9ac04ae86ea1e6b66d92c05df6d8ebfa9a0619b3728e93ef33caa6043dbd759c
+  0 keeper/test/leverage-helpers.mjs sha256 67ba5e7598ce4aee199700015f5fffa281eae62c48d184728559a1a58e1a93d7
+  0 keeper/test/leverage-redteam-eth15.test.mjs sha256 ec6992e3db80e51fbc73aaeb157b579979601abbe4e94d42efb6f2193f32d5d8
+  0 keeper/test/watchdog-series.test.mjs sha256 a9d67408d3991cc45a22d82eba08d4b5dc7ac56ca8b410832891324f5329b4c0
+  0 rulebooks/README.md sha256 07b60b6f8246bae9e26d2091fa1cbf7ab56b3555b8214510e1146e88879bcf0a
+  2 rulebooks/qeth15.md sha256 c48aaec5595a2ee4423f13597e8aaf441bde5f47d2f2e2af319e7b3ecdb27409
+  1 scripts/verify.mjs sha256 a346b0f51378638c5edba8d7b9f89588f0d1f2501a662b2ef30fecf9c5df8114
+  1 scripts/watchdog-series.mjs sha256 59d50e1f457b9c00f68a9c245bd98789e9fac3408430277f056f21ff2063176e
+matched lines:
+  docs/research/leverage/eth-1p5/README-public.md:228:목표 + 0.1을 뺀 격자에서는 ~」로만 적는다. 「결정」 · 「권고」 · 「검증됨」이라 쓰지 않는다.
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:71:# Subtest: review r1: once the series has lines, a rulebook edited after inception is a refusal (exit 2, the failure issue opens), not a silent NOT IN FORCE
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:72:ok 10 - review r1: once the series has lines, a rulebook edited after inception is a refusal (exit 2, the failure issue opens), not a silent NOT IN FORCE
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:77:# Subtest: review r2: an ANCHORED inception decision that the files do not satisfy is a refusal before the genesis line too (exit 2, the failure issue opens) — not a silent NOT IN FORCE on the opening
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:78:ok 11 - review r2: an ANCHORED inception decision that the files do not satisfy is a refusal before the genesis line too (exit 2, the failure issue opens) — not a silent NOT IN FORCE on the opening da
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:121:# Subtest: review r1: T9 on a load-balanced endpoint — a node behind the last step answers the next simulation from the old navPerShare; the simulation runs at a block >= the last receipt, so the step
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:122:ok 18 - review r1: T9 on a load-balanced endpoint — a node behind the last step answers the next simulation from the old navPerShare; the simulation runs at a block >= the last receipt, so the steps s
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:127:# Subtest: review r2: --no-new-lines (lines pushed before anything goes on chain, keeper-clock G2) — a keyless run writes the lines, a second run with --anchor --no-new-lines anchors every unanchored 
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:128:ok 19 - review r2: --no-new-lines (lines pushed before anything goes on chain, keeper-clock G2) — a keyless run writes the lines, a second run with --anchor --no-new-lines anchors every unanchored lin
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:171:# Subtest: review r1: verify — between an anchored inception decision and the genesis line the series is "pending"; after that UTC day a missing file fails
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:172:ok 26 - review r1: verify — between an anchored inception decision and the genesis line the series is "pending"; after that UTC day a missing file fails
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:177:# Subtest: review r1: verify — a genesis line carrying checks, a renumbered seq, or a price host other than the rule's fails even when re-hashed
+  docs/research/leverage/eth-1p5/evidence/keeper-tests-2026-10-14.txt:178:ok 27 - review r1: verify — a genesis line carrying checks, a renumbered seq, or a price host other than the rule's fails even when re-hashed
+  docs/research/leverage/eth-1p5/evidence/verify-full-2026-10-14.txt:84:  ok    #39 2026-10-10 LIVE head 48ad0137b6f6…
+  docs/research/leverage/eth-1p5/evidence/verify-full-2026-10-14.txt:282:  ok    seq 13 2026-10-05 anchored in 0xf24ec2cd01ec… (block 37834655)
+  docs/research/leverage/eth-1p5/results-1.5-public.md:50:- 이 문서는 「결정」 · 「권고」 · 「검증됨」 · 「최선」이라 쓰지 않는다.
+  keeper/leverage-index.mjs:273: * line rather than reporting NOT IN FORCE with exit 0 every day (review r2).
+  rulebooks/qeth15.md:360:실행 기록: 사이트 리포(비공개) `docs/methodology/checklist-runs/qeth15/2026-10-13.json`(볼트 설계 D01 ~ D18, 강건성 레버 유형 ● 28항목과 ○ 3항목, 트랙 `trading-tool`, 단계 종이 기록). sha256은 개시 결정문이 고정한다. 이 기록이 고정하는 증거 파일은 모두 공개 사본이다(이
+  rulebooks/qeth15.md:362:- **설계 단계** — done: D01 · D03 ~ D10 · D14(신선도 경보와 일일 작업에 이 시리즈를 배선 — 이 리포 main에 들어간 뒤 돈다) · D15(새 키퍼 코드의 레드팀, R47). n/a: D02(종이 기록 — 담는 자산이 없다). 대기: D11(관문 보고 통과 뒤) · D13(엔진 대조 · 드라이런 2회 · 실패 경로는 끝났고 
+  scripts/verify.mjs:328:    // here — red team F03 D; final review F-1 for the day bound).
+  scripts/watchdog-series.mjs:18: * The limits (review 2 minor 9, red team F07a; monitoring thresholds, not rule
+end
+reading of the matched lines: rulebook 360 and 362 name design checklist steps by their public number (D01 to D18, as the qBTC2X rulebook does; the checklist is checklists/vault-design.md in this repository); the two research copies say they do not use the word for verified; the two verifier lines match only inside hexadecimal hashes; the keeper-test lines and the three code comments carry the names of tests and comments already on main (review rounds of the qBTC2X keeper). No model name, no internal path, no forbidden topic, no local path.
+not in this scan, because they pin the files above by sha256 (a scan that covered them would change with them): the inception decision, the provenance file and the gate report — scanned the same way before the anchor.

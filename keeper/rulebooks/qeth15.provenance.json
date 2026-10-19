@@ -1,0 +1,323 @@
+{
+  "schema": "quadrix-param-provenance/1",
+  "index": "qeth15",
+  "track": "trading-tool",
+  "rulebook": {
+    "path": "rulebooks/qeth15.md",
+    "commit": "3b355eaf3a8d55856b979fda706a40d3bf986a89",
+    "sha256": "c48aaec5595a2ee4423f13597e8aaf441bde5f47d2f2e2af319e7b3ecdb27409"
+  },
+  "checklistRun": {
+    "path": "docs/methodology/checklist-runs/qeth15/2026-10-13.json",
+    "sha256": "e3ca50416599f6bdab0228755a43616c124ad16a8af5976dec0bc2bd7793895a",
+    "repo": "site (private)"
+  },
+  "keeperJson": {
+    "path": "keeper/rulebooks/qeth15.json",
+    "sha256": "b417ca3d96f897cf8ce926642d06ca0712d5122455ed3f54fcb1bd8e9e384fde"
+  },
+  "note": "Covers every numeric, boolean and rule-string leaf of the keeper JSON (gate.md §2). The rows not held in the JSON (P02, P08, P09, P12, P13, P15, P16, P19–P22, P24) are in appendix P of the rulebook. The owner decision behind each exception is cited through the run record line that names it.",
+  "params": [
+    {
+      "id": "P01",
+      "jsonPath": "underlying.symbol",
+      "codeConst": null,
+      "value": "ETHUSDT",
+      "basis": "definition",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": "as qETH2X",
+      "definitionKind": "universe",
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": null
+    },
+    {
+      "id": "P03",
+      "jsonPath": "underlying.source",
+      "codeConst": null,
+      "value": "binance-spot-rest",
+      "basis": "definition",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": "as qETH2X",
+      "definitionKind": "source",
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": null
+    },
+    {
+      "id": "P25",
+      "jsonPath": "underlying.barMinutes",
+      "codeConst": null,
+      "value": 15,
+      "basis": "untested",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": null,
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": "docs/research/rule-audit/README.md (qeth15 P25)",
+      "exception": null
+    },
+    {
+      "id": "P04",
+      "jsonPath": "product.target",
+      "codeConst": null,
+      "value": 1.5,
+      "basis": "exception",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": null,
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": {
+        "reason": "product-definition",
+        "ownerRef": "2026-10-13 · docs/methodology/checklist-runs/qeth15/2026-10-13.json:14",
+        "expires": "none",
+        "effect": {
+          "notMeasurable": "the objective is defined by this value"
+        }
+      }
+    },
+    {
+      "id": "P05",
+      "jsonPath": "product.reset",
+      "codeConst": null,
+      "value": "daily-00:00-utc",
+      "basis": "exception",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": null,
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": {
+        "reason": "product-definition",
+        "ownerRef": "2026-10-13 · docs/methodology/checklist-runs/qeth15/2026-10-13.json:15",
+        "expires": "none",
+        "effect": {
+          "notMeasurable": "the objective is defined by this value"
+        }
+      }
+    },
+    {
+      "id": "P14",
+      "jsonPath": "product.intradayReleverage",
+      "codeConst": null,
+      "value": false,
+      "basis": "exception",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": null,
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": {
+        "reason": "product-definition",
+        "ownerRef": "2026-10-13 · docs/methodology/checklist-runs/qeth15/2026-10-13.json:18",
+        "expires": "none",
+        "effect": {
+          "notMeasurable": "intraday re-leverage is another product"
+        }
+      }
+    },
+    {
+      "id": "P07",
+      "jsonPath": "check.minutes",
+      "codeConst": null,
+      "value": 15,
+      "basis": "tested",
+      "tests": [
+        "R15",
+        "R27",
+        "R28"
+      ],
+      "study": "기록:docs/research/leverage/eth-1p5/",
+      "preregCommit": "d7fec51",
+      "resultFiles": [
+        {
+          "path": "기록:docs/research/leverage/eth-1p5/results-1.5-p2-public.csv.gz",
+          "sha256": "31886fbd30539434c04bb7ba385675758f86160a8aa17863c9c1a65e23821e32",
+          "repo": "record (publishable copy; original in the site repository, registration d7fec51)"
+        }
+      ],
+      "ruleOutput": "ETH|1.5|daily|L>=2.3|15 (trk_asset_outcome,ETH,A,miss1,all: sole survivor of the filter)",
+      "selectedBy": "rule_output",
+      "decision": "track chosen by the owner on 2026-10-13 after the results — docs/methodology/checklist-runs/qeth15/2026-10-13.json:35",
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": null,
+      "verdict": {
+        "path": "기록:docs/research/leverage/eth-1p5/results-1.5-p2-public.csv.gz",
+        "key": "trk_asset_outcome,ETH,A,miss1,all",
+        "sha256": "31886fbd30539434c04bb7ba385675758f86160a8aa17863c9c1a65e23821e32"
+      }
+    },
+    {
+      "id": "P06",
+      "jsonPath": "check.trigger",
+      "codeConst": null,
+      "value": 2.3,
+      "basis": "tested",
+      "tests": [
+        "R14",
+        "R15",
+        "R20",
+        "R22",
+        "R24",
+        "R25",
+        "R26",
+        "R27",
+        "R28",
+        "R29",
+        "R33",
+        "R60"
+      ],
+      "study": "기록:docs/research/leverage/eth-1p5/",
+      "preregCommit": "d7fec51",
+      "resultFiles": [
+        {
+          "path": "기록:docs/research/leverage/eth-1p5/results-1.5-p2-public.csv.gz",
+          "sha256": "31886fbd30539434c04bb7ba385675758f86160a8aa17863c9c1a65e23821e32",
+          "repo": "record (publishable copy; original in the site repository, registration d7fec51)"
+        }
+      ],
+      "ruleOutput": "ETH|1.5|daily|L>=2.3|15 (trk_asset_outcome,ETH,A,miss1,all: sole survivor of the filter)",
+      "selectedBy": "rule_output",
+      "decision": "track chosen by the owner on 2026-10-13 after the results — docs/methodology/checklist-runs/qeth15/2026-10-13.json:35",
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": null,
+      "verdict": {
+        "path": "기록:docs/research/leverage/eth-1p5/results-1.5-p2-public.csv.gz",
+        "key": "trk_asset_outcome,ETH,A,miss1,all",
+        "sha256": "31886fbd30539434c04bb7ba385675758f86160a8aa17863c9c1a65e23821e32"
+      }
+    },
+    {
+      "id": "P11",
+      "jsonPath": "model.lltv",
+      "codeConst": null,
+      "value": 0.86,
+      "basis": "exception",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": null,
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": {
+        "reason": "model-assumption",
+        "ownerRef": "2026-10-13 · docs/methodology/checklist-runs/qeth15/2026-10-13.json:20",
+        "expires": "before the stage-B decision",
+        "effect": {
+          "notMeasurable": "the range of liquidation lines that keeps the output was not computed"
+        }
+      }
+    },
+    {
+      "id": "P17",
+      "jsonPath": "level.primary.costBp",
+      "codeConst": null,
+      "value": 30,
+      "basis": "exception",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": null,
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": {
+        "reason": "model-assumption",
+        "ownerRef": "2026-10-13 · docs/methodology/checklist-runs/qeth15/2026-10-13.json:23",
+        "expires": "before the stage-B decision",
+        "effect": {
+          "path": "기록:docs/research/leverage/eth-1p5/results-1.5-p2-public.csv.gz",
+          "sha256": "31886fbd30539434c04bb7ba385675758f86160a8aa17863c9c1a65e23821e32",
+          "rows": "mc_end … 0,0 · 30,4.5 · 30,6"
+        }
+      }
+    },
+    {
+      "id": "P17",
+      "jsonPath": "level.primary.ratePct",
+      "codeConst": null,
+      "value": 4.5,
+      "basis": "exception",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": null,
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": {
+        "reason": "model-assumption",
+        "ownerRef": "2026-10-13 · docs/methodology/checklist-runs/qeth15/2026-10-13.json:23",
+        "expires": "before the stage-B decision",
+        "effect": {
+          "path": "기록:docs/research/leverage/eth-1p5/results-1.5-p2-public.csv.gz",
+          "sha256": "31886fbd30539434c04bb7ba385675758f86160a8aa17863c9c1a65e23821e32",
+          "rows": "mc_end … 0,0 · 30,4.5 · 30,6"
+        }
+      }
+    },
+    {
+      "id": "P18",
+      "jsonPath": "fees.managementBps",
+      "codeConst": null,
+      "value": 100,
+      "basis": "price",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": "owner 2026-10-13 (1% a year, can only be lowered; not applied to the stage A level, nothing collects it)",
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": null
+    }
+  ]
+}

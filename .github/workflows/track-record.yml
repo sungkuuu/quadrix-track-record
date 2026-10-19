@@ -18,6 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Branch tip at run start, not the commit the schedule queued on: a
+          # queued run can start hours later, after other commits.
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -25,6 +29,7 @@ jobs:
       - run: npm ci
 
       - name: Append and anchor daily record
+        id: record
         run: |
           set -o pipefail
           node scripts/track-record.mjs --anchor 2>&1 | tee tr.log
@@ -41,7 +46,41 @@ jobs:
           git config user.email "keeper@quadrix.finance"
           git add trackrecord/
           git diff --cached --quiet || git commit -m "track-record: $(date -u +%Y-%m-%d)"
-          git push
+          # Rebase on main and push, up to five tries. Another commit can land on
+          # main between checkout and push (ots is outside the keeper-key group;
+          # basket-reconstitution and hand pushes also write to main), and a plain
+          # push is then rejected and the record is lost. A rebase conflict means
+          # another commit changed the same file: stop and fail, never resolve it
+          # automatically and never force-push. An append-only file that only this
+          # workflow appends to rebases cleanly, with its lines and their order
+          # unchanged; two appends at the end of the same file conflict and fail.
+          # A tracked file changed but not committed would also stop the rebase,
+          # so it is checked first and reported as what it is.
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "::error::tracked files changed but not committed — the rebase cannot run. Stage them in this step. Nothing was pushed."
+            git status --short --untracked-files=no
+            git show --format='%H %s' HEAD -- trackrecord/ | tee record-push.patch
+            exit 1
+          fi
+          for i in 1 2 3 4 5; do
+            if ! git fetch origin main; then
+              echo "::warning::fetch attempt $i of 5 failed — trying again"
+              sleep $((i * 5))
+              continue
+            fi
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "::error::rebase onto main conflicted — another commit changed the same file. Nothing was pushed and nothing was overwritten. The local commit is printed below; apply it on main by hand."
+              git show --format='%H %s' HEAD -- trackrecord/ | tee record-push.patch
+              exit 1
+            fi
+            git push origin HEAD:main && exit 0
+            echo "::warning::push attempt $i of 5 rejected — trying again"
+            sleep $((i * 5))
+          done
+          echo "::error::the daily record could not be pushed to main after five tries. The local commit is printed below; apply it on main by hand."
+          git show --format='%H %s' HEAD -- trackrecord/ | tee record-push.patch
+          exit 1
 
       # A day the run misses is simply absent from the record, never backfilled
       # (spec §2) — so a failed day is permanent. That earns the same alerting
@@ -51,8 +90,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CHAIN_OUTCOME: ${{ steps.record.outcome }}
         run: |
           set -uo pipefail
+          # The chain step succeeded and only the record push failed: a re-run
+          # would not restore the lost record, so this gets its own text and
+          # its own label, which no later successful run closes.
+          if [ "$CHAIN_OUTCOME" = "success" ]; then
+            {
+              echo "Today's record was **appended and anchored on chain**, but the record push to main failed — the record lines are not on main."
+              echo "**Do not re-run** — a re-run appends the same day again and anchors it a second time."
+              echo "Apply the commit below on main by hand (the run log prints the same), then close this issue."
+              echo
+              echo "- run: $RUN_URL"
+              echo
+              echo '```diff'
+              head -c 50000 record-push.patch 2>/dev/null || echo '(no commit saved — see the run log)'
+              echo '```'
+            } > alert.md
+            gh label create record-push-failure --color d93f0b \
+              --description "chain step done, record push failed; close by hand" 2>/dev/null || true
+            gh issue create --title "track-record: record push failed ($(date -u +%Y-%m-%dT%H:%MZ))" \
+              --label record-push-failure --body-file alert.md
+            exit 0
+          fi
           {
             echo "The daily track-record run failed. **A missed day cannot be backfilled** —"
             echo "it becomes a permanent, publicly counted gap (spec §2)."

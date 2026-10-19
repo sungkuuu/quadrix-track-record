@@ -39,9 +39,9 @@ document against the hash committed on chain. qX20 is not a hash chain: each
 daily close is checked against the keeper's own `setNav` transaction instead.
 Exit code 0 means every check passed. `--series <name>` restricts it to one
 (`dry`, `live`, `qrev`, `qdefi`, `qai`, `barbell`, `triens`, `qbtc2x`, `qeth2x`,
-`qx20`).
+`qeth15`, `qx20`).
 
-For the two leverage series it also recomputes every line from its own bars and
+For the leverage series it also recomputes every line from its own bars and
 binds the rule each line states to `keeper/rulebooks/<index>.json` (the file
 whose sha256 the inception decision contains). What it does not check: that the
 bars are the ones Binance serves (`--refetch-bars` re-fetches them and prints
@@ -96,14 +96,15 @@ without trusting this repository.
 | `keeper/update-nav.mjs` | the qX20 index keeper (scheduled every six hours in CI; see Timing) |
 | `keeper/state.json` | the keeper's working file — overwritten each run, **not** a record |
 | `keeper/RUNBOOK.md` | what to do when the keeper fails |
+| `keeper/plans/<vault>/<date>.json` | basket sessions: the announced plan, every auction opened, every fill (price vs reference, loss at reference, open and fill txs) and the vault read back after the session — one file per vault per run; `keeper/plans/README.md` says which file is the executed session |
 
 ## Rules that make this worth reading
 
 - **Append-only.** Corrections are new records; nothing is edited in place.
 - **No backfilling.** A day the pipeline missed stays missing, and a missing
   benchmark price is recorded as missing. Gaps are part of the record. The
-  two leverage series (qBTC2X, qETH2X, from their inception decisions) are the
-  one exception: their level is computed from that day's closed exchange bars,
+  leverage series (qBTC2X, qETH2X, qETH1.5X, from their inception decisions) are
+  the one exception: their level is computed from that day's closed exchange bars,
   not from a price at run time, so a day the keeper missed is written late
   from the same bars and the line is marked `late` (its anchor's block time
   shows when it was written).

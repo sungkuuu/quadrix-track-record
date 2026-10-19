@@ -35,6 +35,7 @@ pins these files (see "Pinned versions" below).
 | [`classification-sources.md`](classification-sources.md) | Classification-source framework used by qDEFI, qAI, qREV and Triens | Adopted 2026-09-14. Not a product. |
 | [`qbtc2x.md`](qbtc2x.md) | qBTC2X — BTC 2x (daily reset) | Not in force. Stage A (a rules-only synthetic level from Binance spot bars and a testnet mark vault holding test dollars; nothing borrowed) opens on 2026-10-13 when `2026-10-13-qbtc2x-paper-inception` is anchored. |
 | [`qeth2x.md`](qeth2x.md) | qETH2X — ETH 2x (daily reset) | Not in force. Held (owner, 2026-10-06): not opened on 2026-10-08; opening it later is its own inception decision. |
+| [`qeth15.md`](qeth15.md) | qETH1.5X — ETH 1.5x (daily reset; series id `qeth15`) | Not in force. Stage A (a rules-only synthetic level from Binance spot bars; nothing borrowed, no vault yet) opens on 2026-10-16 when `2026-10-16-qeth15-paper-inception` is anchored. |
 
 A paper index is a daily, rules-only index level with no vault and no capital
 behind it, hash-chained and anchored like the rest of this repository. A candidate

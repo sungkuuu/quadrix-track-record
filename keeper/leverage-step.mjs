@@ -1,5 +1,5 @@
 /**
- * Leverage stage A — the level of a daily-reset 2x book, computed from bars.
+ * Leverage stage A — the level of a daily-reset book (target 2 or 1.5), computed from bars.
  *
  * Pure functions, no network, no file system. keeper/leverage-index.mjs (the
  * daily leg) calls them; scripts/verify.mjs re-implements the same arithmetic
@@ -70,11 +70,19 @@ export function ruleProblem({ target, minutes, trigger, primary }) {
   return null;
 }
 
+/**
+ * The target leverages λ* a rulebook may name: each one a pre-registered test
+ * has simulated (2: the sixth leverage test; 1.5: a later daily-reset test at
+ * target 1.5). λ* enters the book only as `target` (genesis book, reset,
+ * trigger comparison T > λ*); nothing below assumes 2.
+ */
+export const TARGETS = [1.5, 2];
+
 /** Fixed parts of the rulebook the code relies on; a mismatch is a config error. */
 export function rulebookShapeProblem(rb) {
   if (!rb || typeof rb !== 'object') return 'rulebook is not an object';
   if (rb.kind !== 'leverage-synthetic') return `kind must be leverage-synthetic (got ${rb.kind})`;
-  if (rb.product?.target !== 2) return `product.target must be 2 (got ${rb.product?.target})`;
+  if (!TARGETS.includes(rb.product?.target)) return `product.target must be one of ${TARGETS.join(', ')} (got ${rb.product?.target})`;
   if (rb.product?.reset !== 'daily-00:00-utc') return `product.reset must be daily-00:00-utc (got ${rb.product?.reset})`;
   if (rb.product?.intradayReleverage !== false) return 'product.intradayReleverage must be false';
   if (rb.underlying?.barMinutes !== BAR_MIN) return `underlying.barMinutes must be ${BAR_MIN}`;
@@ -83,6 +91,8 @@ export function rulebookShapeProblem(rb) {
   if (!(typeof rb.model?.lltv === 'number' && rb.model.lltv > 0 && rb.model.lltv < 1)) return 'model.lltv must be in (0, 1)';
   if (rb.genesisLevel !== 100) return 'genesisLevel must be 100';
   if (!Array.isArray(rb.level?.also)) return 'level.also must be an array (empty when unused)';
+  if (rb.pendingOwner !== undefined && !Array.isArray(rb.pendingOwner)) return 'pendingOwner must be an array (the owner decisions a draft rulebook still waits for; absent once decided)';
+  if (Array.isArray(rb.pendingOwner) && !rb.pendingOwner.every((x) => x && typeof x === 'object' && typeof x.key === 'string')) return 'pendingOwner entries must be objects with a string key';
   for (const a of rb.level.also) {
     if (!(a && typeof a.id === 'string' && /^[a-z0-9-]+$/.test(a.id) && a.costBp >= 0 && a.ratePct >= 0)) return `level.also entry ${JSON.stringify(a)} must be {id, costBp >= 0, ratePct >= 0}`;
   }

@@ -116,25 +116,25 @@
         "address": "0x93765ebdf4b75d1d945c0efa656a8802170040b6",
         "decimals": 9
       },
-      "GRAM": {
-        "address": "0x293ee9abd3f625d8844b66ea82a57dcd40c6156b",
-        "decimals": 9
+      "XMR": {
+        "address": "0xf150bc6654ec9dafd64f44b21cf5eb74fddd5154",
+        "decimals": 11
       },
       "CC": {
         "address": "0x579cc91336ea92e06f30e725d303625836addc6a",
         "decimals": 7
       },
-      "HBAR": {
-        "address": "0x6deeb1b63d7f4baf8874452b80223521f6abf895",
-        "decimals": 7
+      "NEAR": {
+        "address": "0xb96d35fbbc9bffcbd157a8606dc6ef43b11e4049",
+        "decimals": 9
       },
       "AVAX": {
         "address": "0x3c725e370f8ab6557ec21d9b94e6f95269f71674",
         "decimals": 9
       },
-      "SHIB": {
-        "address": "0x1bf8091db22e3c34a9f28a53f38e3822e57195a3",
-        "decimals": 3
+      "ZEC": {
+        "address": "0x1fa38b14335e3052b5c27d59d0c4b0597483a99d",
+        "decimals": 12
       },
       "SUI": {
         "address": "0xb6ea7403356ec41526d52e9c9051725930278464",
