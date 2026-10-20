@@ -12,10 +12,14 @@
  * endpoint holds no key) or, on a local anvil fork only, from an unlocked
  * --from account.
  *
- * Every transaction is written to the log BEFORE anything else is read
- * (keeper/mark-vaults.jsonl: a "sent" line right after the send, a "mined"
- * line after the receipt), so a run that dies waiting for a receipt or a
- * read-back still leaves the hash on disk. The read-back is pinned to the
+ * Every transaction is signed here first and written to the log BEFORE it is
+ * broadcast (keeper/mark-vaults.jsonl: a "signed" line with its hash and
+ * nonce, then a "sent" line once the node has taken it, a "mined" line after
+ * the receipt), so a run that dies anywhere after signing — even with the
+ * node's answer to the broadcast lost — still leaves the hash on disk (on a
+ * local fork, an impersonated account the node cannot sign for is sent with
+ * eth_sendTransaction and logged "sent" with its hash). The
+ * read-back is pinned to the
  * receipt's block and repeated for up to 30 s while the node that answers has
  * not seen that block yet (GIWA's public endpoint is load-balanced —
  * keeper/readback.mjs); only then is a disagreement reported (exit 1, the
@@ -39,11 +43,23 @@
  * that stops between them leaves the deployment "sent but not in the registry"
  * (below): a person writes the address in, then runs --action set-guardian.
  *
+ * Before anything else, every transaction of the index that the log shows
+ * signed but with no outcome (no receipt line, not abandoned) is looked up on
+ * the chain by its hash. Found: its receipt is recorded and the run goes on —
+ * a deployment found mined goes on to its read-back, setGuardian and the
+ * registry, without deploying again. Not found: the run is refused and
+ * nothing is sent until a person has looked at that hash and nonce.
+ *
  * A deployment that was sent but whose address never reached the registry
- * (the run died, or the read-back disagreed) blocks every later deployment of
- * that index until a person resolves it — by writing its address into the
- * registry or marking its transaction "abandoned" in the log. Re-running the
- * same command never deploys a second vault.
+ * (the read-back disagreed, or setGuardian did not complete) blocks every
+ * later deployment of that index until a person resolves it — by writing its
+ * address into the registry or marking its transaction "abandoned" in the log.
+ * Re-running the same command never deploys a second vault.
+ *
+ * The registry line is checked before every owner action (set-guardian,
+ * open-deposits, pause): the address must run the artifact's code, answer
+ * symbol() = this index's ticker, and — on a live run — have the signer as
+ * its keeper. A line naming another vault sends nothing.
  *
  * A successful deployment writes the address into keeper/leverage-vaults.json
  * and leaves `gate` as it is: with a gate ({"mode":"step"}: qBTC2X, owner
@@ -76,7 +92,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createPublicClient, createWalletClient, http, defineChain, getAddress, isAddress, encodeDeployData, encodeFunctionData, keccak256, parseAbi, zeroAddress } from 'viem';
+import { createPublicClient, createWalletClient, http, defineChain, getAddress, isAddress, encodeDeployData, encodeFunctionData, keccak256, parseAbi, parseTransaction, zeroAddress } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { retryRead } from './readback.mjs';
 
@@ -169,6 +185,17 @@ export function readVaults(p, seed, fork = false) {
   if (fork) for (const k of Object.keys(v)) if (v[k] && typeof v[k] === 'object' && 'address' in v[k]) v[k] = { ...v[k], address: null, deployTx: null, block: null };
   return v;
 }
+export function readTxLog(p) {
+  return fs.existsSync(p) ? fs.readFileSync(p, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l)) : [];
+}
+/** The transactions of `index` on `chainId` that the log shows signed or sent with no outcome: no "mined" or "reverted" line, not "abandoned". */
+export function openTxs(txLog, index, chainId) {
+  const mine = (l) => l.index === index && l.chainId === chainId;
+  const closed = new Set(txLog.filter((l) => mine(l) && ['mined', 'reverted', 'abandoned'].includes(l.status)).map((l) => l.tx));
+  const open = new Map();
+  for (const l of txLog) if (mine(l) && (l.status === 'signed' || l.status === 'sent') && !closed.has(l.tx) && !open.has(l.tx)) open.set(l.tx, l);
+  return [...open.values()];
+}
 
 /** The guardian rule of the vault redeployment, without the timelock part: the problems, empty if none. */
 export function guardianProblems({ guardian, keeper, owner }) {
@@ -248,10 +275,43 @@ export async function main(argv = process.argv.slice(2), env = process.env, log 
   if (!entry || entry.chainId !== o.chainId) throw new Refused(`${path.relative(HERE, paths.vaults)} has no ${o.index} entry for chain ${o.chainId}`);
   log(`${o.live ? `LIVE from ${signer}` : 'DRY RUN — nothing is sent, nothing is written'}; ${o.action} ${o.index}; rpc ${o.rpc} (${client})`);
 
-  /** send → log "sent" → receipt → log "mined"; returns the receipt. */
+  const rpcName = o.fork ? o.rpc : 'giwa-sepolia';
+  const rel = (p) => path.relative(path.join(HERE, '..'), p);
+  /**
+   * sign → log "signed" (hash, nonce) → broadcast → log "sent" → receipt → log "mined"; returns the receipt.
+   * The hash is on disk before the node sees the transaction, so a lost answer to the broadcast still
+   * leaves it for the next run to look up (settleOpen). With KEEPER_PK the key signs here; on a fork an
+   * unlocked account with a key is signed by the node (eth_signTransaction), in the same order. An
+   * account impersonated on a local fork has no key the node can sign with (anvil answers "No Signer
+   * available"): on a local RPC only, it is sent with eth_sendTransaction and logged "sent" with its hash.
+   */
   async function send(what, req) {
-    const tx = await wallet.sendTransaction(req);
-    append(paths.log, { at: new Date().toISOString(), index: o.index, action: o.action, what, chainId: o.chainId, status: 'sent', tx, from: signer, rpc: o.fork ? o.rpc : 'giwa-sepolia' });
+    const prepared = await wallet.prepareTransactionRequest({ ...req, account: wallet.account, chain });
+    let raw = null;
+    try {
+      raw = await wallet.signTransaction(prepared);
+    } catch (e) {
+      const noSigner = /no signer available/i.test(`${e?.details ?? ''} ${e?.shortMessage ?? ''} ${e?.message ?? ''}`);
+      if (!noSigner) throw e;
+      if (!isLocalRpc(o.rpc)) throw new Refused(`${what}: the node has no signer for ${signer} — a live transaction is signed here with KEEPER_PK; nothing sent`);
+    }
+    let tx;
+    if (raw) {
+      tx = keccak256(raw);
+      const p = parseTransaction(raw);
+      const same = (a, b) => (a ? getAddress(a) : null) === (b ? getAddress(b) : null);
+      if (p.chainId !== o.chainId || p.nonce !== prepared.nonce || !same(p.to, req.to) || String(p.data ?? '0x').toLowerCase() !== String(req.data).toLowerCase()) {
+        throw new Error(`${what}: the signed transaction is not the one prepared (chain ${p.chainId}, nonce ${p.nonce}, to ${p.to ?? 'none'}) — nothing broadcast`);
+      }
+      append(paths.log, { at: new Date().toISOString(), index: o.index, action: o.action, what, chainId: o.chainId, status: 'signed', tx, nonce: prepared.nonce, from: signer, rpc: rpcName });
+      const echoed = await wallet.sendRawTransaction({ serializedTransaction: raw });
+      if (echoed.toLowerCase() !== tx) throw new Error(`${what}: the node answered hash ${echoed} for the transaction signed as ${tx} (logged)`);
+      append(paths.log, { at: new Date().toISOString(), index: o.index, action: o.action, what, chainId: o.chainId, status: 'sent', tx, nonce: prepared.nonce, from: signer, rpc: rpcName });
+    } else {
+      // local fork, impersonated account: the node signs nothing; the hash comes back with the send
+      tx = await wallet.sendTransaction(req);
+      append(paths.log, { at: new Date().toISOString(), index: o.index, action: o.action, what, chainId: o.chainId, status: 'sent', tx, nonce: null, from: signer, rpc: rpcName, impersonated: true });
+    }
     const rc = await pc.waitForTransactionReceipt({ hash: tx });
     append(paths.log, { at: new Date().toISOString(), index: o.index, action: o.action, what, chainId: o.chainId, status: rc.status === 'success' ? 'mined' : 'reverted', tx, block: rc.blockNumber, gasUsed: rc.gasUsed, contractAddress: rc.contractAddress ?? null });
     if (rc.status !== 'success') throw new Error(`${what} reverted (tx ${tx}, block ${rc.blockNumber})`);
@@ -278,15 +338,75 @@ export async function main(argv = process.argv.slice(2), env = process.env, log 
     return { tx: rc.transactionHash, block: rc.blockNumber };
   }
 
+  /**
+   * The re-run gate. Every transaction of this index that the log shows signed (or sent) with no outcome
+   * is looked up on the chain by its hash before anything new is sent. With a receipt: the outcome is
+   * recorded (a live run appends the lines; a dry run only says so) and returned, and the run goes on.
+   * Without one: refused — nothing is sent until a person has looked at that hash and nonce.
+   */
+  async function settleOpen(txLog) {
+    const found = [];
+    for (const l of openTxs(txLog, o.index, o.chainId)) {
+      const rc = await pc.getTransactionReceipt({ hash: l.tx }).catch((e) => {
+        if (e?.name === 'TransactionReceiptNotFoundError') return null;
+        throw e;
+      });
+      if (!rc) {
+        const count = l.from && isAddress(l.from) && l.nonce != null ? await pc.getTransactionCount({ address: getAddress(l.from), blockTag: 'latest' }) : null;
+        const nonceText =
+          count == null ? ''
+          : count > l.nonce ? `; nonce ${l.nonce} of ${l.from} is used (its count is ${count}) — by another transaction, or by this one on a node that does not show the receipt yet`
+          : `; nonce ${l.nonce} of ${l.from} is not used yet (its count is ${count}) — the transaction may still be pending, or never reached the chain`;
+        throw new Refused(`${l.what ?? 'a transaction'} of ${o.index} on chain ${o.chainId} was signed (tx ${l.tx}), the log has no outcome for it, and the chain has no receipt for it${nonceText}. Nothing is sent until a person resolves it, never by sending again: look the hash and the nonce up on the explorer; once it is mined, re-run (its receipt is recorded and the run goes on); if it can never be mined (its nonce is taken by another transaction), append {"index":"${o.index}","chainId":${o.chainId},"tx":"${l.tx}","status":"abandoned","note":"…"} to ${rel(paths.log)}`);
+      }
+      const base = { at: new Date().toISOString(), index: o.index, action: l.action, what: l.what, chainId: o.chainId, tx: l.tx, recovered: true };
+      const lines = [];
+      if (!txLog.some((x) => x.tx === l.tx && x.status === 'sent')) lines.push({ ...base, status: 'sent', nonce: l.nonce ?? null, from: l.from ?? null, rpc: rpcName });
+      lines.push({ ...base, status: rc.status === 'success' ? 'mined' : 'reverted', block: rc.blockNumber, gasUsed: rc.gasUsed, contractAddress: rc.contractAddress ?? null });
+      for (const x of lines) {
+        txLog.push(x);
+        if (o.live) append(paths.log, x);
+      }
+      log(`${l.what} tx ${l.tx} (signed, no outcome in the log) is ${rc.status === 'success' ? 'mined' : 'reverted'} at block ${rc.blockNumber}${o.live ? ' — recorded in the log' : ' — a live run records it'}`);
+      found.push({ line: l, rc });
+    }
+    return found;
+  }
+
+  /**
+   * The registry line is checked before every owner action: the address runs the artifact's code
+   * (immutables and metadata aside), answers symbol() = this index's ticker, and — on a live run — has
+   * the signer as its keeper. A line naming another vault is refused before anything is sent.
+   */
+  async function registryVault() {
+    const vault = getAddress(entry.address);
+    const code = await pc.getCode({ address: vault });
+    if (!code || code === '0x' || codeShape(code) !== codeShape(ARTIFACT.deployedBytecode)) throw new Refused(`${vault} (${o.index} in the registry) does not run the artifact's code — check the address`);
+    const read = (functionName) => pc.readContract({ address: vault, abi: ARTIFACT.abi, functionName });
+    const vsym = await read('symbol');
+    if (vsym !== NAMES[o.index][1]) throw new Refused(`${vault} is ${JSON.stringify(vsym)}, not ${NAMES[o.index][1]} — the registry's ${o.index} line names another vault`);
+    const keeper = getAddress(await read('keeper'));
+    const owner = getAddress(await read('owner'));
+    if (o.live && getAddress(signer) !== keeper) throw new Refused(`the signer ${signer} is not the keeper ${keeper} of ${vault} (${o.index} in the registry) — check the address and the key`);
+    return { vault, owner, keeper };
+  }
+
+  const txLog = readTxLog(paths.log);
+  const settled = await settleOpen(txLog);
+
   if (o.action === 'deploy') {
     if (entry.address) throw new Refused(`${o.index} already names a vault (${entry.address}) — a replacement is its own decision; mark the old one superseded by hand first`);
-    // A deployment that was sent but never reached the registry (the run died
-    // waiting for the receipt, or the read-back disagreed) is still on chain.
+    // A deployment the log shows signed with no outcome, found mined above: the run goes on from its
+    // receipt (read-back, setGuardian, registry) and deploys nothing again.
+    const resumable = settled.filter((x) => (x.line.what ?? 'deploy') === 'deploy' && x.line.action === 'deploy' && x.rc.status === 'success');
+    if (resumable.length > 1) throw new Refused(`${resumable.length} deployments of ${o.index} were signed with no outcome in the log and are all mined (tx ${resumable.map((x) => x.line.tx).join(', ')}) — a person decides which one is the vault`);
+    const resume = resumable[0] ?? null;
+    // A deployment that was sent but never reached the registry (the read-back
+    // disagreed, or setGuardian did not complete) is still on chain.
     // Re-running must not deploy a second vault: a person resolves the first.
-    const txLog = fs.existsSync(paths.log) ? fs.readFileSync(paths.log, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l)) : [];
     const mine = (l) => l.index === o.index && l.chainId === o.chainId;
     const abandoned = new Set(txLog.filter((l) => mine(l) && l.status === 'abandoned').map((l) => l.tx));
-    const unresolved = txLog.filter((l) => mine(l) && l.action === 'deploy' && (l.what ?? 'deploy') === 'deploy' && l.status === 'sent' && !abandoned.has(l.tx));
+    const unresolved = txLog.filter((l) => mine(l) && l.action === 'deploy' && (l.what ?? 'deploy') === 'deploy' && l.status === 'sent' && !abandoned.has(l.tx) && l.tx !== resume?.line.tx);
     if (unresolved.length) {
       throw new Refused(`a deployment of ${o.index} on chain ${o.chainId} was already sent (tx ${unresolved.map((l) => l.tx).join(', ')}) and ${path.relative(path.join(HERE, '..'), paths.vaults)} names no vault — resolve it first, never by deploying again: if that transaction created the vault, write its address into the registry; if it failed or is to be dropped, append {"index":"${o.index}","chainId":${o.chainId},"tx":"<hash>","status":"abandoned","note":"…"} to ${path.relative(path.join(HERE, '..'), paths.log)}`);
     }
@@ -310,11 +430,13 @@ export async function main(argv = process.argv.slice(2), env = process.env, log 
     log(`artifact = the code of the reference vault ${reference} (${REFERENCE_SYMBOL}, guardian set; immutables and metadata aside); simulated deployment returns the expected runtime (${(want.length - 2) / 2} bytes, keccak ${keccak256(want).slice(0, 18)}…)`);
     log(`constructor: usd ${MOCK_USD}, name "${name}", symbol ${symbol}, depositCap 0 (closed), manager ${manager} (owner and keeper)`);
     if (guardian) log(`then setGuardian(${guardian}) — guardian check passed: not 0, not the keeper, not the owner${o.timelock ? `, no role on the timelock ${getAddress(o.timelock)}` : ' (no --timelock given: the timelock part is not checked)'}`);
+    if (resume) log(`the deployment tx ${resume.line.tx} is mined at block ${resume.rc.blockNumber} (contract ${resume.rc.contractAddress}): the run goes on from its receipt — read-back, setGuardian, registry; nothing is deployed again`);
     if (!o.live) {
-      log('dry run: would deploy — nothing sent');
+      log(resume ? 'dry run: would go on from the mined deployment — nothing sent' : 'dry run: would deploy — nothing sent');
       return 0;
     }
-    const rc = await send('deploy', { data, gas: DEPLOY_GAS });
+    const rc = resume ? resume.rc : await send('deploy', { data, gas: DEPLOY_GAS });
+    if (!rc.contractAddress) throw new Error(`the deployment tx ${rc.transactionHash} has no contract address in its receipt`);
     const address = getAddress(rc.contractAddress);
     const VIEW = ARTIFACT.abi;
     const rb = await retryRead(
@@ -364,20 +486,12 @@ export async function main(argv = process.argv.slice(2), env = process.env, log 
     return 0;
   }
 
-  // owner actions on the deployed vault
+  // owner actions on the deployed vault: the registry line (often written by hand) is checked first
   if (!entry.address) throw new Refused(`${o.index} has no vault address in ${path.relative(HERE, paths.vaults)}`);
-  const vault = getAddress(entry.address);
-  const owner = getAddress(await pc.readContract({ address: vault, abi: ARTIFACT.abi, functionName: 'owner' }));
+  const { vault, owner, keeper } = await registryVault();
   if (o.action === 'set-guardian') {
     const guardian = getAddress(o.guardian);
-    const read = (functionName) => pc.readContract({ address: vault, abi: ARTIFACT.abi, functionName });
-    // the address was written by hand: it must be this index's vault, running the artifact's code
-    const code = await pc.getCode({ address: vault });
-    if (!code || codeShape(code) !== codeShape(ARTIFACT.deployedBytecode)) throw new Refused(`${vault} (${o.index} in the registry) does not run the artifact's code — check the address`);
-    const vsym = await read('symbol');
-    if (vsym !== NAMES[o.index][1]) throw new Refused(`${vault} is ${JSON.stringify(vsym)}, not ${NAMES[o.index][1]} — the registry's ${o.index} line names another vault`);
-    const keeper = getAddress(await read('keeper'));
-    const current = getAddress(await read('guardian'));
+    const current = getAddress(await pc.readContract({ address: vault, abi: ARTIFACT.abi, functionName: 'guardian' }));
     const bad = [...guardianProblems({ guardian, keeper, owner }), ...(await timelockProblems(pc, o.timelock, guardian))];
     if (bad.length) throw new Refused(`guardian check: ${bad.join('; ')} — the guardian must be a key of its own: not 0, not the keeper, not the owner`);
     if (current === guardian) {
