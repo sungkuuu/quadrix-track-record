@@ -4,19 +4,19 @@
   "track": "trading-tool",
   "rulebook": {
     "path": "rulebooks/qeth15.md",
-    "commit": "3b355eaf3a8d55856b979fda706a40d3bf986a89",
-    "sha256": "c48aaec5595a2ee4423f13597e8aaf441bde5f47d2f2e2af319e7b3ecdb27409"
+    "commit": "⟨…⟩",
+    "sha256": "⟨…⟩"
   },
   "checklistRun": {
-    "path": "docs/methodology/checklist-runs/qeth15/2026-10-13.json",
-    "sha256": "e3ca50416599f6bdab0228755a43616c124ad16a8af5976dec0bc2bd7793895a",
+    "path": "docs/methodology/checklist-runs/qeth15/2026-10-22.json",
+    "sha256": "⟨…⟩",
     "repo": "site (private)"
   },
   "keeperJson": {
     "path": "keeper/rulebooks/qeth15.json",
     "sha256": "b417ca3d96f897cf8ce926642d06ca0712d5122455ed3f54fcb1bd8e9e384fde"
   },
-  "note": "Covers every numeric, boolean and rule-string leaf of the keeper JSON (gate.md §2). The rows not held in the JSON (P02, P08, P09, P12, P13, P15, P16, P19–P22, P24) are in appendix P of the rulebook. The owner decision behind each exception is cited through the run record line that names it.",
+  "note": "Covers every numeric, boolean and rule-string leaf of the keeper JSON (gate.md §2), and two values held outside it: the deposit cap (P19), on chain in the vault contract's depositCap, and the mark gate (P24), in keeper/leverage-vaults.json, entry qeth15, key gate. The other rows of appendix P of the rulebook not held in the JSON are P02, P09, P12, P13, P15, P16 and P22; P08 is arithmetic, and P20 and P21 are limits (section 12). The owner decision behind each exception is cited through the run record line that names it.",
   "params": [
     {
       "id": "P01",
@@ -318,6 +318,64 @@
       "inForceSince": null,
       "auditRef": null,
       "exception": null
+    },
+    {
+      "id": "P19",
+      "jsonPath": null,
+      "codeConst": null,
+      "value": 1000000000000,
+      "basis": "exposure-limit",
+      "tests": [],
+      "study": null,
+      "preregCommit": null,
+      "resultFiles": [
+        {
+          "path": "기록:docs/research/leverage/eth-1p5/evidence/p19-usual-cost-2026-10-20.md",
+          "sha256": "91fc28dbaf5abc472d8fd6978a7d847d6a583240dc318f04a750df92d4579b5b",
+          "repo": "record — usual cost of the cap, measured before the anchor"
+        },
+        {
+          "path": "기록:docs/research/leverage/eth-1p5/evidence/p19-incidents-2026-10-20.md",
+          "sha256": "e5ae24a8dd7d830c3075afeb519721228a2ec0d4f02829e35c360d4751faeee1",
+          "repo": "record — events the cap limits, counted before the anchor"
+        }
+      ],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": "owner 2026-10-19 — exposure limit: loss tolerance 1,000,000 test dollars ÷ worst-case loss ratio 100% (a total loss assumed); location: the vault contract's depositCap, in the test dollar's 6-decimal units (not this file) — docs/methodology/checklist-runs/qeth15/2026-10-22.json:⟨…⟩",
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": null
+    },
+    {
+      "id": "P24",
+      "jsonPath": null,
+      "codeConst": null,
+      "value": {
+        "mode": "step"
+      },
+      "basis": "exception",
+      "tests": [],
+      "study": null,
+      "preregCommit": "251121cb72e4b5fc526d2f067d7d555a03e4d757",
+      "resultFiles": [],
+      "ruleOutput": null,
+      "selectedBy": null,
+      "decision": "owner 2026-10-19 — location: keeper/leverage-vaults.json, entry qeth15, key gate (not this file)",
+      "definitionKind": null,
+      "inForceSince": null,
+      "auditRef": null,
+      "exception": {
+        "reason": "stage-only",
+        "ownerRef": "2026-10-19 · docs/methodology/checklist-runs/qeth15/2026-10-22.json:⟨…⟩",
+        "expires": "before the stage-B decision (real borrowing) — by the stress test of the real book's marks, pre-registered at 251121cb72e4b5fc526d2f067d7d555a03e4d757 (site repository, private, docs/research/leverage/eth-1p5/stage-b-mark-gate/README.md)",
+        "effect": {
+          "path": "기록:docs/research/leverage/eth-1p5/evidence/p24-daily-moves-2026-10-20.md",
+          "sha256": "147feef0f3477b981d61af64d60d4c86a8eae68015fe2db103cbb271c79bf941",
+          "rows": "23 of the 3,316 days of 2017-09-01 … 2026-09-29 outside ±25%; largest 2020-03-12 −65.66%, 4 marks"
+        }
+      }
     }
   ]
 }

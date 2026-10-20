@@ -162,7 +162,8 @@ jobs:
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         # As qBTC2X: a step time limit fails only this step, and "Commit records" below still runs. Until the
         # inception decision 2026-10-16-qeth15-paper-inception is anchored the leg writes nothing and exits 0
-        # (NOT IN FORCE). No vault follows this level yet (keeper/leverage-vaults.json names no qeth15 address).
+        # (NOT IN FORCE). From 2026-10-22 a testnet mark vault follows this level (keeper/leverage-vaults.json, entry qeth15;
+        # decision 2026-10-22-qeth15-mark-vault): the leg marks it after it writes and anchors the day's line.
         timeout-minutes: 20
         run: |
           set -o pipefail
