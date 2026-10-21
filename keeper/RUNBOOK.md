@@ -886,6 +886,7 @@ an uncommitted local run desynchronises CI (failure mode 5).
 | Date (UTC) | Move | Source | Reason | Operator |
 | --- | --- | --- | --- | --- |
 | 2026-09-14 | from par 1.000000 to the model level (≈+21%, clamped to ≤1.24×) | redeploy | vault redeployed with a reentrancy guard at 0x2A165501ddA6e430fF98E82682f53CA8465Bb21f; the new contract starts at par while the model index continues — one acknowledged post to converge. Superseded vault 0x1d1115b961832dd921be78cf1362a531b69bcaa0 keeps its marks | keeper operator |
+| 2026-10-21 | from par 1.000000 to the model level (≈+26.4%, clamped to ≤1.24×) | redeploy | vault redeployed at 0xFd6180b9D0b2C77A2785E32527f8DB20e3Bc7F9c; the new contract starts at par while the model index continues — one acknowledged post (step 7, to 1.240000) and one unacknowledged post to converge (step 7b, to 1.263772). Superseded vault 0x2A165501ddA6e430fF98E82682f53CA8465Bb21f keeps its marks | keeper operator |
 
 ## Alert-path drills
 
