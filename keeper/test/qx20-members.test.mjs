@@ -92,5 +92,28 @@ test('a close whose ledger line carries members gets members and priceSource app
 test('update-nav writes the members on the ledger line it appends', () => {
   const src = fs.readFileSync(path.join(REPO, 'keeper/update-nav.mjs'), 'utf8');
   assert.match(src, /import \{ bookMembers \} from '\.\/qx20-members\.mjs';/);
-  assert.match(src, /txHash: hash,\n\s+members: bookMembers\(units, prices\),\n\s+\}\) \+ '\\n'/);
+  // computed before the transaction, written on the ledger line after it
+  const at = src.indexOf('const members = bookMembers(units, prices);');
+  assert.ok(at > 0 && at < src.indexOf('wallet.writeContract('));
+  assert.match(src, /txHash: hash,\n\s+members,\n\s+\}\) \+ '\\n'/);
+});
+
+test('after a rebalance the units are level × target ÷ price, so the members read back the target weights', () => {
+  const prices = { BTC: 98765.4, ETH: 3456.7, SOL: 187.3 };
+  const targets = { BTC: 0.6, ETH: 0.3, SOL: 0.1 };
+  const level = 1.263772;
+  const units = Object.fromEntries(Object.entries(targets).map(([s, w]) => [s, (level * w) / prices[s]]));
+  assert.deepEqual(bookMembers(units, prices), [
+    { symbol: 'BTC', weight: 0.6, price: 98765.4 },
+    { symbol: 'ETH', weight: 0.3, price: 3456.7 },
+    { symbol: 'SOL', weight: 0.1, price: 187.3 },
+  ]);
+});
+
+test('the join ignores the case of the chain transaction hash', () => {
+  const marks = [{ date: '2026-10-22', ts: Date.parse('2026-10-22T06:00:00Z') / 1000, vault: '0xv', block: 1, tx: '0x' + 'AB'.repeat(32), nav: 1, level: 1 }];
+  const [d] = dailyCloses(marks, [{ txHash: '0x' + 'ab'.repeat(32), priceSource: 'coingecko', members: [] }]);
+  assert.equal(d.tx, '0x' + 'AB'.repeat(32));
+  assert.deepEqual(d.members, []);
+  assert.equal(d.priceSource, 'coingecko');
 });

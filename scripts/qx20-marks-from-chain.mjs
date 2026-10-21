@@ -4,9 +4,11 @@
 // the keeper posted from the public methodology, on chain, since 2026-07-21.
 //   node scripts/qx20-marks-from-chain.mjs   → keeper/qx20-daily.jsonl (rewritten, sorted)
 // Source: the explorer's transaction list for each vault (Blockscout API); no key.
-// From 2026-10-22 a close whose transaction is on a keeper/nav-marks.jsonl line
+// A close whose transaction is on a keeper/nav-marks.jsonl line
 // that carries members also gets that line's members and priceSource
-// (keeper/qx20-members.mjs). Earlier closes are written exactly as before.
+// (keeper/qx20-members.mjs); the others are written exactly as before. The
+// ledger is a tracked file: missing or unparsable, the rebuild stops rather than
+// write closes without the members they should carry.
 import fs from 'node:fs';
 import { dailyCloses } from '../keeper/qx20-members.mjs';
 const VAULTS = [
@@ -35,9 +37,7 @@ for (const vault of VAULTS) {
     page += 1;
   }
 }
-const ledger = fs.existsSync('keeper/nav-marks.jsonl')
-  ? fs.readFileSync('keeper/nav-marks.jsonl', 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
-  : [];
+const ledger = fs.readFileSync('keeper/nav-marks.jsonl', 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
 const lines = dailyCloses(marks, ledger).map((l) => JSON.stringify(l));
 fs.writeFileSync('keeper/qx20-daily.jsonl', lines.join('\n') + '\n');
 console.log(`${marks.length} marks on chain → ${lines.length} daily closes, ${lines[0] ? JSON.parse(lines[0]).date : '—'} → ${lines.length ? JSON.parse(lines[lines.length - 1]).date : '—'}`);

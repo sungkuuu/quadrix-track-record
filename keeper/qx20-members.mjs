@@ -3,11 +3,11 @@
  * and price.
  *
  * keeper/update-nav.mjs writes them on each line of keeper/nav-marks.jsonl
- * (from 2026-10-22): the units held after the mark, at the prices that mark
- * used. scripts/qx20-marks-from-chain.mjs copies them onto the day's line of
+ * (from its first run after this change reached main): the units held after
+ * the mark, at the prices that mark used. scripts/qx20-marks-from-chain.mjs copies them onto the day's line of
  * keeper/qx20-daily.jsonl when the day's close is a mark the ledger carries
  * (same transaction hash). Closes the ledger has no members for — every close
- * before 2026-10-22, and any mark not in the ledger — are written exactly as
+ * before that run, and any mark not in the ledger — are written exactly as
  * before, without the two fields.
  *
  *   weight = units × price ÷ Σ(units × price) over the members with a price,
@@ -24,7 +24,7 @@ export function bookMembers(units, prices) {
   const total = rows.reduce((t, r) => t + (r.value ?? 0), 0);
   return rows
     .map((r) => ({ symbol: r.symbol, weight: r.value == null || !(total > 0) ? null : Number((r.value / total).toFixed(4)), price: r.price }))
-    .sort((a, b) => (b.weight ?? -1) - (a.weight ?? -1) || a.symbol.localeCompare(b.symbol));
+    .sort((a, b) => (b.weight ?? -1) - (a.weight ?? -1) || (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0));
 }
 
 /**
