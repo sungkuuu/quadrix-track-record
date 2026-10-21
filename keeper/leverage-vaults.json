@@ -20,9 +20,11 @@
   },
   "qeth15": {
     "chainId": 91342,
-    "address": null,
-    "gate": {"mode":"step"},
-    "deployTx": null,
-    "block": null
+    "address": "0x5F1FE9E18a2beeE8Bb4Ec6f15571d6ba4BbC19F6",
+    "gate": {
+      "mode": "step"
+    },
+    "deployTx": "0xe5ff35f50e1c60ee6c5da52527ba998b3da25b76e98e7a1b548cb0064a121e23",
+    "block": 39228502
   }
 }
