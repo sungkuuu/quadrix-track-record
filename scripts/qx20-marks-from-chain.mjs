@@ -7,7 +7,8 @@
 import fs from 'node:fs';
 const VAULTS = [
   '0x1d1115b961832dd921be78cf1362a531b69bcaa0', // 2026-07-21 → 2026-09-14 (superseded; marks stay on chain)
-  '0x2A165501ddA6e430fF98E82682f53CA8465Bb21f', // 2026-09-14 → (current)
+  '0x2A165501ddA6e430fF98E82682f53CA8465Bb21f', // 2026-09-14 → 2026-10-21 (superseded; marks stay on chain)
+  '0xFd6180b9D0b2C77A2785E32527f8DB20e3Bc7F9c', // 2026-10-21 → (current)
 ];
 const SETNAV = '0xec75710f'; // setNav(uint256 newNavPerShare, uint256 indexLevel)
 const EXPLORER = 'https://sepolia-explorer.giwa.io/api';
