@@ -4,7 +4,11 @@
 // the keeper posted from the public methodology, on chain, since 2026-07-21.
 //   node scripts/qx20-marks-from-chain.mjs   → keeper/qx20-daily.jsonl (rewritten, sorted)
 // Source: the explorer's transaction list for each vault (Blockscout API); no key.
+// From 2026-10-22 a close whose transaction is on a keeper/nav-marks.jsonl line
+// that carries members also gets that line's members and priceSource
+// (keeper/qx20-members.mjs). Earlier closes are written exactly as before.
 import fs from 'node:fs';
+import { dailyCloses } from '../keeper/qx20-members.mjs';
 const VAULTS = [
   '0x1d1115b961832dd921be78cf1362a531b69bcaa0', // 2026-07-21 → 2026-09-14 (superseded; marks stay on chain)
   '0x2A165501ddA6e430fF98E82682f53CA8465Bb21f', // 2026-09-14 → 2026-10-21 (superseded; marks stay on chain)
@@ -31,9 +35,9 @@ for (const vault of VAULTS) {
     page += 1;
   }
 }
-marks.sort((a, b) => a.ts - b.ts);
-const byDay = new Map();
-for (const m of marks) byDay.set(m.date, m); // last mark of the day wins
-const lines = [...byDay.values()].map((m) => JSON.stringify({ date: m.date, nav: m.nav, level: m.level, marks_that_day: marks.filter((x) => x.date === m.date).length, vault: m.vault, block: m.block, tx: m.tx, at: new Date(m.ts * 1000).toISOString() }));
+const ledger = fs.existsSync('keeper/nav-marks.jsonl')
+  ? fs.readFileSync('keeper/nav-marks.jsonl', 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+  : [];
+const lines = dailyCloses(marks, ledger).map((l) => JSON.stringify(l));
 fs.writeFileSync('keeper/qx20-daily.jsonl', lines.join('\n') + '\n');
 console.log(`${marks.length} marks on chain → ${lines.length} daily closes, ${lines[0] ? JSON.parse(lines[0]).date : '—'} → ${lines.length ? JSON.parse(lines[lines.length - 1]).date : '—'}`);

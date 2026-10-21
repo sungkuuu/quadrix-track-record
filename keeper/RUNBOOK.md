@@ -881,6 +881,15 @@ an uncommitted local run desynchronises CI (failure mode 5).
   Nothing wakes anyone up, which is correct while the vault holds test assets
   and stale NAV is the worst outcome.
 
+## Record format changes
+
+New fields only: a line already written keeps its bytes, and every line that has
+no new field means what it meant before.
+
+| Date | File | Change | Lines it applies to |
+|---|---|---|---|
+| 2026-10-22 | `keeper/nav-marks.jsonl`, `keeper/qx20-daily.jsonl` | `members: [{symbol, weight, price}]` — the model book held after the mark, at the prices that mark used; weight = units × price ÷ the sum over the members with a price, 4 decimals; a member without a price is listed with weight and price `null` (failure mode 6). `keeper/update-nav.mjs` writes it on each new ledger line. `scripts/qx20-marks-from-chain.mjs` copies it, with the ledger line's `priceSource`, onto the daily close whose transaction is that ledger line's `txHash` (`keeper/qx20-members.mjs`, test `keeper/test/qx20-members.test.mjs`). | Ledger lines appended from 2026-10-22, and the closes that are one of those marks. Closes up to 2026-10-21, and any close whose mark is not on a ledger line with members, carry neither field — their book lives only in the git history of `keeper/state.json`. |
+
 ## Override log
 
 | Date (UTC) | Move | Source | Reason | Operator |
