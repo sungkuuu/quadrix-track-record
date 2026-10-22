@@ -25,7 +25,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 
 // 2026-09-14: redeployed with a reentrancy guard and a corrected header —
 // superseded 0x1d1115b961832dd921be78cf1362a531b69bcaa0 (its marks stay on chain).
-const VAULT = '0x2A165501ddA6e430fF98E82682f53CA8465Bb21f';
+const VAULT = '0xFd6180b9D0b2C77A2785E32527f8DB20e3Bc7F9c';
 const KEEPER_DIR = path.dirname(fileURLToPath(import.meta.url));
 const STATE_PATH = path.join(KEEPER_DIR, 'state.json');
 // state.json is a working file — it is overwritten every run so the model book

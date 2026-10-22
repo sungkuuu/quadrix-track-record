@@ -225,7 +225,7 @@
   "basket": {
     "_doc": "No basket vault exists for this index and none can be deployed while GIWA carries no canonical BTC (triens.md §12-5). vault null = the keeper computes every mark and posts nothing.",
     "chainId": 91342,
-    "vault": "0xafd422c43e8a0afd36a9bce01bb20db19e4324a5",
+    "vault": "0xa2cD3CEF22F26E5ad130d1D6Db01ebc0CEaa4F9C",
     "faucet": "0x749569a2febd57d9b59a124f04a0e94fe0a35009",
     "navBase": 100,
     "assets": {

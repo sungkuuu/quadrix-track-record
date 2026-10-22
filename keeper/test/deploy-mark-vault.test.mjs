@@ -1,8 +1,9 @@
 /**
  * keeper/deploy-mark-vault.mjs against a local JSON-RPC server that plays an
  * anvil node (no network, no key):
- *   - the transaction hash is in keeper/dryrun/mark-vaults.jsonl as soon as
- *     the send returns — before the receipt (here: a receipt that never comes);
+ *   - the transaction hash and nonce are in keeper/dryrun/mark-vaults.jsonl
+ *     as soon as it is signed — before the broadcast and the receipt (here: a
+ *     receipt that never comes);
  *   - a read-back answered by a node behind the receipt's block (header not
  *     found, then no code) is repeated until it agrees; the guardian is then
  *     set and read back, and only then is the address written to
@@ -29,7 +30,7 @@ import os from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { decodeFunctionData, encodeFunctionResult, getAddress, keccak256, toHex, zeroAddress, parseAbi } from 'viem';
+import { decodeFunctionData, encodeFunctionResult, getAddress, keccak256, toHex, zeroAddress, parseAbi, parseTransaction, serializeTransaction } from 'viem';
 import { ARTIFACT, expectedRuntime, MOCK_USD, NAMES, REFERENCE_INDEX, guardianProblems, referenceVault } from '../deploy-mark-vault.mjs';
 import { KEEPER_DIR } from './leverage-helpers.mjs';
 
@@ -104,9 +105,15 @@ function server({ receipts = true, lagReads = 0, ref = {}, revertSetGuardian = f
         if (functionName === 'setGuardian') return '0x';
         return encodeFunctionResult({ abi: ARTIFACT.abi, functionName, result: st[a][functionName] });
       }
-      case 'eth_sendTransaction': {
-        const [{ to, data }] = params;
-        const h = keccak256(toHex(`${JSON.stringify(params)}#${sent.length}`));
+      case 'eth_signTransaction': { // what anvil does for an unlocked account; unsigned here (the hash is keccak of these bytes either way)
+        const [t] = params;
+        const fee = t.maxFeePerGas != null ? { maxFeePerGas: BigInt(t.maxFeePerGas), maxPriorityFeePerGas: BigInt(t.maxPriorityFeePerGas) } : { gasPrice: BigInt(t.gasPrice) };
+        return serializeTransaction({ chainId: Number(t.chainId), nonce: Number(t.nonce), to: t.to ?? undefined, data: t.data, gas: BigInt(t.gas), value: 0n, ...fee });
+      }
+      case 'eth_sendRawTransaction': {
+        const { to, data, nonce } = parseTransaction(params[0]);
+        if (nonce !== sent.length) throw Object.assign(new Error(`nonce ${nonce}, expected ${sent.length}`), { code: -32000 });
+        const h = keccak256(params[0]);
         let ok = true;
         let contractAddress = null;
         if (!to) { contractAddress = NEW; sent.push('deploy'); } else {
@@ -156,16 +163,17 @@ function runTool(args, { killAfterMs = null } = {}) {
 const readLog = () => fs.readFileSync(OUT[0], 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const live = (url) => ['--live', '--confirm', 'EXECUTE', '--rpc', url, '--from', FROM];
 
-test('the transaction is logged as soon as it is sent — a receipt that never comes still leaves the hash on disk', async () => {
+test('the transaction is logged as soon as it is signed, before the broadcast — a receipt that never comes still leaves the hash and nonce on disk', async () => {
   reset();
   const { srv, url } = await server({ receipts: false });
   try {
     const r = await runTool(['--index', 'qbtc2x', '--manager', FROM, '--guardian', GUARD, ...live(url)], { killAfterMs: 4000 });
     assert.equal(r.sig, 'SIGKILL', r.out);
     const log = readLog();
-    assert.equal(log.length, 1);
-    assert.equal(log[0].status, 'sent');
+    assert.deepEqual(log.map((l) => l.status), ['signed', 'sent'], 'signed (hash, nonce) before the broadcast, sent after it');
     assert.match(log[0].tx, /^0x[0-9a-f]{64}$/);
+    assert.equal(log[0].nonce, 0);
+    assert.equal(log[1].tx, log[0].tx);
     assert.ok(!fs.existsSync(OUT[1]), 'no address written without a receipt and a read-back');
   } finally {
     srv.close();
@@ -183,8 +191,8 @@ test('a read-back behind the receipt block is repeated until it agrees; the guar
     assert.deepEqual(sent, ['deploy', 'setGuardian']);
     assert.equal(st[NEW].guardian, GUARD);
     const log = readLog();
-    assert.deepEqual(log.map((l) => `${l.what}:${l.status}`), ['deploy:sent', 'deploy:mined', 'setGuardian:sent', 'setGuardian:mined']);
-    assert.ok(calls.indexOf('eth_sendTransaction') < calls.indexOf('eth_getTransactionReceipt'));
+    assert.deepEqual(log.map((l) => `${l.what}:${l.status}`), ['deploy:signed', 'deploy:sent', 'deploy:mined', 'setGuardian:signed', 'setGuardian:sent', 'setGuardian:mined']);
+    assert.ok(calls.indexOf('eth_sendRawTransaction') < calls.indexOf('eth_getTransactionReceipt'));
     const v = JSON.parse(fs.readFileSync(OUT[1], 'utf8'));
     assert.equal(v.qbtc2x.address, NEW);
     // unchanged: the gate the shipped registry holds
@@ -197,7 +205,7 @@ test('a read-back behind the receipt block is repeated until it agrees; the guar
   }
 });
 
-test('review r1: a deployment that was sent but never reached the registry blocks a second deployment until a person resolves it', async () => {
+test('review r1: a deployment that was signed but has no outcome in the log, and no receipt on the chain, blocks a second deployment until a person resolves it', async () => {
   reset();
   let s = await server({ receipts: false });
   try {
@@ -207,16 +215,16 @@ test('review r1: a deployment that was sent but never reached the registry block
     s.srv.close();
   }
   const first = readLog()[0];
-  assert.equal(first.status, 'sent');
+  assert.equal(first.status, 'signed');
   s = await server();
   try {
     // re-running the same command (live or dry) is refused and sends nothing
     for (const extra of [['--live', '--confirm', 'EXECUTE'], []]) {
       const r = await runTool(['--index', 'qbtc2x', '--manager', FROM, '--guardian', GUARD, ...extra, '--rpc', s.url, '--from', FROM]);
       assert.equal(r.code, 2, r.out);
-      assert.match(r.out, new RegExp(`already sent \\(tx ${first.tx}\\)`));
+      assert.match(r.out, new RegExp(`deploy of qbtc2x on chain 91342 was signed \\(tx ${first.tx}\\), the log has no outcome for it, and the chain has no receipt for it; nonce 0 of ${FROM} is not used yet`));
     }
-    assert.ok(!s.calls.includes('eth_sendTransaction'), 'nothing sent');
+    assert.ok(!s.calls.includes('eth_signTransaction'), 'nothing sent');
     // another index is not blocked
     let r = await runTool(['--index', 'qeth2x', '--manager', FROM, '--guardian', GUARD, '--rpc', s.url, '--from', FROM]);
     assert.equal(r.code, 0, r.out);
@@ -264,7 +272,7 @@ test('qETH1.5X — name "Quadrix ETH 1.5x Vault", symbol = the rulebook ticker; 
     assert.match(r.out, /name "Quadrix ETH 1\.5x Vault", symbol qETH1\.5X, depositCap 0 \(closed\)/);
     assert.match(r.out, new RegExp(`then setGuardian\\(${GUARD}\\) — guardian check passed`));
     assert.match(r.out, new RegExp(`artifact = the code of the reference vault ${REF} \\(qBTC2X, guardian set`));
-    assert.ok(!s.calls.includes('eth_sendTransaction'));
+    assert.ok(!s.calls.includes('eth_signTransaction'));
     // the address-less entry: the owner actions are refused for want of a vault, not for the index
     for (const extra of [['--action', 'open-deposits', '--cap', '1000000000000'], ['--action', 'pause']]) {
       r = await runTool(['--index', 'qeth15', ...extra, '--rpc', s.url]);
@@ -297,7 +305,7 @@ test('the guardian rule — missing, 0, = manager (keeper and owner), or a timel
         assert.match(r.out, re);
       }
     }
-    assert.ok(!s.calls.includes('eth_sendTransaction'), 'nothing sent');
+    assert.ok(!s.calls.includes('eth_signTransaction'), 'nothing sent');
   } finally {
     s.srv.close();
   }
@@ -334,7 +342,7 @@ test('the reference vault is the registry\'s qBTC2X as committed — other code,
       const r = await runTool(['--index', 'qeth15', '--manager', FROM, '--guardian', GUARD, ...live(s.url)]);
       assert.equal(r.code, 2, r.out);
       assert.match(r.out, re);
-      assert.ok(!s.calls.includes('eth_sendTransaction'), 'nothing sent');
+      assert.ok(!s.calls.includes('eth_signTransaction'), 'nothing sent');
     } finally {
       s.srv.close();
     }
@@ -372,7 +380,7 @@ test('a setGuardian that does not complete leaves the registry unwritten; the de
     assert.match(r.out, /setGuardian did not complete: setGuardian reverted/);
     assert.match(r.out, new RegExp(`then run --action set-guardian --guardian ${GUARD}`));
     assert.ok(!fs.existsSync(OUT[1]), 'registry not written');
-    assert.deepEqual(readLog().map((l) => `${l.what}:${l.status}`), ['deploy:sent', 'deploy:mined', 'setGuardian:sent', 'setGuardian:reverted']);
+    assert.deepEqual(readLog().map((l) => `${l.what}:${l.status}`), ['deploy:signed', 'deploy:sent', 'deploy:mined', 'setGuardian:signed', 'setGuardian:sent', 'setGuardian:reverted']);
   } finally {
     s.srv.close();
   }
@@ -392,7 +400,7 @@ test('a setGuardian that does not complete leaves the registry unwritten; the de
     r = await runTool(['--index', 'qeth15', '--action', 'set-guardian', '--guardian', GUARD, '--rpc', s.url]);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /simulated ok; guardian check passed/);
-    assert.ok(!s.calls.includes('eth_sendTransaction'), 'dry run sends nothing');
+    assert.ok(!s.calls.includes('eth_signTransaction'), 'dry run sends nothing');
     r = await runTool(['--index', 'qeth15', '--action', 'set-guardian', '--guardian', GUARD, ...live(s.url)]);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /setGuardian sent tx=0x[0-9a-f]{64} block \d+; read back ok/);
@@ -435,7 +443,7 @@ test('a live deployment from a signer other than the manager is refused (setGuar
     const r = await runTool(['--index', 'qeth15', '--manager', REF_GUARD, '--guardian', GUARD, ...live(s.url)]);
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /is not the manager .* deploy from the manager/);
-    assert.ok(!s.calls.includes('eth_sendTransaction'), 'nothing sent');
+    assert.ok(!s.calls.includes('eth_signTransaction'), 'nothing sent');
   } finally {
     s.srv.close();
   }
@@ -450,7 +458,7 @@ test('a live deployment from a signer other than the manager is refused (setGuar
       const r = await runTool(['--index', 'qeth15', '--action', 'set-guardian', '--guardian', GUARD, ...live(s.url)]);
       assert.equal(r.code, 2, r.out);
       assert.match(r.out, re);
-      assert.ok(!s.calls.includes('eth_sendTransaction'), 'nothing sent');
+      assert.ok(!s.calls.includes('eth_signTransaction'), 'nothing sent');
     } finally {
       s.srv.close();
     }

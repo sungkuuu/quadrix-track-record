@@ -747,7 +747,17 @@ transactions are read back; the leg marks it when that entry has an address
 and a `gate`. qBTC2X's gate is `{"mode":"step"}` (owner, 2026-10-05):
 contract-bounded steps, never stopping on size. The leg marks only a vault
 whose `symbol()` is the index's ticker. There is no unpause action in
-`mark-vault-setup`: a pause stays until a workflow change.
+`mark-vault-setup`: a pause stays until a workflow change. The registry line
+is checked before every owner action (set-guardian, open-deposits, pause):
+the address must run the artifact's code, answer the index's ticker and have
+the signer as its keeper, or nothing is sent.
+Every transaction is signed first and its hash and nonce are written to
+`keeper/mark-vaults.jsonl` as a `signed` line before it is broadcast.
+On a re-run, a `signed` line with no receipt line is looked up on the chain
+first: if it is mined, its receipt is recorded and the run goes on (a mined
+deployment continues to its read-back, setGuardian and the registry);
+if not, the run is refused until a person checks that hash and nonce on the
+explorer — it never sends again on its own.
 
 **Freshness** (`scripts/watchdog-series.mjs`, check 5 of the six-hourly
 watchdog): it reads only the outputs, so it also catches a job that never ran.
@@ -775,7 +785,8 @@ watchdog): it reads only the outputs, so it also catches a job that never ran.
 | watchdog: `<index>: no record-<index>.jsonl …h after its inception` | the opening day passed 16 h ago with no genesis line | read the last `paper-index` run's two leverage steps: `NOT IN FORCE` means the decision is not in `decisions.jsonl` on main (check the anchor run's commit); a refusal means the JSON or ledger does not match the decision. |
 | watchdog: `<index>: stale — latest line is D …` | no new line 40 h after D 00:00 UTC (a series ended by a model liquidation is not reported) | read the last `paper-index` run; if it did not run, dispatch it once (see "Dispatching by hand"). The missed days are written `late`. |
 | watchdog: `<index>: line seq N (D) has no anchor txHash` | a line was written without the key, or the anchor failed after it | the next run with the key anchors it first. If it persists, check the `KEEPER_PK` secret and the keeper's gas. |
-| `REFUSED: a deployment of qbtc2x on chain 91342 was already sent (tx …)` from `mark-vault-setup` / `deploy-mark-vault.mjs` | an earlier deploy was sent (it is in `keeper/mark-vaults.jsonl`) but its address never reached `keeper/leverage-vaults.json` — the run died waiting for the receipt, or the read-back disagreed | do not deploy again. Look the transaction up on the explorer: if it created the vault, write that address (and `deployTx`, `block`) into the registry after the same read-back checks by hand; if it failed or is to be dropped, append `{"index","chainId","tx","status":"abandoned","note"}` to `keeper/mark-vaults.jsonl` (a commit to the public repository). |
+| `REFUSED: <what> of <index> on chain 91342 was signed (tx …), the log has no outcome for it, and the chain has no receipt for it; nonce N of 0x… is …` from `mark-vault-setup` / `deploy-mark-vault.mjs`, exit 2 | an earlier run signed this transaction and wrote its hash and nonce, then stopped before it saw a receipt; the node that answered now has no receipt for it | do not deploy again and do not mark it abandoned yet. Look the hash and the nonce up on the explorer. **Mined:** re-run the same command — the receipt is recorded and the run goes on (a deployment goes on to its read-back, setGuardian and the registry). **Pending:** wait, then re-run. **The nonce is used by another transaction:** append `{"index","chainId","tx","status":"abandoned","note"}` to `keeper/mark-vaults.jsonl`. **The nonce is not used and the run that signed it printed a node rejection (for example insufficient funds):** the transaction never entered a pool; append the same abandoned line, then re-run. **The nonce is not used and that run lost the node's answer:** do not mark it abandoned; wait until the nonce is used, then follow the rows above. An abandoned line is a commit to the public repository. |
+| `REFUSED: a deployment of qbtc2x on chain 91342 was already sent (tx …)` from `mark-vault-setup` / `deploy-mark-vault.mjs` | an earlier deploy was sent (it is in `keeper/mark-vaults.jsonl`) but its address never reached `keeper/leverage-vaults.json` — the read-back disagreed, or setGuardian did not complete | do not deploy again. Look the transaction up on the explorer: if it created the vault, write that address (and `deployTx`, `block`) into the registry after the same read-back checks by hand; if it failed or is to be dropped, append `{"index","chainId","tx","status":"abandoned","note"}` to `keeper/mark-vaults.jsonl` (a commit to the public repository). |
 | `deployed at 0x… (tx …, logged) but setGuardian did not complete` from `mark-vault-setup` / `deploy-mark-vault.mjs` | the vault exists with guardian 0; the registry was not written, so the leg does not mark it | do not deploy again. Check the vault by hand (owner, keeper, cap 0), write its address (and `deployTx`, `block`) into `keeper/leverage-vaults.json` (a commit to the public repository), then run `mark-vault-setup` with task `set-guardian` and the same guardian. |
 | `REFUSED: … the reference vault …` (no code, another symbol, guardian 0, or the code differs) | the registry's qBTC2X line does not name a vault running the artifact's code | nothing was sent. Check the qBTC2X address in `keeper/leverage-vaults.json` against the redeployment record; on a fork, take the fork at a block after the redeployment. |
 | `MARK HALTED: … beyond the ±15% gate` | only with `gate: {"mode":"halt"}` | a person compares the line's level with Binance and decides; the halt gate has no override flag — changing the gate is the owner's decision. |
@@ -875,6 +886,7 @@ an uncommitted local run desynchronises CI (failure mode 5).
 | Date (UTC) | Move | Source | Reason | Operator |
 | --- | --- | --- | --- | --- |
 | 2026-09-14 | from par 1.000000 to the model level (≈+21%, clamped to ≤1.24×) | redeploy | vault redeployed with a reentrancy guard at 0x2A165501ddA6e430fF98E82682f53CA8465Bb21f; the new contract starts at par while the model index continues — one acknowledged post to converge. Superseded vault 0x1d1115b961832dd921be78cf1362a531b69bcaa0 keeps its marks | keeper operator |
+| 2026-10-21 | from par 1.000000 to the model level (≈+26.4%, clamped to ≤1.24×) | redeploy | vault redeployed at 0xFd6180b9D0b2C77A2785E32527f8DB20e3Bc7F9c; the new contract starts at par while the model index continues — one acknowledged post (step 7, to 1.240000) and one unacknowledged post to converge (step 7b, to 1.263772). Superseded vault 0x2A165501ddA6e430fF98E82682f53CA8465Bb21f keeps its marks | keeper operator |
 
 ## Alert-path drills
 

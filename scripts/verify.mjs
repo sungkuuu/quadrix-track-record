@@ -663,7 +663,7 @@ async function verifyLeverage(f, records) {
 // qX20: the keeper's setNav(uint256 navPerShare, uint256 indexLevel) marks,
 // one close per UTC day. The two vaults are the published qX20 contracts
 // (docs §10); a close that points anywhere else fails.
-const QX20_VAULTS = ['0x1d1115b961832dd921be78cf1362a531b69bcaa0', '0x2a165501dda6e430ff98e82682f53ca8465bb21f'];
+const QX20_VAULTS = ['0x1d1115b961832dd921be78cf1362a531b69bcaa0', '0x2a165501dda6e430ff98e82682f53ca8465bb21f', '0xfd6180b9d0b2c77a2785e32527f8db20e3bc7f9c'];
 const SETNAV = '0xec75710f';
 async function verifyQx20() {
   let closes;

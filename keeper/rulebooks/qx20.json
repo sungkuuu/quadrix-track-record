@@ -44,7 +44,7 @@
   },
   "marking": {
     "navTracker": {
-      "vault": "0x2A165501ddA6e430fF98E82682f53CA8465Bb21f",
+      "vault": "0xFd6180b9D0b2C77A2785E32527f8DB20e3Bc7F9c",
       "cadence": "every 6h",
       "sanityHaltPct": 15,
       "contractBandPct": 25
@@ -55,7 +55,7 @@
   "basket": {
     "_doc": "The on-chain basket for this index (QuadrixBasketVault v3.1 on GIWA Sepolia). vault/faucet null = not deployed: the keeper computes every mark and posts none. After a deploy (site repo .github/workflows/deploy-index-basket.yml) fill vault, faucet, assets {SYMBOL: {address, decimals}} in manifest order, and navBase = the index level on the deploy day (contracts/baskets/{index}.json navBase), so the first post is navPerShare 1.000000. keeper/basket-mark.mjs reads this block.",
     "chainId": 91342,
-    "vault": "0x39f2993f7b21b85d857c9a19de07cdcca7a0a1c9",
+    "vault": "0xF532A8EF63216C6DB40dB0d620535f69364b698b",
     "faucet": "0xd7e7beb190049d03b2aadbfcececc2e74aac1456",
     "navBase": 1.1752366494854245,
     "navBaseNote": "null until deployed — set to keeper/state.json level on the deploy day (the manifest records it as navBase); qX20 has no genesis-100 convention, its level is a NAV-like 1.0-based number",

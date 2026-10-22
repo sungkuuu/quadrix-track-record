@@ -153,7 +153,7 @@
   "basket": {
     "_doc": "The on-chain basket for this index (QuadrixBasketVault v3.1 on GIWA Sepolia). vault/faucet null = not deployed: the keeper computes every mark and posts none. After a deploy (site repo .github/workflows/deploy-index-basket.yml) fill vault, faucet, assets {SYMBOL: {address, decimals}} in manifest order, and navBase = the index level on the deploy day (contracts/baskets/{index}.json navBase), so the first post is navPerShare 1.000000. keeper/basket-mark.mjs reads this block.",
     "chainId": 91342,
-    "vault": "0xba83462fdfede13dc7eb1d1fd893ae76dcaad975",
+    "vault": "0x6591b7C12c736B9cF49949b44188730660E18Cd0",
     "faucet": "0x86ae814adb07a27a549fe6536fc62dbc0cdd601b",
     "navBase": 100,
     "assets": {

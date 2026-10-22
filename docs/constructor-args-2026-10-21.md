@@ -1,0 +1,189 @@
+Vault constructor arguments: the eight vaults deployed on 2026-10-21
+======================================================================
+
+GIWA Sepolia (chainId 91342). Each value below is the constructor argument of the creation transaction,
+as ABI-encoded at the end of that transaction's input.
+
+`QuadrixBasketVault`: `constructor(IERC20[] assets_, uint256[] refPrices_, address owner_, address keeper_, string name_, string symbol_)`.
+`QuadrixIndexVault`: `constructor(IMockUSD usd_, string name_, string symbol_, uint256 depositCap_, address manager_)`.
+
+## qX20 basket
+
+Address `0xF532A8EF63216C6DB40dB0d620535f69364b698b` · creation tx `0xcd586046d8f79923668eecbe6804fca79e75c4ba21b97b90267104a017832872` · contract `QuadrixBasketVault`
+
+| # | `assets_[i]` | `refPrices_[i]` |
+| --- | --- | --- |
+| 0 | `0xfe90560cf3eE5f85493dca38fB2bF56179F0a4FE` | 8272800000 |
+| 1 | `0xdBb6c0f79935a8dD3cfAc88B4F8586F563320aC2` | 2442700000 |
+| 2 | `0x1607e70cAC3FAc0B413d0948D2117b12b1F78212` | 7413600000 |
+| 3 | `0x5C0F15100649789902ddF31D6991e38E29256266` | 1330000000 |
+| 4 | `0x47420cD0A6e2bBA16DebbC6a126Bf8a7af9c174d` | 10581000000 |
+| 5 | `0x4037f0608746d8AfEFaD786e62a8b567DB1A067A` | 3309310000 |
+| 6 | `0xe7007EE036b22880eCe81b959DF1c8a5458b0A96` | 8071000000 |
+| 7 | `0xCeF31a0a4a630B8D850E328C44B8D18718FB0D12` | 8150700000 |
+| 8 | `0x643F0b8b6D3F1543D622ab265d23d2647f0CC02A` | 940647000 |
+| 9 | `0xf0Abf814683dbe1CF8cF423450ADFDcf85b744BC` | 1233000000 |
+| 10 | `0x466AE80FA247Da24764C9Cae9A1F8fDc240960C4` | 2228260000 |
+| 11 | `0x6d70C5084f5bf3F0CD94aDb803b958c456fB2324` | 1812120000 |
+| 12 | `0x358B0f199008dE9a2A6005698BBbc6950E19d22A` | 2845100000 |
+| 13 | `0x93765eBdf4b75d1d945c0EfA656A8802170040b6` | 7480000000 |
+| 14 | `0xf150Bc6654Ec9DAFd64f44B21CF5eB74fDDd5154` | 5754300000 |
+| 15 | `0x579Cc91336eA92E06F30e725D303625836aDdC6A` | 10554200000 |
+| 16 | `0xb96D35FBbC9BffCBD157A8606dc6ef43B11E4049` | 5010000000 |
+| 17 | `0x3C725e370f8Ab6557eC21d9b94e6F95269f71674` | 9670000000 |
+| 18 | `0x1fA38B14335e3052B5C27D59D0C4b0597483a99D` | 1257690000 |
+| 19 | `0xB6Ea7403356Ec41526D52E9C9051725930278464` | 10240000000 |
+
+| Argument | Value |
+| --- | --- |
+| `owner_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `keeper_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `name_` | Quadrix Top-20 Index Basket |
+| `symbol_` | qX20 |
+
+## qAI basket
+
+Address `0xE65eaD3BBA5aD982B71186A5Dd5B72e12Ad26aF0` · creation tx `0xacc0d8ce2fb0fe07e6a62118bf75a86601ff1de2bea6e5102da927a8c0da64bc` · contract `QuadrixBasketVault`
+
+| # | `assets_[i]` | `refPrices_[i]` |
+| --- | --- | --- |
+| 0 | `0x44fF37Ef6Ff714E77630d715A0969db1977a7cEb` | 2707800000 |
+| 1 | `0xf4A8b84D459B7Cf0cf586Dc87ea564b571E5aA1F` | 2601000000 |
+| 2 | `0xe4e80bCa8D96bA5bDA3AC27F1D68eE7E49588fFc` | 3445885000 |
+| 3 | `0x2eB321948717C2481a437Ea11CcAb052c433C51D` | 1840000000 |
+| 4 | `0x072b0BAB1397dE3b3193617ae3dD61a9c04Ea928` | 6791860000 |
+| 5 | `0xcb6aeA59876E3059F2f9518F421db8B1BDbb4972` | 1968650000 |
+| 6 | `0xacc4B3083f76888afE4C1a0FCc09a52d2f0Af329` | 1282510000 |
+| 7 | `0xf57E67f92679587fF8E09cC7634661aECDD708eF` | 6352130000 |
+| 8 | `0xAe331a90C8aC9b7820EBE69f81d6808A8b6C4d16` | 2910000000 |
+| 9 | `0x7e2Ffbefc4597C37ee6168E94eba3064Bb942393` | 5010000000 |
+
+| Argument | Value |
+| --- | --- |
+| `owner_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `keeper_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `name_` | Quadrix AI Index Basket |
+| `symbol_` | qAI |
+
+## qDEFI basket
+
+Address `0x62737ed46a5cd950B8e41EC2782833C00aa383A0` · creation tx `0xa0216cf59973ff11d6b2849f00250319ed4ed20ad2a5edc0f4f12e2cd4429e52` · contract `QuadrixBasketVault`
+
+| # | `assets_[i]` | `refPrices_[i]` |
+| --- | --- | --- |
+| 0 | `0x08F6F33B572e480898dfE9F8dE66372183C33000` | 8071000000 |
+| 1 | `0x842009C22152D5D26593db93Ca6664e4a61D667d` | 1233000000 |
+| 2 | `0xECc53491f29eFf3fc5B000d5C6367CD7D86c532B` | 7480000000 |
+| 3 | `0x0d55244F54CDdF665705fA6114504414097C6162` | 1550600000 |
+| 4 | `0x83615E8756B6818Fa22bFE53FDa61Ec0215E3bDF` | 4497570000 |
+| 5 | `0x00D05c5FE9B145DE447d9440F95eEFcaD61804c2` | 2290000000 |
+| 6 | `0x4e0C8d1d03679852A230C20cFAF050B679a03d26` | 7584700000 |
+| 7 | `0xf7bCBD24Bb216D3F54DF55e3C8A9cb94d2aA794f` | 1999750000 |
+| 8 | `0x5eA3Ad21048BA8a3C429D0B0f67A0860cD7e2e17` | 1407030000 |
+| 9 | `0xBe527e2a4E222b8dd08e5CfAf4161D82A4C45fdB` | 3124490000 |
+| 10 | `0x490DA6844e2500f1e122eC1a6Ca2E70383a93A03` | 2250000000 |
+| 11 | `0x0cc621d8c525E0096fdF3cE2177C65dEAd9FD7C2` | 6947980000 |
+| 12 | `0xb5EFDC24BD58aAb5d6929C155705919b1062fa9B` | 8614140000 |
+| 13 | `0xF96360330E54E861b4B95FaA023A77dAdDcf6511` | 7214080000 |
+| 14 | `0x196fb515cdd98b2C84FE60A2F53588af75Ea13F5` | 8094600000 |
+
+| Argument | Value |
+| --- | --- |
+| `owner_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `keeper_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `name_` | Quadrix DeFi Index Basket |
+| `symbol_` | qDEFI |
+
+## qREV basket
+
+Address `0x6591b7C12c736B9cF49949b44188730660E18Cd0` · creation tx `0x31f28cc26d2667c5380f5a1319db4f2c823dbc6070c62ebd1a61bf03d0d26283` · contract `QuadrixBasketVault`
+
+| # | `assets_[i]` | `refPrices_[i]` |
+| --- | --- | --- |
+| 0 | `0xF2ff6A94474C03d3032CFd248f4Ca3A40BD58617` | 8071000000 |
+| 1 | `0xE4f0Bd727D956dFE5EF7Bf67EC5aF36Bab3df680` | 7584700000 |
+| 2 | `0x7f927b96846212Efe86604Ea1A53037CCF3E005d` | 2250000000 |
+| 3 | `0x3D03d466051879D2c41b60112Fc7085b8b8b8c56` | 7480000000 |
+| 4 | `0x9De23CF10aFE8b3fD021FC465f984A0523fd9E9b` | 1960000000 |
+| 5 | `0xA105CB36C0f613f2a24188F25Ff781808D0812be` | 3912200000 |
+| 6 | `0xcE60a9aC653b9a44fC689cd90b081E129FB2A3FD` | 2150000000 |
+| 7 | `0x0F59Aa0CbC85BE9556446970DEd14cd7313ea803` | 3124490000 |
+| 8 | `0x51c3D8257200f2D2142570511F799A3A8F3E6F58` | 8614140000 |
+| 9 | `0xe2dcF51f5c7F03bd502C0948D8541063F2c8df04` | 20300000000 |
+| 10 | `0x13dB3B252c993dD7AD7e6b02964dADD7d181D460` | 2008350000 |
+| 11 | `0xA8C8310bF839B24CB10fD40c0323C9BF8f19ddc2` | 3309310000 |
+| 12 | `0x9F23FF0f9f58a391603c07dC12ca2bb881BC0F45` | 1233000000 |
+| 13 | `0xbD815b0c9601f32A5bab22E7cff38E483789E4e8` | 5010000000 |
+| 14 | `0x495fA29f63cbAE7e1Abbfdb209413a8dC4b950e9` | 7413600000 |
+
+| Argument | Value |
+| --- | --- |
+| `owner_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `keeper_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `name_` | Quadrix Revenue Index Basket |
+| `symbol_` | qREV |
+
+## Triens basket
+
+Address `0xa2cD3CEF22F26E5ad130d1D6Db01ebc0CEaa4F9C` · creation tx `0x5e4a13ba2aab5aeb870a07b3d25003b0874e99d41f85a15cfd30b1afa72bdbbb` · contract `QuadrixBasketVault`
+
+| # | `assets_[i]` | `refPrices_[i]` |
+| --- | --- | --- |
+| 0 | `0x942962DaB257d0f192144a231068442E183e5686` | 1003165142 |
+| 1 | `0xB2Ad35fd230dD543Df2EA9706B4D5cb0e24554d4` | 8272800000 |
+| 2 | `0x03519f0E8b46b234cc364af2234Dc3BCA7592B89` | 8071000000 |
+| 3 | `0xc5fA80B3A633049f5175412DdFaCa10e9B4D2301` | 3309310000 |
+| 4 | `0x92D3046E9a0Ba5d8714EC7aa5770fe18eeb668Ce` | 7584700000 |
+| 5 | `0x5915A00ceF914111B52E73C5a9a9Fd0FBaE9c7D4` | 2250000000 |
+| 6 | `0x43DE3Be40dDFE9E21b4F1cC51F829b7C5903C277` | 7480000000 |
+| 7 | `0x2A21b8cF3f260Bb71C70625ACafdfc96c39567f8` | 7413600000 |
+| 8 | `0x11C8823899AF4Bc575B2ADEF0A22B788574fC554` | 2150000000 |
+| 9 | `0x43901cE3E49252e57d490D54Ef74692F134E572d` | 1960000000 |
+| 10 | `0x2BefB7Fcb681b20014c9E19b023ae4c9ccB28D4d` | 8614140000 |
+
+| Argument | Value |
+| --- | --- |
+| `owner_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `keeper_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `name_` | Quadrix Triens Basket |
+| `symbol_` | qTRI |
+
+## Barbell basket
+
+Address `0xa4DBAFfFbcbcFEaF5938640487Ddcb1Eff963162` · creation tx `0xf68b4c843af6db421fe50a77b1707c8a3e779b5115f7bdd5f6426c446f998beb` · contract `QuadrixBasketVault`
+
+| # | `assets_[i]` | `refPrices_[i]` |
+| --- | --- | --- |
+| 0 | `0xF3A6ECBc5e37585ea0755FA0e68d21a0e241a5e1` | 8272800000 |
+| 1 | `0x42dD1bc5ebd03da2dE0e0321CC45d378954B31B5` | 1003165142 |
+
+| Argument | Value |
+| --- | --- |
+| `owner_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `keeper_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+| `name_` | Quadrix Barbell Basket |
+| `symbol_` | qDUO |
+
+## qX20 tracking vault
+
+Address `0xFd6180b9D0b2C77A2785E32527f8DB20e3Bc7F9c` · creation tx `0x08a88a2fb8880a2fed0319253a197eabb0ddf5e4b89895f8a388149679e98599` · contract `QuadrixIndexVault`
+
+| Argument | Value |
+| --- | --- |
+| `usd_` | `0xf70B2b744eE604728D661b7D07460843DBD1be76` |
+| `name_` | Quadrix Top-20 Index Vault |
+| `symbol_` | qX20 |
+| `depositCap_` | 1000000000000 |
+| `manager_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
+
+## qBTC2X mark vault
+
+Address `0x8b0200B7e920a7fB06e94890d5Efb6aB7d2C1378` · creation tx `0xa2fda8d35a4c2d581080f49675e1b4b710a50129e3b499501ecf8b3ebc67e0d9` · contract `QuadrixIndexVault`
+
+| Argument | Value |
+| --- | --- |
+| `usd_` | `0xf70B2b744eE604728D661b7D07460843DBD1be76` |
+| `name_` | Quadrix BTC 2x Vault |
+| `symbol_` | qBTC2X |
+| `depositCap_` | 0 |
+| `manager_` | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` |
