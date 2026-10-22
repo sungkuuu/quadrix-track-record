@@ -37,7 +37,7 @@ every line of this series to that file through the inception decision, so one ch
 series. Its two sentences that no vault follows the level and that there is no vault to charge the fee stay as
 written; this decision states the fact. Neither value this decision sets is read from that file: the mark gate
 is in the vault registry and the deposit cap is on chain. `keeper/rulebooks/qeth15.provenance.json` is rewritten
-with this amendment (sha256 `cad1116ecb51e6bd403f93ee3f8b0e7aee7f83589fc5bbd9783801c057b70d36` ⟦TO FILL: provisional — the provenance file pins the run record sha256; recompute after the run record is final⟧): it now names the amended rulebook and this decision's checklist run record and
+with this amendment (sha256 `7b56915a1fb70a707202d4c581e0db77f3fc71c8db01afa06971057dda98d19c`): it now names the amended rulebook and this decision's checklist run record and
 holds the rows of P19 and P24; the keeper JSON does not change. The inception decision's pin of the provenance
 file (sha256 `49d7b93ae7991857e95756bd30c613f7c9df480539c9dac750f912025a2f2543`) stays true of the file at the
 commit it names. The gate report
@@ -124,8 +124,8 @@ delay of 72 hours is the redeployment decision's owner decision; this decision d
 ## Tested, and not tested (pinned)
 
 Parameter citation table: appendix P of `rulebooks/qeth15.md` (pinned above); keeper provenance
-`keeper/rulebooks/qeth15.provenance.json` (sha256 `cad1116ecb51e6bd403f93ee3f8b0e7aee7f83589fc5bbd9783801c057b70d36` ⟦TO FILL: provisional — the provenance file pins the run record sha256; recompute after the run record is final⟧). Checklist run record: `docs/methodology/checklist-runs/qeth15/2026-10-22.json` (site repository, private;
-sha256 `b860fd258519747ceff2323ccf03266729d8d2505357985dc10f534a896361da` ⟦TO FILL: provisional — the run record changes when the final review is added; recompute⟧). Every evidence file it pins can be published: the role read-back after deployment, the fork
+`keeper/rulebooks/qeth15.provenance.json` (sha256 `7b56915a1fb70a707202d4c581e0db77f3fc71c8db01afa06971057dda98d19c`). Checklist run record: `docs/methodology/checklist-runs/qeth15/2026-10-22.json` (site repository, private;
+sha256 `56b44f684c1e3af0a812ba7099b3e896e7a900435db09aabbeca7bf1b79e2029`). Every evidence file it pins can be published: the role read-back after deployment, the fork
 rehearsal and the two pre-launch reviews are in `docs/methodology/checklist-runs/qeth15/evidence/` of the site
 repository, each with its sha256 in the run record; the deposit-screen check is pending in the run record and is closed before deposits open; the two measurements below are in this repository. The run record names no internal file. Track:
 trading tool, as in the inception decision. The owner decisions this decision cites are quoted in this
@@ -162,10 +162,10 @@ exposure limit is not entered there. Contract constants this decision does not s
 states them): the 25% bound per mark, the share-price floor, the test-dollar faucet drawn on redemption.
 
 The citation gate (report-only) does not pass this decision. Its report for the amended
-rulebook, `rulebooks/qeth15.gate.json` (sha256 `de45e1155c682819643bc7fd9fd5e184629b8d0658c6310c40dccd23de1ee054` ⟦TO FILL: provisional — regenerate the report after the run record is final and the site commit is on origin; recompute⟧), reads "fail" with 28 violations ⟦TO FILL: provisional count — expected 26 (C4 four · C10 22) once the final review file exists and the site commit is on origin⟧: the checklist run record of 2026-10-13, which the rows of the inherited values
+rulebook, `rulebooks/qeth15.gate.json` (sha256 `448e1da6cc755626445dc74dec9b088dadc1b5ebd4c6669ecea5de54ffff7060`), reads "fail" with 26 violations: the checklist run record of 2026-10-13, which the rows of the inherited values
 still cite and which is pinned, has one open step, the public block, and does not pin the launch checks (C4,
 three); this decision's run record leaves the public block not done, as the gate path of this decision states (C4,
-one), ⟦TO FILL: delete this clause once the final review file is in the run record — and holds one launch review report of two until the final review is written (C4, one)⟧; the page block is not yet in the form the gate reads (C10, 22), ⟦TO FILL: delete this clause once the gate runs on the pushed site commit — and the site commit the gate ran on is not yet on origin (C10, one)⟧. No value this decision introduces is among them as untested.
+one); the page block is not yet in the form the gate reads (C10, 22). No value this decision introduces is among them as untested.
 
 Checks not run for this product, and why: holdability of collateral and debt on GIWA (R08) — not applicable,
 the vault holds test dollars only; security items R44–R46 — no contract code beyond the redeployment's, whose
@@ -188,5 +188,5 @@ of 10,000, in the contract code), so a larger redemption may need to be split. N
 
 | Repository | HEAD at pinning |
 | --- | --- |
-| quadrix-track-record (rulebook amendment, keeper provenance file, owner decisions extract, vault registry entry, deployment tool and artifact; the gate report is added with this decision and pinned by sha256 above) | `1c6ef3fe7540dd4926f3e9ea890a0c27b606d0b0` ⟦TO FILL: provisional — replace with the commit of the recomputed provenance file⟧ |
-| quadrix (site, private — contract source, checklist run record; the commit the gate report was run on) | `07223b101574b7cc8f8c4c7c4a22b237f49564d6` ⟦TO FILL: provisional — local commit, not on origin; replace with the pushed commit the final gate report is run on⟧ |
+| quadrix-track-record (rulebook amendment, keeper provenance file, owner decisions extract, vault registry entry, deployment tool and artifact; the gate report is added with this decision and pinned by sha256 above) | `3c36928336d8db2b2dcca9939399e850deae2841` |
+| quadrix (site, private — contract source, checklist run record; the commit the gate report was run on) | `2187e152f204cddd04a82bd6bb55561c4191ca92` |
