@@ -9,7 +9,7 @@
   },
   "checklistRun": {
     "path": "docs/methodology/checklist-runs/qeth15/2026-10-22.json",
-    "sha256": "b860fd258519747ceff2323ccf03266729d8d2505357985dc10f534a896361da",
+    "sha256": "56b44f684c1e3af0a812ba7099b3e896e7a900435db09aabbeca7bf1b79e2029",
     "repo": "site (private)"
   },
   "keeperJson": {
