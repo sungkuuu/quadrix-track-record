@@ -4,12 +4,12 @@
   "track": "trading-tool",
   "rulebook": {
     "path": "rulebooks/qeth15.md",
-    "commit": "⟨…⟩",
-    "sha256": "⟨…⟩"
+    "commit": "f9f24bc6a67efa33e119434ced82d1b45a3608c2",
+    "sha256": "6d3ca1bee00fc38d487907186050765b3111efed11dc191d9e3ba7f34207ab80"
   },
   "checklistRun": {
     "path": "docs/methodology/checklist-runs/qeth15/2026-10-22.json",
-    "sha256": "⟨…⟩",
+    "sha256": "b860fd258519747ceff2323ccf03266729d8d2505357985dc10f534a896361da",
     "repo": "site (private)"
   },
   "keeperJson": {
@@ -342,7 +342,7 @@
       ],
       "ruleOutput": null,
       "selectedBy": null,
-      "decision": "owner 2026-10-19 — exposure limit: loss tolerance 1,000,000 test dollars ÷ worst-case loss ratio 100% (a total loss assumed); location: the vault contract's depositCap, in the test dollar's 6-decimal units (not this file) — docs/methodology/checklist-runs/qeth15/2026-10-22.json:⟨…⟩",
+      "decision": "owner 2026-10-19 — exposure limit: loss tolerance 1,000,000 test dollars ÷ worst-case loss ratio 100% (a total loss assumed); location: the vault contract's depositCap, in the test dollar's 6-decimal units (not this file) — docs/methodology/checklist-runs/qeth15/2026-10-22.json:41",
       "definitionKind": null,
       "inForceSince": null,
       "auditRef": null,
@@ -368,7 +368,7 @@
       "auditRef": null,
       "exception": {
         "reason": "stage-only",
-        "ownerRef": "2026-10-19 · docs/methodology/checklist-runs/qeth15/2026-10-22.json:⟨…⟩",
+        "ownerRef": "2026-10-19 · docs/methodology/checklist-runs/qeth15/2026-10-22.json:24",
         "expires": "before the stage-B decision (real borrowing) — by the stress test of the real book's marks, pre-registered at 251121cb72e4b5fc526d2f067d7d555a03e4d757 (site repository, private, docs/research/leverage/eth-1p5/stage-b-mark-gate/README.md)",
         "effect": {
           "path": "기록:docs/research/leverage/eth-1p5/evidence/p24-daily-moves-2026-10-20.md",
