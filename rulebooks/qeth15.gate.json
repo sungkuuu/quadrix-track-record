@@ -6,7 +6,7 @@
   "rulebook": {
     "path": "rulebooks/qeth15.md",
     "repo": "record",
-    "sha256": "c48aaec5595a2ee4423f13597e8aaf441bde5f47d2f2e2af319e7b3ecdb27409"
+    "sha256": "6d3ca1bee00fc38d487907186050765b3111efed11dc191d9e3ba7f34207ab80"
   },
   "keeperJson": {
     "path": "keeper/rulebooks/qeth15.json",
@@ -14,15 +14,15 @@
   },
   "provenance": {
     "path": "keeper/rulebooks/qeth15.provenance.json",
-    "sha256": "49d7b93ae7991857e95756bd30c613f7c9df480539c9dac750f912025a2f2543"
+    "sha256": "cad1116ecb51e6bd403f93ee3f8b0e7aee7f83589fc5bbd9783801c057b70d36"
   },
   "checklistRun": {
-    "path": "docs/methodology/checklist-runs/qeth15/2026-10-13.json",
-    "sha256": "e3ca50416599f6bdab0228755a43616c124ad16a8af5976dec0bc2bd7793895a"
+    "path": "docs/methodology/checklist-runs/qeth15/2026-10-22.json",
+    "sha256": "b860fd258519747ceff2323ccf03266729d8d2505357985dc10f534a896361da"
   },
-  "siteCommit": "119b02c6d07d7bd4b8c7697557678170495cebf6",
-  "siteCommitPushed": true,
-  "base": "main",
+  "siteCommit": "07223b101574b7cc8f8c4c7c4a22b237f49564d6",
+  "siteCommitPushed": false,
+  "base": "origin/main",
   "counts": {
     "tested": 2,
     "partial": 0,
@@ -30,39 +30,23 @@
     "definitionNumeric": 0,
     "price": 1,
     "absent": 0,
-    "exposureLimit": 0,
+    "exposureLimit": 1,
     "exception": {
       "product-definition": 5,
       "model-assumption": 5,
       "no-data": 0,
-      "stage-only": 0
+      "stage-only": 1
     },
     "reference": 0,
     "inheritedUntested": 0,
     "untested": 1
   },
   "changedParams": [
-    "P01",
-    "P02",
-    "P03",
-    "P04",
-    "P05",
-    "P06",
-    "P07",
-    "P09",
-    "P11",
-    "P12",
-    "P13",
-    "P14",
-    "P15",
-    "P16",
-    "P17",
-    "P18",
-    "P22",
-    "P25"
+    "P19",
+    "P24"
   ],
-  "exceptionsAmongChanged": 10,
-  "exposureAmongChanged": 0,
+  "exceptionsAmongChanged": 1,
+  "exposureAmongChanged": 1,
   "exceptions": [
     {
       "id": "P04",
@@ -103,6 +87,10 @@
     {
       "id": "P17",
       "reason": "model-assumption"
+    },
+    {
+      "id": "P24",
+      "reason": "stage-only"
     }
   ],
   "pendingSteps": [
@@ -129,15 +117,44 @@
       "after": "launch",
       "closeBy": "첫 출시 후 감사 기록",
       "record": "docs/methodology/checklist-runs/qeth15/2026-10-13.json"
+    },
+    {
+      "id": "depositAck",
+      "after": "deposits-open",
+      "closeBy": "예치를 열기 전에 닫는다 — 화면 src/components/LeverageDeposit.tsx(RiskConfirm) + src/data/candidates.ts qeth15 depositRisk, 점검 docs/methodology/checklist-runs/qeth15/evidence/deposit-screen-⟨날짜⟩.txt(standIns)",
+      "record": "docs/methodology/checklist-runs/qeth15/2026-10-22.json"
+    },
+    {
+      "id": "D11",
+      "after": "gate",
+      "closeBy": "규칙서 개정(머리 상태 줄 · §2 · §9B · §9C · §10 · §11 · §12 · §13 · 부록 B · C · P · R) + 관문 보고 rulebooks/qeth15.gate.json을 개정 규칙서로 다시 — result가 pass-with-exceptions(또는 pass)여야 앵커",
+      "record": "docs/methodology/checklist-runs/qeth15/2026-10-22.json"
+    },
+    {
+      "id": "D16",
+      "after": "anchor",
+      "closeBy": "볼트 결정문 앵커 tx",
+      "record": "docs/methodology/checklist-runs/qeth15/2026-10-22.json"
+    },
+    {
+      "id": "D17",
+      "after": "launch",
+      "closeBy": "사이트 반영(주소 · 예치 화면) 프로덕션 재확인 · 예치 열기(2026-10-22, 결정문 앵커 뒤) — 뒤의 날짜 기록(follow-up)",
+      "record": "docs/methodology/checklist-runs/qeth15/2026-10-22.json"
+    },
+    {
+      "id": "D18",
+      "after": "launch",
+      "closeBy": "출시 후 감사(P24 만료 조건 · 이양 수락 2026-10-25 무렵 확인)",
+      "record": "docs/methodology/checklist-runs/qeth15/2026-10-22.json"
     }
   ],
   "judgments": [],
-  "untestedAmongChanged": 1,
+  "untestedAmongChanged": 0,
   "checksSkipped": [],
   "result": "fail",
   "violationsByCheck": {
-    "C4": 3,
-    "C6": 1,
-    "C10": 20
+    "C4": 5,
+    "C10": 23
   }
 }

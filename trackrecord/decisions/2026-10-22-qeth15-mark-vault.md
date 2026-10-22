@@ -4,12 +4,13 @@
 
 ## What starts today
 
-A testnet vault on GIWA Sepolia (chainId 91342), ⟨address⟩, created on 2026-10-21 in ⟨deploy tx⟩ (block ⟨…⟩)
+A testnet vault on GIWA Sepolia (chainId 91342), `0x5F1FE9E18a2beeE8Bb4Ec6f15571d6ba4BbC19F6`, created on 2026-10-21 in
+`0xe5ff35f50e1c60ee6c5da52527ba998b3da25b76e98e7a1b548cb0064a121e23` (block 39228502)
 with deposit cap 0, has its share price marked to the qETH1.5X level (level ÷ 100) once a day, after the day's
-line is anchored, by the keeper's daily run. Its first mark, to line ⟨6⟩ (dated 2026-10-22), was sent on
-2026-10-22 in ⟨tx⟩ and checked by a person against that line. It holds test dollars only — no ether and no
+line is anchored, by the keeper's daily run. Its first mark, to the line with seq 6 (dated 2026-10-22, level 101.88372),
+was sent on 2026-10-22 in `0xad19a976b5f3d7f85db070b3bc55e12cdd8d9c5164e7e5d251d68ddae4d438f2` (block 39300457) and checked by a person against that line. It holds test dollars only — no ether and no
 debt — and issues and redeems at the marked price. It displays the level; it is not the book. It runs the
-contract of the testnet vaults redeployed on 2026-10-21 (decision ⟨redeployment decision id⟩), the same code as
+contract of the testnet vaults redeployed on 2026-10-21 (decision `2026-10-21-testnet-vaults-redeployment`), the same code as
 the redeployed qBTC2X mark vault; that contract's comments describe qX20. Owner and keeper at deployment: the
 keeper key; guardian: `0xE20FcC34cA4d20F6aD1b7dcbf4229eF5C36634A3`, the guardian of the redeployed vaults.
 Deposits open on 2026-10-22, after this decision is anchored, up to 1,000,000 test dollars — an exposure limit,
@@ -22,7 +23,8 @@ the record lines and the pinned keeper files of that decision do not change.
 
 ## The rules in force (pinned)
 
-The rulebook is `rulebooks/qeth15.md` at commit ⟨…⟩ of this repository (sha256 ⟨…⟩). This decision amends it
+The rulebook is `rulebooks/qeth15.md` at commit `f9f24bc6a67efa33e119434ced82d1b45a3608c2` of this repository (sha256
+`6d3ca1bee00fc38d487907186050765b3111efed11dc191d9e3ba7f34207ab80`). This decision amends it
 only where it said that no vault exists — the status line, sections 2, 9B, 9C, 10, 11, 12 and 13, and appendices
 B, C, P and R: the vault, its deposit cap (P19) and its mark gate (P24) are stated there now. The rule of the
 level does not change. The inception decision's pin of the rulebook (commit
@@ -35,7 +37,7 @@ every line of this series to that file through the inception decision, so one ch
 series. Its two sentences that no vault follows the level and that there is no vault to charge the fee stay as
 written; this decision states the fact. Neither value this decision sets is read from that file: the mark gate
 is in the vault registry and the deposit cap is on chain. `keeper/rulebooks/qeth15.provenance.json` is rewritten
-with this amendment (sha256 ⟨…⟩): it now names the amended rulebook and this decision's checklist run record and
+with this amendment (sha256 `cad1116ecb51e6bd403f93ee3f8b0e7aee7f83589fc5bbd9783801c057b70d36`): it now names the amended rulebook and this decision's checklist run record and
 holds the rows of P19 and P24; the keeper JSON does not change. The inception decision's pin of the provenance
 file (sha256 `49d7b93ae7991857e95756bd30c613f7c9df480539c9dac750f912025a2f2543`) stays true of the file at the
 commit it names. The gate report
@@ -44,18 +46,20 @@ that report stays true of the file at the commit it names.
 
 ## The vault at deployment
 
-- Contract: `QuadrixIndexVault`, built from the site repository (private) at commit ⟨…⟩ — the build the
-  redeployment decision pins. Runtime code 6,135 bytes; its code hash, ⟨…⟩, equals that of the redeployed
-  qBTC2X mark vault ⟨address⟩ (its one immutable value, the test dollar, is the same).
+- Contract: `QuadrixIndexVault`, built from the site repository (private) at commit `85c37fc415bad6c856fdeae4a8a87bc1b1c763ec` — the build the
+  redeployment decision pins. Runtime code 6,135 bytes; its code hash,
+  `0x4d17aa8972b680808e9d371b4e3caba9603145bca7017278f6186bfe392b3b17`, equals that of the redeployed
+  qBTC2X mark vault `0x8b0200B7e920a7fB06e94890d5Efb6aB7d2C1378` (its one immutable value, the test dollar, is the same).
 - Deployed by `keeper/deploy-mark-vault.mjs` (sha256 `94263084aff6afad3c89e2382a3f7bd893d1076499e66fc594cf9b1682db87fb`) through the workflow `mark-vault-setup`, from the
   artifact `keeper/artifacts/QuadrixIndexVault.json` (sha256 `c32bb1b1ff3ec7858cce1a6ababc073290b58ede04c17292a9b2fff56666edeb`). The tool refuses unless the artifact has the
   code shape of the qBTC2X mark vault named in the registry, whose symbol is qBTC2X and whose guardian is not 0.
 - Constructor: test dollar `0xf70B2b744eE604728D661b7D07460843DBD1be76`, name "Quadrix ETH 1.5x Vault",
   symbol `qETH1.5X` (the rulebook JSON's ticker; the keeper refuses to mark a vault whose symbol differs),
   deposit cap 0, manager the keeper key `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` (owner and keeper).
-- Then, in a second transaction, `setGuardian(0xE20FcC34cA4d20F6aD1b7dcbf4229eF5C36634A3)` (tx ⟨…⟩). The tool
+- Then, in a second transaction, `setGuardian(0xE20FcC34cA4d20F6aD1b7dcbf4229eF5C36634A3)` (tx
+  `0x485787b556c1abde73977a46f2e7f1c54fff4196327b5a51246a810fb8e7cd12`, block 39228510). The tool
   writes the address into the registry only after both transactions are read back.
-- Read back at block ⟨…⟩: share price 1.000000, supply 0, deposit cap 0, deposits not paused, owner = keeper =
+- Read back at block 39228554: share price 1.000000, supply 0, deposit cap 0, deposits not paused, owner = keeper =
   the keeper key, pending owner 0, guardian `0xE20FcC34cA4d20F6aD1b7dcbf4229eF5C36634A3` (≠ 0, ≠ keeper,
   ≠ owner, no role on the timelock).
 
@@ -65,17 +69,21 @@ that report stays true of the file at the commit it names.
    a dry run, then the deployment above and its read-back. Before it, on a GIWA Sepolia fork taken after the
    redeployment, the keeper's rehearsal deployed the three mark vaults with their guardian and checked the
    qETH1.5X vault's symbol and guardian; on that fork the qETH1.5X vault itself then had one mark, deposits
-   opened, a deposit and a redemption (⟨rehearsal record⟩).
+   opened, a deposit and a redemption (`docs/methodology/checklist-runs/qeth15/evidence/fork-rehearsal-2026-10-21.txt`
+   in the site repository, sha256 `4479a8aadeb630827e16cd2a9942ccafc3f92933f3ee61105f0bdfe34900ac52`).
 2. The deploying workflow writes the address, transaction and block into `keeper/leverage-vaults.json`, entry
    `qeth15`, with the mark gate below; from then on the daily run marks the vault after it writes and anchors
    the day's line.
-3. 2026-10-22, the daily run of 00:25 UTC: line ⟨6⟩ is written and anchored, then the first mark moves the
-   share price from 1.000000 to that line's level ÷ 100, ⟨in n step(s)⟩ (tx ⟨…⟩). A person compared the
+3. 2026-10-22, the daily run of 00:25 UTC: the line with seq 6 (line 7 of `trackrecord/record-qeth15.jsonl`,
+   level 101.88372) is written and anchored (tx `0x3260c0abe5bfd807840c6bc5852a91742ef1d44928ad3a95ebb24594aa9eea1c`,
+   block 39300454), then the first mark moves the share price from 1.000000 to that line's level ÷ 100,
+   1.018837, in one step (tx `0xad19a976b5f3d7f85db070b3bc55e12cdd8d9c5164e7e5d251d68ddae4d438f2`, block 39300457;
+   index level 101883720 in the `NavUpdated` event). A person compared the
    vault's share price with that line before this decision was anchored.
 4. This decision is anchored, and the vault page shows the deposit screen below.
 5. Deposits open on 2026-10-22, after (4): the keeper key, still the vault's owner, raises the deposit cap from
    0 to 1,000,000 test dollars.
-6. The same day, after (5): the keeper key proposes the timelock of the redeployed vaults, ⟨timelock address⟩,
+6. The same day, after (5): the keeper key proposes the timelock of the redeployed vaults, `0xC387f483A4a38C58c746b476340Be7F52b69090A`,
    as the vault's owner, and the timelock's proposer — a hardware key held by the owner — schedules the
    acceptance. The timelock can accept 72 hours after the scheduling transaction. Deposits open before the
    handover because, once the timelock owns the vault, a change of the deposit cap waits 72 hours. The
@@ -106,7 +114,7 @@ cap or of the pause waits 72 hours.
 
 | Role | Address | Who holds it | What it can do |
 | --- | --- | --- | --- |
-| Owner | the keeper key until the timelock accepts; then the timelock of the redeployed vaults, ⟨address⟩ | the timelock: delay 72 hours, proposer a hardware key held by the owner (as stated in the redeployment decision) | deposit cap, pause, keeper and guardian appointment |
+| Owner | the keeper key until the timelock accepts; then the timelock of the redeployed vaults, `0xC387f483A4a38C58c746b476340Be7F52b69090A` | the timelock: delay 72 hours, proposer a hardware key held by the owner (as stated in the redeployment decision) | deposit cap, pause, keeper and guardian appointment |
 | Keeper | `0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902` | the keeper key | marks |
 | Guardian | `0xE20FcC34cA4d20F6aD1b7dcbf4229eF5C36634A3` | a hardware key held by the owner | `disableKeeper` only |
 
@@ -116,8 +124,8 @@ delay of 72 hours is the redeployment decision's owner decision; this decision d
 ## Tested, and not tested (pinned)
 
 Parameter citation table: appendix P of `rulebooks/qeth15.md` (pinned above); keeper provenance
-`keeper/rulebooks/qeth15.provenance.json` (sha256 ⟨…⟩). Checklist run record: `docs/methodology/checklist-runs/qeth15/2026-10-22.json` (site repository, private;
-sha256 ⟨…⟩). Every evidence file it pins can be published: the role read-back after deployment, the fork
+`keeper/rulebooks/qeth15.provenance.json` (sha256 `cad1116ecb51e6bd403f93ee3f8b0e7aee7f83589fc5bbd9783801c057b70d36`). Checklist run record: `docs/methodology/checklist-runs/qeth15/2026-10-22.json` (site repository, private;
+sha256 `b860fd258519747ceff2323ccf03266729d8d2505357985dc10f534a896361da` ⟦TO FILL: provisional — the run record changes when the deposit-screen check and the final review are added; recompute⟧). Every evidence file it pins can be published: the role read-back after deployment, the fork
 rehearsal, the deposit-screen check and the two pre-launch reviews are in
 `docs/methodology/checklist-runs/qeth15/evidence/` of the site repository, each with its sha256 in the run
 record; the two measurements below are in this repository. The run record names no internal file. Track:
@@ -155,9 +163,10 @@ exposure limit is not entered there. Contract constants this decision does not s
 states them): the 25% bound per mark, the share-price floor, the test-dollar faucet drawn on redemption.
 
 The citation gate (report-only) does not pass this decision. Its report for the amended
-rulebook, `rulebooks/qeth15.gate.json` (sha256 ⟨…⟩), reads "fail" with ⟨n⟩ violations: the checklist run record of 2026-10-13, which the rows of the inherited values
+rulebook, `rulebooks/qeth15.gate.json` (sha256 `de45e1155c682819643bc7fd9fd5e184629b8d0658c6310c40dccd23de1ee054` ⟦TO FILL: provisional — regenerate the report after the run record is final and the site commit is on origin; recompute⟧), reads "fail" with 28 violations ⟦TO FILL: provisional count — expected 26 (C4 four · C10 22) once the final review file exists and the site commit is on origin⟧: the checklist run record of 2026-10-13, which the rows of the inherited values
 still cite and which is pinned, has one open step, the public block, and does not pin the launch checks (C4,
-three); the page block is not yet in the form the gate reads (C10, ⟨22⟩)⟨; any other check, as the report lists it⟩. No value this decision introduces is among them as untested.
+three); this decision's run record leaves the public block not done, as the gate path of this decision states (C4,
+one), and holds one launch review report of two until the final review is written (C4, one); the page block is not yet in the form the gate reads (C10, 22), and the site commit the gate ran on is not yet on origin (C10, one). No value this decision introduces is among them as untested.
 
 Checks not run for this product, and why: holdability of collateral and debt on GIWA (R08) — not applicable,
 the vault holds test dollars only; security items R44–R46 — no contract code beyond the redeployment's, whose
@@ -180,5 +189,5 @@ of 10,000, in the contract code), so a larger redemption may need to be split. N
 
 | Repository | HEAD at pinning |
 | --- | --- |
-| quadrix-track-record (rulebook amendment, keeper provenance file, gate report, owner decisions extract, vault registry entry, deployment tool and artifact) | ⟨…⟩ |
-| quadrix (site, private — contract source, checklist run record) | ⟨…⟩ |
+| quadrix-track-record (rulebook amendment, keeper provenance file, owner decisions extract, vault registry entry, deployment tool and artifact; the gate report is added with this decision and pinned by sha256 above) | `1c6ef3fe7540dd4926f3e9ea890a0c27b606d0b0` |
+| quadrix (site, private — contract source, checklist run record; the commit the gate report was run on) | `07223b101574b7cc8f8c4c7c4a22b237f49564d6` ⟦TO FILL: provisional — local commit, not on origin; replace with the pushed commit the final gate report is run on⟧ |
