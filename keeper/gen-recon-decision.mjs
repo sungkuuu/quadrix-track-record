@@ -19,8 +19,13 @@
  * document must be anchored on the UTC day in its file name, never later
  * (scripts/anchor-decision.mjs refuses a back-dated file).
  *
+ * When the vault's owner is a timelock (--owner-delay-hours N, the
+ * timelock's getMinDelay in hours), the announcement is scheduled on the
+ * timelock and lands N hours later at the earliest; the sentences about the
+ * day of the announcement and the execution date say so.
+ *
  * Usage:
- *   node keeper/gen-recon-decision.mjs --index qrev [--date YYYY-MM-DD | --plan p] [--recon-date YYYY-MM-DD] [--out p] [--force]
+ *   node keeper/gen-recon-decision.mjs --index qrev [--date YYYY-MM-DD | --plan p] [--recon-date YYYY-MM-DD] [--owner-delay-hours N] [--out p] [--force]
  *
  * Default output: trackrecord/decisions/{plan date}-{index}-basket-reconstitution.md
  * (the path the plan names).
@@ -37,7 +42,13 @@ const flag = (n) => argv.includes(n);
 const opt = (n, d) => { const i = argv.indexOf(n); return i >= 0 && argv[i + 1] != null ? argv[i + 1] : d; };
 const INDEX = opt('--index', null);
 if (!INDEXES.includes(INDEX)) {
-  console.error(`usage: node keeper/gen-recon-decision.mjs --index ${INDEXES.join('|')} [--date YYYY-MM-DD | --plan p] [--recon-date YYYY-MM-DD] [--out p] [--force]`);
+  console.error(`usage: node keeper/gen-recon-decision.mjs --index ${INDEXES.join('|')} [--date YYYY-MM-DD | --plan p] [--recon-date YYYY-MM-DD] [--owner-delay-hours N] [--out p] [--force]`);
+  process.exit(2);
+}
+// The owner's timelock delay in hours (null: the owner is a key and announces directly).
+const OWNER_DELAY_H = opt('--owner-delay-hours', null) == null ? null : Number(opt('--owner-delay-hours'));
+if (OWNER_DELAY_H != null && !(Number.isInteger(OWNER_DELAY_H) && OWNER_DELAY_H > 0)) {
+  console.error('--owner-delay-hours must be a positive whole number of hours (the timelock\'s getMinDelay / 3600)');
   process.exit(2);
 }
 const planFile = opt('--plan', null) ?? (opt('--date', null) ? planPath(INDEX, opt('--date')) : latestPlan(INDEX));
@@ -84,7 +95,10 @@ if (off.length) {
 }
 const short = (a) => (a ? `\`${a}\`` : '_to be deployed_');
 const days = Number(plan.vaultState.registryDelay ?? 604800) / 86400;
-const eta = plan.announce?.etaIso ? plan.announce.etaIso.slice(0, 10) : `announce + ${days} days`;
+const eta = plan.announce?.etaIso ? plan.announce.etaIso.slice(0, 10) : OWNER_DELAY_H != null ? `the timelock's execution of the announcement + ${days} days` : `announce + ${days} days`;
+// Where the first reference price is fixed: the day of the announcement, or
+// — owner = timelock — the day the announcement is scheduled on it.
+const announceDay = OWNER_DELAY_H != null ? `the day the announcement is scheduled on the owner's timelock` : 'the day of the announcement';
 const owner = plan.vaultState.owner;
 const keeper = plan.vaultState.keeper;
 const rolesCollapsed = owner.toLowerCase() === keeper.toLowerCase();
@@ -120,7 +134,7 @@ const seriesLine = INDEX === 'qx20'
 // The registry grows by the adds at execute; a removal leaves it only at finalizeRemoval.
 const countAfterExecute = plan.vaultState.assetCount + plan.adds.length;
 const countFinal = plan.vaultState.assetCount + plan.adds.length - plan.removes.length;
-lines.push(`**Decided:** ${plan.date}, on the keeper's reconstitution of ${RECON_DATE === plan.date ? 'the same day' : RECON_DATE}. **Effective on chain:** ${plan.announce ? `announced ${plan.announce.at.slice(0, 10)} (tx \`${plan.announce.txHash}\`)` : 'announced after this document is anchored (the announcement carries its sha256)'}; executable from ${eta} — \`REGISTRY_DELAY\` is ${days} days and is not shortened. **Series:** ${seriesLine}. **Vault:** \`${plan.vault}\` (GIWA Sepolia, chain ${plan.chainId}), \`assetCount\` ${plan.vaultState.assetCount} at block ${plan.block.number}; ${countAfterExecute} once the change is executed${plan.removes.length ? `, ${countFinal} once every removal is finalized` : ''}.`);
+lines.push(`**Decided:** ${plan.date}, on the keeper's reconstitution of ${RECON_DATE === plan.date ? 'the same day' : RECON_DATE}. **Effective on chain:** ${plan.announce ? `announced ${plan.announce.at.slice(0, 10)} (tx \`${plan.announce.txHash}\`)` : (OWNER_DELAY_H != null ? `scheduled on the owner's timelock after this document is anchored, and announced when the timelock executes it, no earlier than ${OWNER_DELAY_H} hours later (the announcement carries its sha256)` : 'announced after this document is anchored (the announcement carries its sha256)')}; executable from ${eta} — \`REGISTRY_DELAY\` is ${days} days and is not shortened. **Series:** ${seriesLine}. **Vault:** \`${plan.vault}\` (GIWA Sepolia, chain ${plan.chainId}), \`assetCount\` ${plan.vaultState.assetCount} at block ${plan.block.number}; ${countAfterExecute} once the change is executed${plan.removes.length ? `, ${countFinal} once every removal is finalized` : ''}.`);
 lines.push('');
 lines.push('## What enters');
 lines.push('');
@@ -135,7 +149,7 @@ else {
   if (plan.vaultAbi === 'priced-adds') {
     // A vault built from the hardened source takes each entering name's first
     // reference price in the announcement itself (addRefPrices).
-    lines.push(`The announcement commits the first reference price of each new asset: \`announceRegistryChange\` takes the price with the address and writes it on chain at once, so holders can read it for the whole notice. Only a new announcement, which restarts the ${days} days, can change it before execution. Policy: the keeper commits a price only when two independent sources agree within ${pct(plan.policy.firstPriceTolBps / 10_000)} and the mock's \`decimals()\` on chain equals the value above (a wrong decimal is a 10× price), and only from a plan made on the day of the announcement. The prices above are those of ${plan.date}. The price committed on chain is read from the same two sources on the day of the announcement, by the same rule, and can differ from the table. The committed price is the one in the \`RegistryChangeAnnounced\` event (\`addRefPrices\`) and in \`refPrice(asset)\` while the change is pending. On the execution day the keeper's first post must lie within ±15% of the committed price, as every later post must lie within ±15% of the one before it.`);
+    lines.push(`The announcement commits the first reference price of each new asset: \`announceRegistryChange\` takes the price with the address and writes it on chain at once, so holders can read it for the whole notice. Only a new announcement, which restarts the ${days} days, can change it before execution. Policy: the keeper commits a price only when two independent sources agree within ${pct(plan.policy.firstPriceTolBps / 10_000)} and the mock's \`decimals()\` on chain equals the value above (a wrong decimal is a 10× price), and only from a plan made on ${announceDay}. The prices above are those of ${plan.date}. The price committed on chain is read from the same two sources on ${announceDay}, by the same rule, and can differ from the table.${OWNER_DELAY_H != null ? ` The timelock holds the call for at least ${OWNER_DELAY_H} hours, so the committed price is at least ${OWNER_DELAY_H} hours old when the announcement lands; it is checked against both sources again before the timelock call is executed, and before the change is executed.` : ''} The committed price is the one in the \`RegistryChangeAnnounced\` event (\`addRefPrices\`) and in \`refPrice(asset)\` while the change is pending. On the execution day the keeper's first post must lie within ±15% of the committed price, as every later post must lie within ±15% of the one before it.`);
   } else {
     lines.push(`The first reference price of a new asset is band-free by construction (\`setRefPrice\` applies the ±15% band only from the second post), so it is the one number in this change that nothing on chain bounds. Policy: it is posted only when two independent sources agree within ${pct(plan.policy.firstPriceTolBps / 10_000)} and the mock's \`decimals()\` on chain equals the value above; a wrong decimal is a 10× price and the band then needs about fifteen steps to walk it back. The price posted is taken from the two sources on the execution day, when the plan is regenerated; the prices above are those of ${plan.date}.`);
   }
@@ -194,7 +208,7 @@ lines.push(`"Auctions aim at" is what this session's trades reach: the names mar
 lines.push('');
 lines.push('## The seven-day lag');
 lines.push('');
-lines.push(`${INDEX === 'qx20' ? `The qX20 book reconstituted on ${RECON_DATE}; the keeper book carries the new membership and weights from that day` : `The paper index reconstituted on ${RECON_DATE}; the record row of that day carries the new membership and weights`}. The vault cannot: \`announceRegistryChange\` fixes the tuple (adds, removes, this document's sha256) and \`executeRegistryChange\` accepts exactly that tuple only after ${days} days — from ${eta}. Between the two the vault holds the old shape, \`navPerShare\` keeps tracking the index, and redemptions pay the old shape. Only one change can be pending per vault and announcing again restarts the clock, so the tuple above is not to be amended by a second announcement. Over the lag the vault's holdings are on chain and the index is in ${INDEX === 'qx20' ? 'the keeper book' : 'the record'}, so the difference between the two can be computed by anyone.`);
+lines.push(`${INDEX === 'qx20' ? `The qX20 book reconstituted on ${RECON_DATE}; the keeper book carries the new membership and weights from that day` : `The paper index reconstituted on ${RECON_DATE}; the record row of that day carries the new membership and weights`}. The vault cannot: \`announceRegistryChange\` fixes the tuple (adds, removes, this document's sha256) and \`executeRegistryChange\` accepts exactly that tuple only after ${days} days — from ${eta}.${OWNER_DELAY_H != null ? ` The vault's owner is a timelock, so the announcement itself is scheduled first and lands no earlier than ${OWNER_DELAY_H} hours later; the lag runs from the day of the reconstitution to the execution, ${OWNER_DELAY_H} hours plus ${days} days at the least.` : ''} Between the two the vault holds the old shape, \`navPerShare\` keeps tracking the index, and redemptions pay the old shape. Only one change can be pending per vault and announcing again restarts the clock, so the tuple above is not to be amended by a second announcement. Over the lag the vault's holdings are on chain and the index is in ${INDEX === 'qx20' ? 'the keeper book' : 'the record'}, so the difference between the two can be computed by anyone.`);
 lines.push('');
 lines.push('## Auction policy in force');
 lines.push('');

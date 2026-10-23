@@ -297,6 +297,7 @@ the vault follows over the week, and the gap is a stated tracking difference.
 | plan | `keeper/basket-plan.mjs` (`basket-reconstitution`, stage `plan`) | reads only |
 | decision draft | `node keeper/gen-recon-decision.mjs --index <x> --date <d>` (local) | — |
 | announce … verify | `keeper/basket-recon.mjs` (`basket-reconstitution`, stages) | owner/keeper; fills by the bidder |
+| announce when the owner is a timelock | `keeper/basket-recon.mjs --stage announce --timelock-out <file>` (local dry run), then the timelock ("When the owner is a timelock" below) | the proposer schedules; anyone executes |
 
 Every tool is a dry run unless `live` is ticked and `confirm` is `EXECUTE`.
 
@@ -443,6 +444,42 @@ are not in the hash, and `executeRegistryChange` is the same call.
 - The ABI is inline in `keeper/basket-plan.mjs` (`ANNOUNCE_ABI`,
   `vaultAbiFor`); no build artifact of the vault is read, so an artifact file
   that changes after a deploy changes nothing here.
+
+### When the owner is a timelock (2026-10-23)
+
+`announceRegistryChange` is the only owner call of a reconstitution:
+execute and finalize are open to anyone, first prices and auctions are the
+keeper's, and fills are open once bidding is open. When the vault's owner
+is a `TimelockController`, the keeper cannot announce, and the stage
+refuses as before. The announcement then goes through the timelock:
+
+1. On the day of the plan (UTC), after the decision document is anchored and
+   the plan carries it: `node keeper/basket-recon.mjs --index <x> --stage
+   announce --plan <plan> --timelock-out <file>`. A dry run: every check of a
+   live announce runs (decision, tuple, decimals, symbols, the two-source
+   gate on a priced-adds vault, a plan made today), the call is simulated
+   from the owner, and the file gets the target, value 0, calldata, the
+   tuple keccak and the committed prices. Nothing is sent and the plan is
+   not changed.
+2. The same UTC day, the timelock's proposer schedules exactly that call
+   (target, value 0, calldata, predecessor 0) with the timelock's delay.
+3. After the delay, anyone executes it. Shortly before the call becomes
+   executable, the committed prices are checked against both sources again;
+   outside the contract's ±15% band of today's price, the proposer cancels
+   it before it becomes executable (execution is open to anyone) and a new
+   plan is scheduled — the first post after execute would revert otherwise.
+   A stale committed price moves no value: the add holds no balance until
+   the auctions buy it, and the auctions need a fresh in-band post first.
+4. Then dispatch stage `announce` live: the change pending on chain hashes
+   to the plan's tuple, so the run adopts it into the plan (`adopted`, with
+   `via` = the timelock and `signer` = whoever executed it); nothing is sent.
+   Make no other plan for this index between steps 1 and 4: the day-7
+   planner carries the announcement from the latest plan only.
+5. Seven days after the timelock's execution: day 7 as usual.
+
+The lag from the reconstitution to the execution is the timelock's delay
+plus seven days. The decision draft says so with
+`gen-recon-decision.mjs --owner-delay-hours <hours>`.
 
 ### Reads after a write, and re-runs (2026-10-01)
 

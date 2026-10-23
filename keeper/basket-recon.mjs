@@ -4,7 +4,10 @@
  *
  *   announce      owner: announceRegistryChange(adds, removes, decisionSha256),
  *                 or (adds, addRefPrices, removes, decisionSha256) on a
- *                 priced-adds vault
+ *                 priced-adds vault. When the owner is a timelock contract,
+ *                 --timelock-out FILE runs every announce check, simulates
+ *                 the call from the owner and writes it to FILE for the
+ *                 timelock's proposer to schedule — nothing is sent (below)
  *   execute       anyone: executeRegistryChange(same tuple) once the 7 days ran
  *   first-prices  keeper: the first setRefPrice for every added asset
  *   auctions      keeper opens, the bidder fills, until every traded name is
@@ -106,6 +109,7 @@
  * Usage:
  *   node keeper/basket-recon.mjs --index qrev --stage announce                 # dry run against GIWA
  *   KEEPER_PK=0x… node keeper/basket-recon.mjs --index qrev --stage announce --live
+ *   node keeper/basket-recon.mjs --index qx20 --stage announce --timelock-out /tmp/qx20-announce.json   # owner = timelock
  *   node keeper/basket-recon.mjs --index qrev --stage day7 --live --rpc http://127.0.0.1:8545 \
  *        --from 0x<owner> --bidder 0x<bidder> --warp                              # anvil rehearsal
  *
@@ -125,6 +129,13 @@
  *   --no-faucet           never top the bidder up from a mock's open faucet
  *   --max-faucet-calls n  cap on faucet() calls per asset (default 60)
  *   --allow-plan-date     accept a plan not generated today (first-prices, auctions)
+ *   --timelock-out FILE   announce stage, dry run only: the owner is a contract (a
+ *                         timelock), so the keeper cannot announce. Every check of a
+ *                         live announce runs as usual; then the call is simulated from
+ *                         the owner and written to FILE (target, value 0, calldata,
+ *                         tuple keccak, the decision, the checks) for the proposer to
+ *                         schedule. After the timelock executes it, a live run of this
+ *                         stage adopts the pending change into the plan (nothing sent)
  *   --hook file           REHEARSAL ONLY (--live --from on a local anvil): a module whose
  *                         default export is awaited at 'before-fill' (after the wait, before
  *                         the live balance is re-read) and 'after-fill' (between a drain fill
@@ -134,7 +145,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createWalletClient, http, getAddress, isAddress, keccak256, encodeAbiParameters, parseEventLogs, parseAbi, maxUint256 } from 'viem';
+import { createWalletClient, http, getAddress, isAddress, keccak256, encodeAbiParameters, encodeFunctionData, parseEventLogs, parseAbi, maxUint256 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
   INDEXES, GIWA_RPC, GIWA_CHAIN_ID, VAULT_ABI, ERC20_ABI, DECISIONS_LEDGER,
@@ -202,10 +213,15 @@ function parseArgs(argv) {
     allowPlanDate: flag('--allow-plan-date'),
     paceMs: opt('--pace-ms', null) == null ? undefined : Number(opt('--pace-ms')),
     hook: opt('--hook', null),
+    timelockOut: opt('--timelock-out', null),
   };
   if (!INDEXES.includes(o.index) || !STAGES.includes(o.stage) || !['fair', 'open', 'natural'].includes(o.fill)) {
     console.error(`usage: node keeper/basket-recon.mjs --index ${INDEXES.join('|')} --stage ${STAGES.join('|')} [--plan p] [--rpc URL] [--live] [--from 0x…] [--bidder 0x…] [--fill fair|open|natural] [--warp] …`);
     process.exit(2);
+  }
+  if (o.timelockOut != null) {
+    if (o.stage !== 'announce') { console.error('--timelock-out is for the announce stage only'); process.exit(2); }
+    if (o.live) { console.error('--timelock-out sends nothing: it writes the call for the owner contract to schedule — drop --live'); process.exit(2); }
   }
   return o;
 }
@@ -813,7 +829,12 @@ export async function stageAnnounce(ctx) {
     await adoptAnnounce(ctx, { t, v, entry, expectedHash });
     return;
   }
-  if (ctx.keeperAddr !== v.owner) throw new Refused(`announce is onlyOwner; owner is ${v.owner}, signer is ${ctx.keeperAddr}`);
+  const ownerCall = o.timelockOut != null;
+  if (ownerCall) {
+    const { value: code } = await retryRead(() => ctx.pc.getCode({ address: v.owner }), { what: `code at the owner ${v.owner}` });
+    if (!code || code === '0x') throw new Refused(`--timelock-out: the owner ${v.owner} has no code — a key owner signs the announcement itself (run without --timelock-out)`);
+    log(`owner ${v.owner} is a contract: the checks below run as for a live announce, then the call is written to ${o.timelockOut} — nothing is sent`);
+  } else if (ctx.keeperAddr !== v.owner) throw new Refused(`announce is onlyOwner; owner is ${v.owner}, signer is ${ctx.keeperAddr} (when the owner is a timelock: --timelock-out FILE writes the call for its proposer to schedule)`);
   const reads = await batchNow(ctx, 'announce checks', [
     ...t.adds.flatMap((a) => [
       { address: plan.vault, abi: VAULT_ABI, functionName: 'isRegistryAsset', args: [a] },
@@ -860,6 +881,7 @@ export async function stageAnnounce(ctx) {
   log(`tuple keccak ${expectedHash}; eta would be now + ${Number(v.registryDelay) / 86400} days`);
   const args = shape === 'priced-adds' ? [t.adds, t.prices, t.removes, t.sha] : [t.adds, t.removes, t.sha];
   const gas = shape === 'priced-adds' ? GAS.announcePriced(t.adds.length, t.removes.length) : GAS.announce(t.adds.length + t.removes.length);
+  if (ownerCall) { await writeOwnerCall(ctx, { t, v, entry, shape, args, gas, expectedHash }); return; }
   const r = await call(ctx, { who: 'keeper', to: plan.vault, abi: vaultAbiFor(shape), functionName: 'announceRegistryChange', args, gas, what: 'announce' });
   if (r.dry) return;
   // Recorded from the receipt alone: the RegistryChangeAnnounced event
@@ -893,13 +915,72 @@ export async function stageAnnounce(ctx) {
 
 /** The plan.announce record — the fields basket-plan.mjs carries to day 7
  *  (pendingHash, tuple) and gen-recon-decision.mjs prints (txHash, at). */
-function announceRecord({ txHash, block, at, eta, pendingHash, t, entry, signer, adopted = false, note = null }) {
+function announceRecord({ txHash, block, at, eta, pendingHash, t, entry, signer, via = null, adopted = false, note = null }) {
   return {
     txHash, block, at: at == null ? null : (typeof at === 'string' ? at : iso(at)),
     eta: eta == null ? null : eta.toString(), etaIso: eta == null ? null : iso(eta), pendingHash,
     tuple: { adds: t.adds, ...(t.prices ? { addRefPrices: t.prices } : {}), removes: t.removes, decisionSha256: t.sha }, decisionId: entry.id, signer,
-    ...(adopted ? { adopted: true } : {}), ...(note ? { note } : {}),
+    ...(via ? { via } : {}), ...(adopted ? { adopted: true } : {}), ...(note ? { note } : {}),
   };
+}
+
+const TIMELOCK_ABI = parseAbi(['function getMinDelay() view returns (uint256)']);
+
+/**
+ * --timelock-out: the owner is a contract (a timelock), so this stage cannot
+ * send the announcement. After every check of a live announce has passed,
+ * the call is simulated FROM the owner (a revert refuses, nothing written)
+ * and written to the file: target and calldata for the proposer to
+ * schedule, the tuple keccak the vault will hold as pendingRegistryChange,
+ * the committed first references, the decision. The plan is not changed;
+ * once the timelock has executed the call, a live run of this stage finds
+ * the pending change and adopts it into the plan (adoptAnnounce). The
+ * prices in the file are the plan's — the plan must be today's, and the
+ * call is meant to be scheduled the same UTC day; they are committed only
+ * when the timelock executes, after its delay (ownerMinDelay below).
+ */
+async function writeOwnerCall(ctx, { t, v, entry, shape, args, gas, expectedHash }) {
+  const { plan, log, o } = ctx;
+  const abi = vaultAbiFor(shape);
+  try {
+    await simulate(ctx, { address: plan.vault, abi, functionName: 'announceRegistryChange', args, account: v.owner });
+  } catch (e) {
+    if (e instanceof ReadTimeout) throw new Error(`announce could not be simulated from the owner — ${e.message}`);
+    throw new Refused(`announceRegistryChange simulated from the owner ${v.owner} would revert — ${fmtErr(e)}; nothing written`);
+  }
+  const data = encodeFunctionData({ abi, functionName: 'announceRegistryChange', args });
+  let minDelay = null;
+  try { minDelay = await readNow(ctx, 'owner getMinDelay', { address: v.owner, abi: TIMELOCK_ABI, functionName: 'getMinDelay' }); } catch { minDelay = null; }
+  const sym = (a, list) => list.find((x) => x.address && getAddress(x.address) === a)?.symbol ?? null;
+  const out = {
+    kind: 'quadrix.basket-announce.owner-call.v1',
+    index: plan.index, plan: path.relative(ROOT, ctx.planFile), planDate: plan.date, writtenAt: new Date().toISOString(),
+    chainId: plan.chainId, vault: plan.vault, owner: v.owner, ownerMinDelay: minDelay == null ? null : minDelay.toString(),
+    registryDelay: v.registryDelay.toString(), vaultShape: shape,
+    call: { target: plan.vault, value: '0', data, functionName: 'announceRegistryChange', gas: gas.toString() },
+    tuple: { adds: t.adds, ...(t.prices ? { addRefPrices: t.prices.map((x) => x.toString()) } : {}), removes: t.removes, decisionSha256: t.sha },
+    tupleKeccak: expectedHash,
+    adds: t.adds.map((a, i) => {
+      const add = plan.adds.find((x) => x.address && getAddress(x.address) === a);
+      return { symbol: add.symbol, address: a, decimals: add.decimals, firstRefPrice: String(add.firstRefPrice), committedRefPrice: t.prices ? t.prices[i].toString() : null, priceA: add.priceA, priceB: add.priceB ?? null, disagreementBps: add.disagreementBps ?? null };
+    }),
+    removes: t.removes.map((a) => ({ symbol: sym(a, plan.removes), address: a })),
+    decision: { id: entry.id, sha256: t.sha, file: entry.file, txHash: entry.txHash ?? null, anchoredAt: entry.anchoredAt ?? null },
+    checkedAt: { block: v.block.number.toString(), time: iso(v.block.timestamp) },
+    checks: [
+      `decision ${entry.id} anchored, of this basket, and the file on disk (if present) hashes to it`,
+      'nothing pending on the vault',
+      'no duplicate address in adds or removes, none in both; each add/remove is one of the plan\'s',
+      `adds: not registry assets, decimals on chain = the plan's, symbol m{SYMBOL}`,
+      'removes: registry assets, not in removal, symbol m{SYMBOL}',
+      ...(shape === 'priced-adds' ? [`priced-adds: prices = the plan's firstRefPrice, two sources within ${pct(o.firstPriceTol)}, adds and removes ascending; plan made ${plan.date}`] : []),
+      `announceRegistryChange simulated from the owner ${v.owner}: ok`,
+    ],
+  };
+  fs.mkdirSync(path.dirname(path.resolve(o.timelockOut)), { recursive: true });
+  fs.writeFileSync(o.timelockOut, JSON.stringify(out, null, 2) + '\n');
+  log(`  announceRegistryChange simulated from the owner ${v.owner}: ok`);
+  log(`owner call written to ${o.timelockOut}: target ${plan.vault}, calldata ${data.length / 2 - 1} bytes, tuple keccak ${expectedHash}; owner delay ${minDelay == null ? 'not readable (not a TimelockController?)' : `${Number(minDelay) / 3600} h`}, then ${Number(v.registryDelay) / 86400} days to execute — nothing was sent`);
 }
 
 /**
@@ -941,14 +1022,18 @@ async function adoptAnnounce(ctx, { t: t0, v, entry, expectedHash }) {
     t = { ...t, prices: committed };
   }
   let signer = v.owner; // announceRegistryChange is onlyOwner
+  let via = null;
   if (txHash) {
     const tx = await retryRead(() => ctx.pc.getTransaction({ hash: txHash }), { what: `tx ${txHash}` }).then((x) => x.value).catch(() => null);
     if (tx?.from) signer = getAddress(tx.from);
+    // Through the owner contract (a timelock's execute): the tx went to the
+    // owner, not to the vault; `signer` is then whoever executed it.
+    if (tx?.to && getAddress(tx.to) !== getAddress(plan.vault)) via = getAddress(tx.to);
   }
   const at = v.pendingRegistryEta - v.registryDelay;
   const found = (txHash ? `tx ${txHash} (block ${block}, from ${how})` : `the announce tx was not found since the plan's block ${ctx.plan.block?.number ?? '—'}`) + (priceNote ? `; ${priceNote}` : '');
   if (!ctx.live) { log(`this plan's change is already pending on chain (${v.pendingRegistryChange}, eta ${iso(v.pendingRegistryEta)}) but not recorded in the plan — a live run adopts it (${found}); nothing is sent`); return; }
-  plan.announce = announceRecord({ txHash, block, at, eta: v.pendingRegistryEta, pendingHash: v.pendingRegistryChange, t, entry, signer, adopted: true, note: `adopted from the chain by a later run: ${found}` });
+  plan.announce = announceRecord({ txHash, block, at, eta: v.pendingRegistryEta, pendingHash: v.pendingRegistryChange, t, entry, signer, via, adopted: true, note: `adopted from the chain by a later run: ${found}${via ? `; sent through the owner contract ${via}, executed by ${signer}` : ''}` });
   plan.announceTuple = plan.announce.tuple;
   savePlan(ctx.planFile, plan);
   log(`this plan's change was already pending on chain and is now recorded in the plan (adopted: ${found}); nothing sent; execute on or after ${iso(v.pendingRegistryEta)}`);
