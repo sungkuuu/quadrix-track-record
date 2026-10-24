@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-10-23T05:04:46.337Z",
-  "level": 96.7712987049133,
+  "updatedAt": "2026-10-24T04:49:44.311Z",
+  "level": 96.27135302032598,
   "sleeves": {
     "monetary": {
       "units": {
@@ -9,8 +9,8 @@
     },
     "workingCapital": {
       "units": 40,
-      "unitValue": 1.003384717064235,
-      "lastAccrual": "2026-10-23",
+      "unitValue": 1.0034935977854917,
+      "lastAccrual": "2026-10-24",
       "proxy": "DTB3"
     }
   },
@@ -23,7 +23,7 @@
   "onNotice": [],
   "stalePrices": {
     "BTC": {
-      "price": 81534,
+      "price": 80808,
       "runs": 0
     }
   }
