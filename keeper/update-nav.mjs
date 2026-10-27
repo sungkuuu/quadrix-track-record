@@ -211,8 +211,8 @@ async function main() {
   // The reconstitution happens at the FIRST RUN of each calendar month, with no
   // notice period and no announcement: the 2026-09-01 run swapped one
   // constituent, and the only traces are that run's log line and the
-  // state.json diff. Until 2026-10-21 the ledger line carried the NAV, not the
-  // membership; from the next run on it also carries the members (see below). The
+  // state.json diff. Until 2026-10-27 the ledger line carried the NAV, not the
+  // membership; from the first run after that it also carries the members (see below). The
   // seven-day announcement rule belongs to the basket-vault registry, not to
   // this keeper.
   const month = new Date().toISOString().slice(0, 7);
@@ -337,7 +337,7 @@ async function main() {
   // repository (since 2026-08-21; earlier marks exist only as on-chain events).
   // One line, one on-chain transaction — so the NAV of any past mark can be
   // checked against the chain without trusting state.json's current contents.
-  // From the first run after 2026-10-21 the line also carries members — symbol, weight and price
+  // From the first run after 2026-10-27 the line also carries members — symbol, weight and price
   // of the book held after this mark, at this mark's prices (qx20-members.mjs).
   // Earlier lines do not: their model book lives only in the git history of
   // state.json.
