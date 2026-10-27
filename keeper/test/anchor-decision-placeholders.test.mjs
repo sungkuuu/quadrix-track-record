@@ -64,7 +64,18 @@ const CASES = [
   ['empty sha256, 0000…', '| rulebook sha256 | `0000…` |'],
   ['empty sha256, ellipsis alone', '| rulebook | sha256 `…` |'],
   ['⟦ ⟧ (kept from the earlier guard)', '**Decided:** ⟦DATE⟧ (UTC).'],
+  ['placeholder XXX', '| deploy tx | XXX |'],
+  ['placeholder 0x…', '| timelock | `0x…` |'],
+  ['64 zeros labelled sha256 on a call line', `\`cast call <timelock> "hashOperation(...)"\` — rulebook sha256 \`${'0'.repeat(64)}\``],
 ];
+
+test('a bytes32 zero passed to a timelock call is a value, not an empty sha256 (anchored 2026-10-23 decision, line 74)', () => {
+  const line = `3. The operation: \`cast call <timelock> "hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)" <vault> 0 0x79ba5097 0x${'0'.repeat(64)} 0x27e4\``;
+  assert.deepEqual(findUnfinished(line), []);
+  assert.deepEqual(findUnfinished(`predecessor of schedule(...): 0x${'0'.repeat(64)}`), []);
+  assert.equal(findUnfinished(`| rulebook | \`${'0'.repeat(64)}\` |`).length, 1, 'outside a call line, 64 zeros are still an empty sha256');
+  assert.deepEqual(findUnfinished('the vault 0x5F1F…19F6 and the timelock 0x8c23…7902'), [], 'a shortened real address passes');
+});
 
 for (const [label, marker] of CASES) {
   test(`refused before the key, with line and text: ${label}`, () => {

@@ -389,8 +389,8 @@ Every tool is a dry run unless `live` is ticked and `confirm` is `EXECUTE`.
   (`verify.mjs` would fail it for good). `scripts/anchor-decision.mjs`
   refuses a back-dated file, a file with the DRAFT or TO FILL line, one
   that still says `_to be deployed_`, and one with any other draft banner or
-  unfilled value (⟦ ⟧ ⟨ ⟩ 〔 〕 ［ ］ {{ }}, TODO / TBD, a YYYY-MM-DD date, an
-  empty sha256 — the full list is in `scripts/decision-guard.mjs`); it names
+  unfilled value (⟦ ⟧ ⟨ ⟩ 〔 〕 ［ ］ {{ }}, TODO / TBD, XXX, a bare `0x…`, a
+  YYYY-MM-DD date, an empty sha256 — the full list is in `scripts/decision-guard.mjs`); it names
   each line it refused. `node scripts/decision-guard.mjs <file>` runs the same
   check without a key. If the day has passed, run the `plan` stage again and
   regenerate the draft that day.
