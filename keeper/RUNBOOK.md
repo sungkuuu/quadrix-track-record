@@ -134,11 +134,12 @@ issue #8). Each scheduled run worked on a main commit older than main's tip
 the keeper's plain `git push` was rejected. Commits `2493c6c` and
 `83452ff` (2026-10-14) replaced the plain push with a fetch, rebase and retry
 loop, and gave a push-only failure its own alert. The two lost ledger lines
-were restored by hand on branch `keeper/nav-marks-restore-2026-10-27` from
-the runs' logs and checked against their transaction receipts. Their
+were restored by hand on 2026-10-27, in a commit of their own, from the runs'
+logs and checked against their transaction receipts. Their
 `postedAt` is the runner's log time of the keeper's `nav` line, and their
-`priceSource` is `null`, because the log does not print it. With them, on
-every ledger line `navFrom` equals the prior `navTo`.
+`priceSource` is `null`, because the log does not print it. With them, every
+ledger line's `navFrom` equals the `navTo` of the previous line for the same
+vault.
 
 ### 6. Constituent without a price
 

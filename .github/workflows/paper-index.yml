@@ -288,7 +288,7 @@ jobs:
           # If a compute step failed as well, the general alert below also runs.
           if [ "$PUSH_OUTCOME" = "failure" ]; then
             {
-              echo "The paper-index records of this run were computed, and anchored on chain where the step anchors, but the record push to main failed — those lines are not on main."
+              echo "The record push to main failed — the paper-index records this run computed (and anchored on chain, where the step anchors) are not on main."
               echo "**Do not re-run** — a re-run computes and anchors again; it does not restore these lines."
               echo "Apply the commit below on main by hand (the run log prints the same), then close this issue."
               echo
