@@ -23,9 +23,10 @@
  *   dates as YYYY-MM-DD, and say DRAFT in a quote-block banner or a heading
  *   instead of an HTML comment; none of those matched the rules above
  *   (review of 2026-10-15). They are refused as well, together with {{ }},
- *   TODO / TBD / FIXME, XXX, a bare `0x…` and an empty sha256 (all zeros,
- *   or an ellipsis alone). A bytes32 zero quoted as an argument of a
- *   contract call (a timelock's predecessor) is a value and passes.
+ *   TODO / TBD / FIXME, XXX / xxx, a bare `0x…`, `0xXXXX` / `0x____`, a bare
+ *   `0x` in code and an empty sha256 (all zeros, or an ellipsis alone). A
+ *   bytes32 zero quoted inside a code span as an argument of a contract call
+ *   (`cast call … hashOperation(…) … 0x000…`) is a value and passes.
  *
  * The lower-case word "draft" is NOT refused everywhere: anchored decisions
  * use it in running text ("the depeg rule in the rulebook draft", "column
@@ -60,21 +61,37 @@ export const UNFINISHED = [
   { rule: 'placeholder bracket 〔 〕 【 】', re: /[〔〕【】]/g },
   { rule: 'placeholder bracket ［ ］', re: /[［］]/g },
   { rule: 'template braces {{ }}', re: /\{\{|\}\}/g },
-  { rule: 'placeholder XXX', re: /(?<![0-9A-Za-z-])XXX+(?![0-9A-Za-z])/g },
-  { rule: 'placeholder 0x…', re: /(?<![0-9A-Za-z])0x(?:…|\.{3})/g },
+  { rule: 'placeholder XXX', re: /(?<![0-9A-Za-z-])(?:XXX+|xxx+)(?![0-9A-Za-z])/g },
+  // A bare 0x… / 0x... (nothing after the ellipsis) is a placeholder; a
+  // shortened real value (0x5F1F…19F6, or 0x…19F6 with its tail) passes.
+  { rule: 'placeholder 0x…', re: /(?<![0-9A-Za-z])0x(?:…|\.{3})(?![0-9A-Fa-f])/g },
+  { rule: 'placeholder 0xXXXX / 0x____', re: /(?<![0-9A-Za-z])0x(?:[Xx]{2,}|_{2,})(?![0-9A-Za-z])/g },
+  { rule: 'bare 0x in code', re: /`0x`/g },
   {
     rule: 'date placeholder (YYYY-MM-DD, 2026-10-XX, …)',
     re: /\bY{4}\b|\b(?:\d{4}|20XX)-(?:MM|XX)\b|\b\d{4}-(?:\d{2}|MM|XX)-(?:DD|XX)\b|\bMM-DD\b/gi,
   },
   // An empty sha256: 64 zeros, a run of zeros cut with an ellipsis, or the
-  // label followed by nothing but an ellipsis. A bytes32 zero passed to a
-  // contract call (a timelock's predecessor or salt, quoted in a decision's
-  // verification steps) is a real value, not an empty hash: on a line that
-  // quotes such a call and does not say sha256, it is not reported.
+  // label followed by nothing but an ellipsis. One exception: a bytes32 zero
+  // passed as an argument of a contract call quoted in code (a timelock's
+  // predecessor or salt in a decision's verification steps) is a real value.
+  // It is skipped only when the zeros sit inside the same backtick span as,
+  // and after, `cast call` / `cast send` / `cast calldata` or a call opening
+  // `hashOperation(` / `schedule(` / `execute(`; a word in the prose (bytes32,
+  // schedule, execute) does not exempt a line.
   {
     rule: 'empty sha256 (all zeros)',
     re: /(?<![0-9a-f])(?:0x)?0{64}(?![0-9a-f])/gi,
-    skipLine: (line) => !/\bsha-?256\b/i.test(line) && /\b(?:cast (?:call|send|calldata)|hashOperation|schedule(?:Batch)?|execute(?:Batch)?|bytes32)\b/.test(line),
+    skipMatch: (line, col) => {
+      const open = line.lastIndexOf('`', col);
+      if (open === -1) return false;
+      const before = line.slice(0, open).split('`').length - 1; // backticks before the opening one
+      if (before % 2 !== 0) return false; // `open` closes a span: the zeros are outside code
+      const close = line.indexOf('`', col);
+      if (close === -1) return false;
+      const span = line.slice(open + 1, col);
+      return /\bcast (?:call|send|calldata)\b|\bhashOperation\(|\bschedule\(|\bexecute\(/.test(span);
+    },
   },
   { rule: 'empty sha256 (0000…)', re: /(?<![0-9a-f.,])0{4,}(?:…|\.{3})/gi },
   { rule: 'empty sha256 (ellipsis only)', re: /\bsha-?256\b[ \t:=`*|]*(?:…|\.{3})/gi },
@@ -95,7 +112,7 @@ export function findUnfinished(text) {
   };
   const hits = [];
   const seen = new Set();
-  for (const { rule, re, skipLine } of UNFINISHED) {
+  for (const { rule, re, skipMatch } of UNFINISHED) {
     for (const m of text.matchAll(re)) {
       // Report the line where the match ends: for a multi-line comment box
       // that is the line carrying the word DRAFT / TO FILL.
@@ -104,7 +121,7 @@ export function findUnfinished(text) {
       if (seen.has(key)) continue;
       const end = idx + 1 < starts.length ? starts[idx + 1] - 1 : text.length;
       const line = text.slice(starts[idx], end).replace(/\r$/, '');
-      if (skipLine && skipLine(line)) continue;
+      if (skipMatch && skipMatch(line, m.index - starts[idx])) continue;
       seen.add(key);
       hits.push({ rule, line: idx + 1, text: line.trim() });
     }
