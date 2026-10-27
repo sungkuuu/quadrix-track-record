@@ -22,6 +22,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createWalletClient, createPublicClient, http, defineChain, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { findUnfinished, formatHits } from './decision-guard.mjs';
 
 // A refusal is a sentence, not a stack trace (rehearsal D6); the exit code stays 1.
 process.on('uncaughtException', (e) => {
@@ -48,27 +49,16 @@ const body = fs.readFileSync(abs);
 const sha256 = crypto.createHash('sha256').update(body).digest('hex');
 const id = path.basename(abs, '.md');
 
-// An anchor cannot be undone. A generated draft (keeper/gen-recon-decision.mjs)
-// carries a DRAFT marker, a TO FILL comment and, before the mocks exist,
-// "_to be deployed_" in place of addresses; none of them may be anchored.
-// Hand-written drafts (the leverage inception drafts) open their comment box
-// with a rule of "=" before the word DRAFT and mark every unfilled value as
-// ⟦…⟧: a DRAFT / TO FILL anywhere inside an HTML comment, and any ⟦ or ⟧,
-// refuse as well (review r2 — the first form slipped past the guard above).
-// A hand-written draft marks its unfilled values TO FILL / TO-FILL-… in the
-// body: with the comment lines removed those passed the first two patterns
-// (post-review 2026-10-05, A1 M1), so the marker is refused anywhere.
+// An anchor cannot be undone: a document that still carries a draft marker or
+// an unfilled value is refused before the key is read. The rules, and why
+// each exists, are in scripts/decision-guard.mjs; every hit is listed with its
+// line number and the line itself.
 const text = body.toString('utf8');
-const unfinished = [
-  /<!--\s*DRAFT/i,
-  /<!--\s*TO FILL/i,
-  /_to be deployed_/,
-  /<!--(?:(?!-->)[\s\S])*?\b(?:DRAFT|TO FILL)\b/i,
-  /[\u27E6\u27E7]/,
-  /\bTO[- ]FILL\b/,
-].filter((re) => re.test(text));
+const unfinished = findUnfinished(text);
 if (unfinished.length) {
-  throw new Error(`${rel} is not final (${unfinished.map(String).join(', ')}) — remove the draft lines and fill what they list before anchoring`);
+  throw new Error(
+    `${rel} is not final (${unfinished.length} marker${unfinished.length === 1 ? '' : 's'}) — remove the draft lines and fill what they list before anchoring:\n${formatHits(unfinished)}`
+  );
 }
 
 const existing = fs.existsSync(LEDGER)
