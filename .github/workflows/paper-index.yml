@@ -46,6 +46,7 @@ jobs:
       # on `!cancelled()` as long as the dependencies installed. The job is
       # still marked failed and "Alert on failure" still opens the issue.
       - name: qREV — compute and append today's record
+        id: qrev
         run: |
           set -o pipefail
           node keeper/paper-index.mjs --index qrev --anchor 2>&1 | tee pi-qrev.log
@@ -60,6 +61,7 @@ jobs:
           COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       - name: qDEFI — compute and append today's record
+        id: qdefi
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           set -o pipefail
@@ -79,6 +81,7 @@ jobs:
       # group and would reintroduce exactly that race.
       # ------------------------------------------------------------------
       - name: Barbell — compute and append today's record
+        id: barbell
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           set -o pipefail
@@ -88,6 +91,7 @@ jobs:
           COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
 
       - name: Triens — compute and append today's record
+        id: triens
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           set -o pipefail
@@ -102,6 +106,7 @@ jobs:
       # KEEPER_PK, same `keeper-key` concurrency group.
       # ------------------------------------------------------------------
       - name: qAI — compute and append today's record
+        id: qai
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           set -o pipefail
@@ -133,6 +138,7 @@ jobs:
       # it on needs its own inception decision. qETH1.5X opens on 2026-10-16.
       # ------------------------------------------------------------------
       - name: qBTC2X — compute the closed UTC days since the last line, anchor, mark
+        id: qbtc2x
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         # A step time limit fails only this step; "Commit records" below still runs and the five paper series keep
         # their day (red team F09). Each Binance request is cut at 60 s with four tries; a normal run takes under
@@ -159,6 +165,7 @@ jobs:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 
       - name: qETH1.5X — compute the closed UTC days since the last line, anchor, mark
+        id: qeth15
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         # As qBTC2X: a step time limit fails only this step, and "Commit records" below still runs. Until the
         # inception decision 2026-10-16-qeth15-paper-inception is anchored the leg writes nothing and exits 0
@@ -172,6 +179,7 @@ jobs:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 
       - name: qX20 — mark the basket vault from keeper/state.json (no record append)
+        id: qx20
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
           set -o pipefail
@@ -186,10 +194,12 @@ jobs:
       # 2026-09-22) only learned to watch it on 2026-09-23. Rebuilt daily here;
       # a rebuild is idempotent (the file is rewritten, sorted).
       - name: qX20 — rebuild the daily-close series from chain
+        id: qx20daily
         if: ${{ !cancelled() }}
         run: node scripts/qx20-marks-from-chain.mjs
 
       - name: Commit records
+        id: commit
         # Runs even when a later step failed: a record that was computed and
         # anchored must reach main. On 2026-09-21 the qX20 mark step reverted
         # and this step was skipped, so the qREV/qDEFI lines for that day were
@@ -236,7 +246,7 @@ jobs:
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
             echo "::error::tracked files changed but not committed — the rebase cannot run. Stage them in this step. Nothing was pushed."
             git status --short --untracked-files=no
-            git show --format='%H %s' HEAD
+            git show --format='%H %s' HEAD | tee record-push.patch
             exit 1
           fi
           for i in 1 2 3 4 5; do
@@ -248,7 +258,7 @@ jobs:
             if ! git rebase origin/main; then
               git rebase --abort || true
               echo "::error::rebase onto main conflicted — another commit changed the same file. Nothing was pushed and nothing was overwritten. The local commit is printed below; apply it on main by hand."
-              git show --format='%H %s' HEAD
+              git show --format='%H %s' HEAD | tee record-push.patch
               exit 1
             fi
             git push origin HEAD:main && exit 0
@@ -256,7 +266,7 @@ jobs:
             sleep $((i * 5))
           done
           echo "::error::the paper-index records could not be pushed to main after five tries. The local commit is printed below; apply it on main by hand."
-          git show --format='%H %s' HEAD
+          git show --format='%H %s' HEAD | tee record-push.patch
           exit 1
 
       # Same failure-alert pattern as track-record.yml: a missed day is
@@ -267,8 +277,33 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PUSH_OUTCOME: ${{ steps.commit.outcome }}
+          OTHER_FAILED: ${{ steps.deps.outcome == 'failure' || steps.qrev.outcome == 'failure' || steps.qdefi.outcome == 'failure' || steps.barbell.outcome == 'failure' || steps.triens.outcome == 'failure' || steps.qai.outcome == 'failure' || steps.qbtc2x.outcome == 'failure' || steps.qeth15.outcome == 'failure' || steps.qx20.outcome == 'failure' || steps.qx20daily.outcome == 'failure' }}
         run: |
           set -uo pipefail
+          # The record push failed: the lines this run computed (and anchored,
+          # where the step anchors) are not on main, and a re-run would not
+          # restore them. Same split as index-nav-keeper.yml and track-record.yml:
+          # its own text and its own label, which no later successful run closes.
+          # If a compute step failed as well, the general alert below also runs.
+          if [ "$PUSH_OUTCOME" = "failure" ]; then
+            {
+              echo "The paper-index records of this run were computed, and anchored on chain where the step anchors, but the record push to main failed — those lines are not on main."
+              echo "**Do not re-run** — a re-run computes and anchors again; it does not restore these lines."
+              echo "Apply the commit below on main by hand (the run log prints the same), then close this issue."
+              echo
+              echo "- run: $RUN_URL"
+              echo
+              echo '```diff'
+              head -c 50000 record-push.patch 2>/dev/null || echo '(no commit saved — see the run log)'
+              echo '```'
+            } > alert.md
+            gh label create record-push-failure --color d93f0b \
+              --description "chain step done, record push failed; close by hand" 2>/dev/null || true
+            gh issue create --title "paper-index: record push failed ($(date -u +%Y-%m-%dT%H:%MZ))" \
+              --label record-push-failure --body-file alert.md
+            [ "$OTHER_FAILED" = "true" ] || exit 0
+          fi
           {
             echo "The paper-index run failed. A missed day is simply absent from"
             echo "record-{qrev,qdefi,barbell,triens,qai}.jsonl — it is never backfilled."
