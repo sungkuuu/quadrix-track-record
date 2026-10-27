@@ -73,6 +73,10 @@ const CASES = [
   ['empty hash beside the word bytes32', `| decision hash (bytes32) | \`0x${'0'.repeat(64)}\` |`],
   ['empty hash beside the word execute', `| rulebook hash | \`${'0'.repeat(64)}\` | execute after the anchor |`],
   ['empty hash beside the word schedule', `| rebalance schedule hash | \`0x${'0'.repeat(64)}\` |`],
+  ['empty hash after a bare schedule( in code', `| rebalance | \`schedule(quarterly) 0x${'0'.repeat(64)}\` |`],
+  ['empty document hash in a cast send to the anchor', `| anchor | \`cast send <anchor> "anchor(bytes32)" 0x${'0'.repeat(64)}\` |`],
+  ['empty hash in a cast call that is not a timelock call', `| read | \`cast call <anchor> "decisions(bytes32)(uint256)" 0x${'0'.repeat(64)}\` |`],
+  ['empty hash in a bare execute( in code', `| run | \`execute(0x${'0'.repeat(64)})\` |`],
   ['64 zeros labelled sha256 on a call line', `\`cast call <timelock> "hashOperation(...)"\` — rulebook sha256 \`${'0'.repeat(64)}\``],
 ];
 

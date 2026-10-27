@@ -76,9 +76,10 @@ export const UNFINISHED = [
   // passed as an argument of a contract call quoted in code (a timelock's
   // predecessor or salt in a decision's verification steps) is a real value.
   // It is skipped only when the zeros sit inside the same backtick span as,
-  // and after, `cast call` / `cast send` / `cast calldata` or a call opening
-  // `hashOperation(` / `schedule(` / `execute(`; a word in the prose (bytes32,
-  // schedule, execute) does not exempt a line.
+  // and after, `cast call` / `cast send` / `cast calldata` followed by a
+  // timelock signature `hashOperation(` / `schedule(` / `execute(` (or the
+  // Batch forms); a cast call to anything else, a bare `schedule(` and a word
+  // in the prose (bytes32, schedule, execute) exempt nothing.
   {
     rule: 'empty sha256 (all zeros)',
     re: /(?<![0-9a-f])(?:0x)?0{64}(?![0-9a-f])/gi,
@@ -90,7 +91,7 @@ export const UNFINISHED = [
       const close = line.indexOf('`', col);
       if (close === -1) return false;
       const span = line.slice(open + 1, col);
-      return /\bcast (?:call|send|calldata)\b|\bhashOperation\(|\bschedule\(|\bexecute\(/.test(span);
+      return /\bcast (?:call|send|calldata)\b[^`]*\b(?:hashOperation|schedule|execute)(?:Batch)?\(/.test(span);
     },
   },
   { rule: 'empty sha256 (0000…)', re: /(?<![0-9a-f.,])0{4,}(?:…|\.{3})/gi },
