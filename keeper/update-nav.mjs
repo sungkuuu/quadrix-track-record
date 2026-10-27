@@ -22,6 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWalletClient, createPublicClient, http, defineChain, parseAbi } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { bookMembers } from './qx20-members.mjs';
 
 // 2026-09-14: redeployed with a reentrancy guard and a corrected header —
 // superseded 0x1d1115b961832dd921be78cf1362a531b69bcaa0 (its marks stay on chain).
@@ -210,7 +211,8 @@ async function main() {
   // The reconstitution happens at the FIRST RUN of each calendar month, with no
   // notice period and no announcement: the 2026-09-01 run swapped one
   // constituent, and the only traces are that run's log line and the
-  // state.json diff. The ledger line carries the NAV, not the membership. The
+  // state.json diff. Until 2026-10-27 the ledger line carried the NAV, not the
+  // membership; from the first run after that it also carries the members (see below). The
   // seven-day announcement rule belongs to the basket-vault registry, not to
   // this keeper.
   const month = new Date().toISOString().slice(0, 7);
@@ -315,6 +317,9 @@ async function main() {
   if (nav > hi) nav = hi;
   if (nav < lo) nav = lo;
 
+  // Before the transaction: nothing after it may throw before the ledger line is written.
+  const members = bookMembers(units, prices);
+
   const hash = await wallet.writeContract({
     address: VAULT, abi: ABI, functionName: 'setNav', args: [nav, nav],
   });
@@ -332,8 +337,10 @@ async function main() {
   // repository (since 2026-08-21; earlier marks exist only as on-chain events).
   // One line, one on-chain transaction — so the NAV of any past mark can be
   // checked against the chain without trusting state.json's current contents.
-  // The line does not carry members or units: the model book behind a mark
-  // lives only in the git history of state.json.
+  // From the first run after 2026-10-27 the line also carries members — symbol, weight and price
+  // of the book held after this mark, at this mark's prices (qx20-members.mjs).
+  // Earlier lines do not: their model book lives only in the git history of
+  // state.json.
   fs.appendFileSync(
     MARKS_PATH,
     JSON.stringify({
@@ -346,6 +353,7 @@ async function main() {
       priceSource,
       override,
       txHash: hash,
+      members,
     }) + '\n'
   );
   console.log(`nav ${Number(current) / 1e6} -> ${Number(nav) / 1e6} (level ${level.toFixed(6)})`, hash);
