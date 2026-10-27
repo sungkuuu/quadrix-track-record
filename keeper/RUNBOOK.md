@@ -127,8 +127,18 @@ The NAV was posted on chain but neither `state.json` nor the new
 
 This is the one failure mode where the on-chain state ran ahead of the
 repository state — the `concurrency: keeper` group exists to keep two runs
-from racing into it. It has not happened yet: on every ledger line so far
-`navFrom` equals the prior `navTo`.
+from racing into it. It happened twice, on 2026-10-12 at 16:48 UTC (run
+38271905510, issue #7) and on 2026-10-13 at 14:27 UTC (run 38412548218,
+issue #8). Each scheduled run worked on a main commit older than main's tip
+(`f1e5155`, then `a627663`; other workflows had pushed to main after it), so
+the keeper's plain `git push` was rejected. Commits `2493c6c` and
+`83452ff` (2026-10-14) replaced the plain push with a fetch, rebase and retry
+loop, and gave a push-only failure its own alert. The two lost ledger lines
+were restored by hand on branch `keeper/nav-marks-restore-2026-10-27` from
+the runs' logs and checked against their transaction receipts. Their
+`postedAt` is the runner's log time of the keeper's `nav` line, and their
+`priceSource` is `null`, because the log does not print it. With them, on
+every ledger line `navFrom` equals the prior `navTo`.
 
 ### 6. Constituent without a price
 
