@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-10-31T21:42:15.449Z",
-  "level": 1.1759416536814358,
+  "updatedAt": "2026-11-01T06:20:32.615Z",
+  "level": 1.1825600047439029,
   "units": {
     "BTC": 0.000009427701394288894,
     "ETH": 0.00008373136281982033,
@@ -25,5 +25,5 @@
   },
   "priceSource": "coingecko",
   "override": null,
-  "reconstitutedIn": "2026-10"
+  "reconstitutedIn": "2026-11"
 }
