@@ -1,6 +1,6 @@
 /**
  * Realized line of the BTC volatility index (working name): the pure
- * functions (T1–T3, T23) and the CLI's completeness, finality, catch-up and
+ * functions (T1–T3) and the CLI's completeness, finality, catch-up and
  * determinism rules on SYNTHETIC bars (T4–T7). No network.
  *
  *   node --test keeper/test/vol-realized.test.mjs
@@ -10,14 +10,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  realizedFromWindow, dayClose, canonicalMinuteText, parseKlines, sha256, r2, minuteGaps, windowDates,
+  realizedFromWindow, dayClose, canonicalMinuteText, parseKlines, sha256, minuteGaps, windowDates,
 } from '../vol-realized.mjs';
 import { spawnSync } from 'node:child_process';
 import { run } from '../vol-index.mjs';
 import { syntheticDays, dayMinutes, writeOffline, fakeBinance, tmpDir, readJsonl, cli, timeless, addDays, dayMs, MIN_MS, REPO } from './vol-helpers.mjs';
 
 const P = { windowDays: 30, yearDays: 365 };
-const REC = 'record-volbtc-realized.jsonl';
+const REC = 'record-qvol.jsonl';
 const verifyDir = (dir) => spawnSync(process.execPath, [path.join(REPO, 'scripts', 'verify-vol.mjs'), '--dir', dir], { encoding: 'utf8', env: { PATH: process.env.PATH } });
 
 // ---------------------------------------------------------------------- T1
@@ -32,8 +32,8 @@ test('T1 closed form: returns of +-ln(1.01) every day give 100 x sqrt(365) x ln(
   const { variance, value, returns } = realizedFromWindow(window, null, P);
   assert.equal(returns, 30);
   assert.ok(Math.abs(variance - 365 * x * x) / (365 * x * x) < 1e-12, `variance ${variance}`);
-  assert.equal(value, r2(100 * Math.sqrt(365) * x));
-  assert.equal(value, 19.01);
+  assert.ok(Math.abs(value - 100 * Math.sqrt(365) * x) / (100 * Math.sqrt(365) * x) <= 1e-9, `value ${value}`);
+  assert.ok(Object.is(value, 100 * Math.sqrt(variance))); // no rounding: the value is x as computed
 });
 
 test('T1b known answer on a hand-written window: (365/30) x sum r^2, mean not subtracted', () => {
@@ -42,8 +42,8 @@ test('T1b known answer on a hand-written window: (365/30) x sum r^2, mean not su
   const { variance, value } = realizedFromWindow(window, null, P);
   const want = (365 / 30) * (Math.log(1.1) ** 2 + Math.log(0.9) ** 2);
   assert.ok(Math.abs(variance - want) / want < 1e-12);
-  assert.equal(value, Math.round(100 * Math.sqrt(want) * 100) / 100);
-  assert.equal(value, 49.56); // 100 x sqrt(12.1667 x (0.0090840 + 0.0111008)) = 49.556…
+  assert.ok(Object.is(value, 100 * Math.sqrt(variance)));
+  assert.ok(Math.abs(value - 100 * Math.sqrt(want)) / (100 * Math.sqrt(want)) <= 1e-9); // 100 x sqrt(12.1667 x (0.0090840 + 0.0111008)) = 49.556…
 });
 
 // ---------------------------------------------------------------------- T2
@@ -70,17 +70,6 @@ test('T3 canonical text: the same value written with other digits gives the same
   assert.equal(sha256(canonicalMinuteText(a)), sha256(canonicalMinuteText(b)));
   const c = parseKlines([[4070908800000, '64000.00000001', '64010.5', '63990.1', '64005', '1', 4070908859999]]);
   assert.notEqual(sha256(canonicalMinuteText(a)), sha256(canonicalMinuteText(c)));
-});
-
-// --------------------------------------------------------------------- T23
-test('T23 rounding: x * 100 exactly n + 0.5 rounds up (not to even)', () => {
-  assert.equal(36.125 * 100, 3612.5); // exact in binary64
-  assert.equal(r2(36.125), 36.13);
-  assert.equal(r2(0.125), 0.13);
-  assert.equal(r2(12.5 / 100 + 40), 40.13);
-  assert.equal(r2(36.124999999999), 36.12);
-  // the verifier's language-neutral form floor(y + 0.5) / 100 gives the same
-  for (const x of [36.125, 0.125, 19.0100804, 55.6776436, 13.9278422]) assert.equal(Math.floor(x * 100 + 0.5) / 100, r2(x));
 });
 
 test('null-day rule: a day with no bar counts as the previous close; the next return spans both days', () => {
@@ -126,9 +115,9 @@ test('T4b accepted gap: a matching sha256 writes the line with gaps; a mismatch 
   const missing = minuteGaps(s.days[gapDay], gapDay);
   assert.deepEqual(missing, [{ from: '02:00', to: '02:02', minutes: 3 }]);
   const good = path.join(s.dir, 'gaps-good.json');
-  fs.writeFileSync(good, JSON.stringify([{ id: 'syn-1', series: 'volbtc-realized', day: gapDay, sha256: sha256(text), missing, note: 'synthetic', confirmedAt: '2099-01-01T00:00:00Z' }]));
+  fs.writeFileSync(good, JSON.stringify([{ id: 'syn-1', series: 'qvol', day: gapDay, sha256: sha256(text), missing, note: 'synthetic', confirmedAt: '2099-01-01T00:00:00Z' }]));
   const bad = path.join(s.dir, 'gaps-bad.json');
-  fs.writeFileSync(bad, JSON.stringify([{ id: 'syn-1', series: 'volbtc-realized', day: gapDay, sha256: 'a'.repeat(64), missing, note: 'synthetic', confirmedAt: '2099-01-01T00:00:00Z' }]));
+  fs.writeFileSync(bad, JSON.stringify([{ id: 'syn-1', series: 'qvol', day: gapDay, sha256: 'a'.repeat(64), missing, note: 'synthetic', confirmedAt: '2099-01-01T00:00:00Z' }]));
   const rb = await cli(run, ['--line', 'realized', '--dry-run', '--offline', s.bars, '--out', s.out, '--gaps', bad, ...replay(L0, addDays(L0, 4))]);
   assert.equal(rb.code, 1);
   assert.equal(readJsonl(path.join(s.out, REC)).length, 2);
@@ -148,7 +137,7 @@ test('T4c accepted day with 23:45-23:59 missing: the close is the latest 1-minut
   const drop = new Set(Array.from({ length: 15 }, (_, k) => 1425 + k));
   const s = offlineSetup(34, { drop: { [gapDay]: drop } });
   const gf = path.join(s.dir, 'g.json');
-  fs.writeFileSync(gf, JSON.stringify([{ id: 'syn-2345', series: 'volbtc-realized', day: gapDay, sha256: sha256(canonicalMinuteText(s.days[gapDay])), missing: minuteGaps(s.days[gapDay], gapDay), note: 'synthetic', confirmedAt: 'x' }]));
+  fs.writeFileSync(gf, JSON.stringify([{ id: 'syn-2345', series: 'qvol', day: gapDay, sha256: sha256(canonicalMinuteText(s.days[gapDay])), missing: minuteGaps(s.days[gapDay], gapDay), note: 'synthetic', confirmedAt: 'x' }]));
   const r = await cli(run, ['--line', 'realized', '--dry-run', '--offline', s.bars, '--out', s.out, '--gaps', gf, ...replay(L0, addDays(L0, 1))]);
   assert.equal(r.code, 0, r.err);
   const l = readJsonl(path.join(s.out, REC))[1];
@@ -161,7 +150,7 @@ test('T4d accepted whole-day gap inside the window: null in the window, returns 
   const empty = addDays(FIRST, 31);
   const s = offlineSetup(36, { empty: new Set([empty]) });
   const gf = path.join(s.dir, 'g.json');
-  fs.writeFileSync(gf, JSON.stringify([{ id: 'syn-empty', series: 'volbtc-realized', day: empty, sha256: sha256(''), missing: [{ from: '00:00', to: '23:59', minutes: 1440 }], note: 'synthetic', confirmedAt: 'x' }]));
+  fs.writeFileSync(gf, JSON.stringify([{ id: 'syn-empty', series: 'qvol', day: empty, sha256: sha256(''), missing: [{ from: '00:00', to: '23:59', minutes: 1440 }], note: 'synthetic', confirmedAt: 'x' }]));
   const r = await cli(run, ['--line', 'realized', '--dry-run', '--offline', s.bars, '--out', s.out, '--gaps', gf, ...replay(L0, addDays(L0, 3))]);
   assert.equal(r.code, 0, r.err);
   const lines = readJsonl(path.join(s.out, REC));
@@ -194,7 +183,7 @@ test('T4e first close missing (accepted empty day at D-31): carriedFrom from the
   const empty = addDays(FIRST, 1);
   const s = offlineSetup(36, { empty: new Set([empty]) });
   const gf = path.join(s.dir, 'g.json');
-  fs.writeFileSync(gf, JSON.stringify([{ id: 'syn-first', series: 'volbtc-realized', day: empty, sha256: sha256(''), missing: [{ from: '00:00', to: '23:59', minutes: 1440 }], note: 'synthetic', confirmedAt: 'x' }]));
+  fs.writeFileSync(gf, JSON.stringify([{ id: 'syn-first', series: 'qvol', day: empty, sha256: sha256(''), missing: [{ from: '00:00', to: '23:59', minutes: 1440 }], note: 'synthetic', confirmedAt: 'x' }]));
   const first = addDays(empty, 31); // its window starts at the empty day
   const r = await cli(run, ['--line', 'realized', '--dry-run', '--offline', s.bars, '--out', s.out, '--gaps', gf, ...replay(first, addDays(first, 1))]);
   assert.equal(r.code, 0, r.err);
@@ -214,7 +203,7 @@ test('T4e-2 two empty days at the window start: later lines carry [date, close] 
   const e2 = addDays(FIRST, 2);
   const s = offlineSetup(37, { empty: new Set([e1, e2]), drop: { [FIRST]: new Set([10]) } });
   const gf = path.join(s.dir, 'g.json');
-  const entry = (id, day, mins) => ({ id, series: 'volbtc-realized', day, sha256: sha256(canonicalMinuteText(mins)), missing: minuteGaps(mins, day), note: 'synthetic', confirmedAt: 'x' });
+  const entry = (id, day, mins) => ({ id, series: 'qvol', day, sha256: sha256(canonicalMinuteText(mins)), missing: minuteGaps(mins, day), note: 'synthetic', confirmedAt: 'x' });
   fs.writeFileSync(gf, JSON.stringify([entry('syn-part', FIRST, s.days[FIRST]), entry('syn-e1', e1, []), entry('syn-e2', e2, [])]));
   const first = addDays(e1, 31);
   const r = await cli(run, ['--line', 'realized', '--dry-run', '--offline', s.bars, '--out', s.out, '--gaps', gf, ...replay(first, addDays(first, 2))]);
@@ -234,12 +223,12 @@ test('acceptance entry: the missing list is compared field by field (key order d
   const s = offlineSetup(35, { drop: { [gapDay]: new Set([120, 121, 122]) } });
   const missing = minuteGaps(s.days[gapDay], gapDay).map(({ from, to, minutes }) => ({ minutes, to, from }));
   const gf = path.join(s.dir, 'g.json');
-  fs.writeFileSync(gf, JSON.stringify([{ id: 'syn-order', series: 'volbtc-realized', day: gapDay, sha256: sha256(canonicalMinuteText(s.days[gapDay])), missing, note: 'synthetic', confirmedAt: 'x' }]));
+  fs.writeFileSync(gf, JSON.stringify([{ id: 'syn-order', series: 'qvol', day: gapDay, sha256: sha256(canonicalMinuteText(s.days[gapDay])), missing, note: 'synthetic', confirmedAt: 'x' }]));
   const r = await cli(run, ['--line', 'realized', '--dry-run', '--offline', s.bars, '--out', s.out, '--gaps', gf, ...replay(L0, addDays(L0, 2))]);
   assert.equal(r.code, 0, r.err);
   assert.equal(readJsonl(path.join(s.out, REC)).filter((l) => l.gapAccepted === 'syn-order').length, 1);
   // a list that differs in a value is still refused (exit 2)
-  fs.writeFileSync(gf, JSON.stringify([{ id: 'syn-order', series: 'volbtc-realized', day: gapDay, sha256: sha256(canonicalMinuteText(s.days[gapDay])), missing: [{ ...missing[0], minutes: 4 }], note: 'synthetic', confirmedAt: 'x' }]));
+  fs.writeFileSync(gf, JSON.stringify([{ id: 'syn-order', series: 'qvol', day: gapDay, sha256: sha256(canonicalMinuteText(s.days[gapDay])), missing: [{ ...missing[0], minutes: 4 }], note: 'synthetic', confirmedAt: 'x' }]));
   const out2 = path.join(s.dir, 'out2');
   const r2 = await cli(run, ['--line', 'realized', '--dry-run', '--offline', s.bars, '--out', out2, '--gaps', gf, ...replay(L0, addDays(L0, 2))]);
   assert.equal(r2.code, 2);

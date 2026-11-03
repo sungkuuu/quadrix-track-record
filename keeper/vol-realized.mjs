@@ -10,7 +10,7 @@
  *                latest that day (d 00:00 <= open < d+1 00:00; normally 23:59)
  *   r_d        = ln(C_d / C_{d-1})
  *   variance(D)= (365 / 30) x sum of r_d^2, d = D-30 … D-1 (30 returns, 31 closes)
- *   value(D)   = 100 x sqrt(variance(D)), rounded to two decimals
+ *   value(D)   = 100 x sqrt(variance(D)), recorded as computed (binary64, no decimal rounding)
  * The mean is taken as zero. The denominator is always the window length. A
  * UTC day with no bar at all has no close (null in the line's window); for the
  * computation its close is the previous close (return 0), so the next return
@@ -18,11 +18,13 @@
  *   1. C_d = Number(close)   2. r_d = ln(C_d / C_{d-1})
  *   3. S = 0; S = S + r_d * r_d in ascending date order
  *   4. variance = (365 / 30) * S   5. x = 100 * sqrt(variance)
- *   6. published value = floor(x * 100 + 0.5) / 100 (half up, never half to even)
+ * The line's value is x itself: no decimal rounding anywhere in the record
+ * path. Two decimals are a display of the page only (rulebook display.decimals,
+ * never read here).
  */
 import crypto from 'node:crypto';
 
-export const SERIES = 'volbtc-realized';
+export const SERIES = 'qvol';
 export const MINUTE_MS = 60_000;
 export const DAY_MIN = 1440;
 export const DAY_MS = DAY_MIN * MINUTE_MS;
@@ -34,11 +36,6 @@ export const addDays = (date, n) => dateOf(dayMs(date) + n * DAY_MS);
 export const isDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(dayMs(s)) && dateOf(dayMs(s)) === s;
 export const hhmm = (ms) => new Date(ms).toISOString().slice(11, 16);
 export const stamp = (ms) => new Date(ms).toISOString().replace('.000Z', 'Z');
-
-/** Half up on y (never half to even): n = floor(y + 0.5). */
-export const halfUp = (y) => Math.floor(y + 0.5);
-/** Two decimals, half up (x is never negative here): y = x * 100, n = halfUp(y), n / 100. */
-export const r2 = (x) => halfUp(x * 100) / 100;
 
 /**
  * Binance kline rows → minutes {openMs, closeMs, o, h, l, c} (Numbers). A time
@@ -146,7 +143,7 @@ export function realizedFromWindow(window, carried, { windowDays, yearDays }) {
     prev = cur;
   }
   const variance = (yearDays / windowDays) * S;
-  const value = r2(100 * Math.sqrt(variance));
+  const value = 100 * Math.sqrt(variance);
   return { variance, value, returns };
 }
 

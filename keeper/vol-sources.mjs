@@ -97,13 +97,14 @@ export async function binanceDayOnce(binance, symbol, day, serverTime) {
 }
 
 /**
- * Offline bars: <dir>/BTCUSDT-1m-<YYYY-MM-DD>.csv, one UTC day per file, one
- * line "openTimeMs,open,high,low,close" (values as the source wrote them),
- * opening time ascending, no header. null when the file does not exist (the
- * day is not there yet); [] for a file with no line (a day with no bar).
+ * Offline bars: <dir>/btcusdt-1m-<YYYY-MM-DD>.csv (the symbol in lower case),
+ * one UTC day per file, one line "openTimeMs,open,high,low,close" (values as
+ * the source wrote them), opening time ascending, no header. null when the
+ * file does not exist (the day is not there yet); [] for a file with no line
+ * (a day with no bar).
  */
 export function offlineDay(dir, symbol, day) {
-  const f = path.join(dir, `${symbol}-1m-${day}.csv`);
+  const f = path.join(dir, `${symbol.toLowerCase()}-1m-${day}.csv`);
   if (!fs.existsSync(f)) return null;
   const minutes = fs
     .readFileSync(f, 'utf8')

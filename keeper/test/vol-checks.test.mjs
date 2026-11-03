@@ -1,25 +1,26 @@
 /**
- * Realized line of the BTC volatility index (working name): the checks C1 and
- * C7–C13 (reproducibility test, before its main run), and the W1 change (the day's close is
+ * Realized line of the BTC volatility index (working name): the checks C1, C7
+ * and C9–C13 (reproducibility test, before its main run; C8 is an empty number:
+ * the definition has no rounding, so there is no rounding test), and the W1 change (the day's close is
  * the close of the 1-minute bar that opened latest that day; the rule carries
  * no bar length). Everything runs on SYNTHETIC bars — never market data.
  *
  *   node --test keeper/test/vol-checks.test.mjs
  *
  * C7, C11, C12 and C13 are also run on a real record when VOL_CHECK_DIR names
- * a folder holding record-volbtc-realized.jsonl (skipped otherwise).
+ * a folder holding record-qvol.jsonl (skipped otherwise).
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { realizedFromWindow, canonicalMinuteText, parseKlines, parseOfflineLine, sha256, r2, halfUp, minuteGaps } from '../vol-realized.mjs';
+import { realizedFromWindow, canonicalMinuteText, parseKlines, parseOfflineLine, sha256, minuteGaps } from '../vol-realized.mjs';
 import { run, rulebookProblem } from '../vol-index.mjs';
 import { syntheticDays, dayMinutes, writeOffline, tmpDir, readJsonl, cli, timeless, addDays, rulebookPath, REPO } from './vol-helpers.mjs';
 
 const P = { windowDays: 30, yearDays: 365 };
-const REC = 'record-volbtc-realized.jsonl';
+const REC = 'record-qvol.jsonl';
 const FIRST = '2099-01-01';
 const L0 = addDays(FIRST, 31); // the first line whose window lies inside the synthetic days
 const replay = (from, to) => ['--replay', `${from}..${to}`];
@@ -45,7 +46,7 @@ function daysFromCloses(closes) {
   return days;
 }
 
-const acceptance = (id, day, mins) => ({ id, series: 'volbtc-realized', day, sha256: sha256(canonicalMinuteText(mins)), missing: minuteGaps(mins, day), note: 'synthetic', confirmedAt: 'x' });
+const acceptance = (id, day, mins) => ({ id, series: 'qvol', day, sha256: sha256(canonicalMinuteText(mins)), missing: minuteGaps(mins, day), note: 'synthetic', confirmedAt: 'x' });
 
 // ------------------------------------------------- the checks on a record
 
@@ -79,7 +80,7 @@ function varianceProblems(lines) {
     const variance = (L.rule.yearDays / L.rule.windowDays) * S;
     if (!Object.is(variance, L.variance)) bad.push(`${L.date}: variance ${L.variance} vs ${variance}`);
     const x = 100 * Math.sqrt(variance);
-    if (Math.floor(x * 100 + 0.5) / 100 !== L.value) bad.push(`${L.date}: value ${L.value}`);
+    if (!Object.is(x, L.value)) bad.push(`${L.date}: value ${L.value}`); // the value is x as computed, no rounding
   }
   return bad;
 }
@@ -96,10 +97,10 @@ function joinProblems(lines) {
 }
 
 // -------------------------------------------------------------------- C1
-test('C1 closed form: closes moving +-x every day, x = ln 1.01 → 100 x sqrt(365) x x, rounded half up', async () => {
+test('C1 closed form: closes moving +-x every day, x = ln 1.01 → 100 x sqrt(365) x x within a relative 1e-9 (no rounding)', async () => {
   const x = Math.log(1.01);
-  const want = Math.floor(100 * Math.sqrt(365) * x * 100 + 0.5) / 100;
-  assert.equal(want, 19.01);
+  const want = 100 * Math.sqrt(365) * x;
+  const near = (v) => typeof v === 'number' && Math.abs(v - want) / want <= 1e-9;
   // pure function on a close series C_k = 50000 x e^(+-x)
   const window = [];
   let c = 50000;
@@ -107,14 +108,17 @@ test('C1 closed form: closes moving +-x every day, x = ln 1.01 → 100 x sqrt(36
     window.push([`d${k}`, c]);
     c = c * Math.exp(k % 2 === 0 ? x : -x);
   }
-  assert.equal(realizedFromWindow(window, null, P).value, want);
+  const pure = realizedFromWindow(window, null, P);
+  assert.ok(near(pure.value), `${pure.value} vs ${want}`);
+  assert.ok(Object.is(pure.value, 100 * Math.sqrt(pure.variance))); // recorded as computed
   // the whole keeper path on 1-minute files: day closes 50000, 50500, 50000, … (ratio 1.01 and 1/1.01)
   const closes = Array.from({ length: 36 }, (_, k) => (k % 2 === 0 ? 50000 : 50500));
   const r = await offlineRun(daysFromCloses(closes), L0, addDays(L0, 2));
   assert.equal(r.code, 0, r.err);
   assert.equal(r.lines.length, 3);
   for (const L of r.lines) {
-    assert.equal(L.value, want, `${L.date}`);
+    assert.ok(near(L.value), `${L.date}: ${L.value} vs ${want}`);
+    assert.ok(Object.is(L.value, 100 * Math.sqrt(L.variance)), `${L.date}: value is not x as computed`);
     assert.ok(Math.abs(L.variance - 365 * x * x) / (365 * x * x) < 1e-12);
   }
 });
@@ -136,38 +140,15 @@ test('C7 chain: hash and prevHash recomputed on every line agree; a changed byte
 });
 
 // -------------------------------------------------------------------- C8
-/** The next binary64 number above (+1) or below (-1) a positive finite y. */
+// C8 is an empty number: the definition has no rounding, so there is no test.
+
+/** The next binary64 number above (+1) or below (-1) a positive finite y (used by C12). */
 function nextDouble(y, dir) {
   const v = new DataView(new ArrayBuffer(8));
   v.setFloat64(0, y);
   v.setBigUint64(0, v.getBigUint64(0) + BigInt(dir));
   return v.getFloat64(0);
 }
-
-test('C8 rounding: y = n + 0.5 exactly goes up, the double just below goes down, the double just above goes up', () => {
-  for (const n of [1, 2, 3, 1900, 3612, 3704, 9999, 123456]) {
-    const y = n + 0.5;
-    const below = nextDouble(y, -1);
-    const above = nextDouble(y, +1);
-    assert.ok(below < y && y < above);
-    assert.equal(halfUp(y), n + 1, `${y}`); // up, never to even (2.5 → 3, 3704.5 → 3705)
-    assert.equal(halfUp(below), n, `${below}`);
-    assert.equal(halfUp(above), n + 1, `${above}`);
-  }
-  // n = 0 is the one place where floor(y + 0.5) in binary64 differs from exact half up: the double
-  // just below 0.5 plus 0.5 rounds to 1. That y is a published value under 0.005 points; the
-  // definition (docs/vol-index.md) is applied as written, and this edge is reported, not changed here.
-  assert.equal(halfUp(0.5), 1);
-  assert.equal(halfUp(nextDouble(0.5, +1)), 1);
-  assert.equal(halfUp(nextDouble(0.5, -1)), 1); // 0.49999999999999994 + 0.5 = 1 in binary64
-  assert.equal(halfUp(nextDouble(nextDouble(0.5, -1), -1)), 0);
-  assert.equal(halfUp(3704.5), 3705);
-  assert.equal(halfUp(2.5), 3);
-  // the published value goes through the same function: y = x x 100, n / 100
-  assert.equal(r2(37.045), Math.floor(37.045 * 100 + 0.5) / 100);
-  assert.equal(r2(36.125), 36.13); // 36.125 x 100 = 3612.5 exactly
-  assert.equal(r2(0), 0);
-});
 
 // -------------------------------------------------------------------- C9
 test('C9 (a) a day with 1,439 bars: the run stops (exit 1); no line for it and none after', async () => {
@@ -244,7 +225,7 @@ test('C10 canonical text: the same value in other digits ("64000.00000000" and "
   const dir = tmpDir('vol-c10');
   fs.mkdirSync(path.join(dir, 'bars'));
   for (const [d, mins] of Object.entries(days))
-    fs.writeFileSync(path.join(dir, 'bars', `BTCUSDT-1m-${d}.csv`), mins.map((m) => `${m.openMs},${m.o.toFixed(8)},${m.h.toFixed(8)},${m.l.toFixed(8)},${m.c.toFixed(8)}`).join('\n') + '\n');
+    fs.writeFileSync(path.join(dir, 'bars', `btcusdt-1m-${d}.csv`), mins.map((m) => `${m.openMs},${m.o.toFixed(8)},${m.h.toFixed(8)},${m.l.toFixed(8)},${m.c.toFixed(8)}`).join('\n') + '\n');
   const r8 = await cli(run, ['--line', 'realized', '--dry-run', '--offline', path.join(dir, 'bars'), '--out', path.join(dir, 'out'), ...replay(L0, addDays(L0, 1))]);
   assert.equal(r8.code, 0, r8.err);
   assert.equal(plain.code, 0, plain.err);

@@ -93,11 +93,11 @@ export function syntheticDays(first, n, { drop = {}, empty = new Set() } = {}) {
   return { days, closes };
 }
 
-/** Writes the --offline files: <dir>/BTCUSDT-1m-<day>.csv. */
+/** Writes the --offline files: <dir>/btcusdt-1m-<day>.csv. */
 export function writeOffline(dir, days) {
   fs.mkdirSync(dir, { recursive: true });
   for (const [d, mins] of Object.entries(days)) {
-    fs.writeFileSync(path.join(dir, `BTCUSDT-1m-${d}.csv`), mins.map((m) => `${m.openMs},${m.o},${m.h},${m.l},${m.c}`).join('\n') + (mins.length ? '\n' : ''));
+    fs.writeFileSync(path.join(dir, `btcusdt-1m-${d}.csv`), mins.map((m) => `${m.openMs},${m.o},${m.h},${m.l},${m.c}`).join('\n') + (mins.length ? '\n' : ''));
   }
 }
 

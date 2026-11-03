@@ -1,6 +1,6 @@
 /**
  * BTC volatility index (working name) — keeper CLI for its two lines,
- * `volbtc-realized` and `volbtc-implied`. DRAFT: neither line is in force, no
+ * `qvol` (realized) and `volbtc-implied`. DRAFT: neither line is in force, no
  * line is written to trackrecord/ by this build, and this file has no anchor
  * step and reads no key. What the series is and is not: docs/vol-index.md.
  *
@@ -29,7 +29,7 @@
  *   --collect-only            (implied) save the two raw responses gzipped and their sha256; no value
  *   --from-snapshot <book.json.gz> --instruments <inst.json.gz>   (implied, --dry-run) compute from saved responses
  *   --replay FROM..TO         (realized, --dry-run) FROM is the first line's date, TO the last
- *   --offline <dir>           (realized, --dry-run) bars from <dir>/BTCUSDT-1m-<YYYY-MM-DD>.csv; no network
+ *   --offline <dir>           (realized, --dry-run) bars from <dir>/btcusdt-1m-<YYYY-MM-DD>.csv; no network
  *   --gaps <file>             (realized, --dry-run) the gap acceptance file; default keeper/vol-index-gaps.json
  *   --quotes embed|hash       (implied) embed the quotes in the line (default) or only their sha256
  *
@@ -38,15 +38,17 @@
  * values only, and one line can start, stop or change without touching the
  * other's record.
  *
- * The switch: a rulebook with "active": false turns its line off. Every run of
- * that line (in force, --dry-run, --collect-only) prints INACTIVE and exits 0
- * — no file read besides the rulebook, no network call, nothing written. The
- * code of the line stays; setting "active": true turns it back on. An inactive
- * line cannot carry an inception date.
+ * The switch (implied line only): an implied rulebook with "active": false
+ * turns that line off. Every run of it (in force, --dry-run, --collect-only)
+ * prints INACTIVE and exits 0 — no file read besides the rulebook, no network
+ * call, nothing written. The code of the line stays; setting "active": true
+ * turns it back on. An inactive line cannot carry an inception date. The
+ * realized rulebook has no "active" key (a rulebook with one is refused):
+ * whether the realized line is in force is decided by its inception only.
  *
- * Without --dry-run (and without --collect-only) an active line whose
- * inception is null prints NOT IN FORCE and exits 0 — no file, no network
- * call. This build has no in-force path.
+ * Without --dry-run (and without --collect-only) a line (the implied line: an
+ * active one) whose inception is null prints NOT IN FORCE and exits 0 — no
+ * file, no network call. This build has no in-force path.
  *
  * Exit codes: 0 = done, nothing to do, not in force, inactive; 1 = data failure (nothing
  * written for the failed day); 2 = configuration (bad option, bad rulebook or
@@ -59,7 +61,7 @@ import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  sha256, dayMs, dateOf, addDays, isDate, canonicalMinuteText, minuteGaps, dayClose, realizedFromWindow, windowDates, buildRealizedLine, DAY_MIN,
+  sha256, dayMs, dateOf, addDays, isDate, canonicalMinuteText, minuteGaps, dayClose, realizedFromWindow, windowDates, buildRealizedLine, DAY_MIN, SERIES,
 } from './vol-realized.mjs';
 import { parseDeribit, joinQuotes, computeImplied, buildImpliedLine, expiryList, quotesSha256, FormatError } from './vol-implied.mjs';
 import { binanceRest, binanceDayIsFinal, binanceDayOnce, offlineDay, offlineDayIsFinal, deribitRest } from './vol-sources.mjs';
@@ -139,17 +141,22 @@ const hasPath = (obj, p) => {
 
 /**
  * What the code implements; anything else in keeper/rulebooks/volbtc-<line>.json
- * is refused (exit 2). Common to both lines: id, line, the active switch, the
- * inception, the owner-pending list and the display decimals.
+ * is refused (exit 2). Common to both lines: line, id (realized "qvol",
+ * implied "volbtc"), the inception, the owner-pending list and the display
+ * decimals (display only: the record path never reads them). The implied line
+ * has the active switch; the realized line has none (in force = inception only).
  */
 export function rulebookProblem(rb, line) {
   if (!LINES.includes(line)) return `line must be one of ${LINES.join(', ')}`;
-  if (rb?.id !== 'volbtc') return 'id must be "volbtc"';
-  if (rb.line !== line) return `line must be "${line}" (this is the ${line} line's rulebook)`;
-  if (typeof rb.active !== 'boolean') return 'active must be true or false';
+  if (rb?.line !== line) return `line must be "${line}" (this is the ${line} line's rulebook)`;
+  const id = line === 'realized' ? 'qvol' : 'volbtc';
+  if (rb.id !== id) return `id must be "${id}"`;
+  if (line === 'realized') {
+    if ('active' in rb) return 'active: the realized line has no switch (whether it is in force is decided by inception only)';
+  } else if (typeof rb.active !== 'boolean') return 'active must be true or false';
   const inc = rb.inception;
   if (!(inc && typeof inc === 'object' && 'date' in inc && 'decision' in inc && (inc.date === null || isDate(inc.date)))) return 'inception must be {date: null | "YYYY-MM-DD", decision}';
-  if (!rb.active && inc.date !== null) return 'an inactive line (active false) cannot have an inception date';
+  if (line === 'implied' && !rb.active && inc.date !== null) return 'an inactive line (active false) cannot have an inception date';
   if (!Array.isArray(rb.pendingOwner)) return 'pendingOwner must be a list (empty when nothing waits for the owner)';
   for (const e of rb.pendingOwner) {
     if (typeof e?.path !== 'string' || typeof e?.what !== 'string' || !e.what) return `pendingOwner entries are {path, what} (got ${JSON.stringify(e)?.slice(0, 80)})`;
@@ -161,7 +168,7 @@ export function rulebookProblem(rb, line) {
 }
 
 function realizedProblem(R) {
-  if (R.series !== 'volbtc-realized') return 'series must be "volbtc-realized"';
+  if (R.series !== SERIES) return `series must be "${SERIES}"`;
   const rs = R.source ?? {};
   if (rs.host !== 'https://data-api.binance.vision' || rs.path !== '/api/v3/klines' || rs.symbol !== 'BTCUSDT' || rs.interval !== '1m' || 'barMinutes' in rs || rs.fallback !== null)
     return 'source must be Binance spot BTCUSDT 1m klines on data-api.binance.vision, no barMinutes (the close is the latest 1-minute bar), no fallback';
@@ -192,8 +199,8 @@ export function readGaps(file) {
   }
   if (!Array.isArray(list)) throw refuse(`gap acceptance file ${file}: not a JSON array`);
   for (const g of list) {
-    if (typeof g?.id !== 'string' || g.series !== 'volbtc-realized' || !isDate(g.day) || !/^[0-9a-f]{64}$/.test(g.sha256 ?? '') || !Array.isArray(g.missing))
-      throw refuse(`gap acceptance file ${file}: entry ${JSON.stringify(g).slice(0, 120)} needs id, series "volbtc-realized", day, sha256 (64 hex), missing[]`);
+    if (typeof g?.id !== 'string' || g.series !== SERIES || !isDate(g.day) || !/^[0-9a-f]{64}$/.test(g.sha256 ?? '') || !Array.isArray(g.missing))
+      throw refuse(`gap acceptance file ${file}: entry ${JSON.stringify(g).slice(0, 120)} needs id, series "${SERIES}", day, sha256 (64 hex), missing[]`);
   }
   return list;
 }
@@ -224,7 +231,7 @@ function recompute(deps, series, existing, newLine, sidecar, rbPath) {
       fs.mkdirSync(path.join(tmp, 'quotes'), { recursive: true });
       fs.writeFileSync(path.join(tmp, 'quotes', `${sidecar.sha}.json`), JSON.stringify(sidecar.quotes));
     }
-    const line = series === 'volbtc-realized' ? 'realized' : 'implied';
+    const line = series === SERIES ? 'realized' : 'implied';
     const argv = [deps.verifyScript, '--dir', tmp, '--line', line, '--rulebook', rbPath, '--recompute-only', '--quiet', ...(context.length ? ['--tail'] : [])];
     const r = spawnSync(process.execPath, argv, { encoding: 'utf8', env: { PATH: process.env.PATH ?? '' } });
     return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() };
@@ -278,8 +285,9 @@ async function runInner(argv, deps) {
   }
   const problem = rulebookProblem(rb, o.line);
   if (problem) throw refuse(`${rbRel}: ${problem}`);
-  // the switch comes before every mode: an inactive line reads and writes nothing
-  if (!rb.active) throw new Exit(0, `${rb.series}: INACTIVE (${rbRel} active is false) — nothing read, nothing written`);
+  // the implied line's switch comes before every mode: an inactive line reads and writes nothing
+  // (the realized line has no switch: rulebookProblem refuses an "active" key there)
+  if (o.line === 'implied' && !rb.active) throw new Exit(0, `${rb.series}: INACTIVE (${rbRel} active is false) — nothing read, nothing written`);
   const rulebookSha256 = sha256(rbBytes);
   const out = o.out ?? path.join(deps.root, 'keeper', 'dryrun');
 

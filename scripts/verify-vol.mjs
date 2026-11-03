@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Verifier for the two lines of the BTC volatility index (working name):
- * record-volbtc-realized.jsonl and record-volbtc-implied.jsonl in --dir.
+ * record-qvol.jsonl (realized) and record-volbtc-implied.jsonl in --dir.
  *
  * Standalone on purpose: it imports nothing from keeper/ and re-states the
  * definition in its own code (docs/vol-index.md), so the keeper's numbers are
@@ -21,7 +21,8 @@
  * every field of terms, value, variance30 and reason recomputed from quotes +
  * terms[].expiry + snapshot.usOut (a line with quotesSha256 is recomputed
  * when <dir>/quotes/<sha>.json is there, else counted as not recomputable).
- * Variances agree within a relative 1e-9; published values exactly.
+ * Realized: variance and value (unrounded, as computed) agree within a relative
+ * 1e-9. Implied: variances within a relative 1e-9, published values exactly.
  *
  * Usage:
  *   node scripts/verify-vol.mjs --dir <dir> [--line realized|implied] [--rulebook <file>]... [--tail] [--recompute-only] [--quiet]
@@ -124,7 +125,7 @@ const REALIZED_KEYS = ['seq', 'date', 'observedAt', 'index', 'value', 'variance'
 const REALIZED_OPTIONAL = new Set(['late', 'carriedFrom', 'sources', 'gaps', 'gapAccepted', 'shadow', 'inception']);
 
 function verifyRealized(lines) {
-  const S = 'volbtc-realized';
+  const S = 'qvol';
   checkChain(S, lines);
   let lateCount = 0;
   let gapLines = 0;
@@ -197,11 +198,12 @@ function verifyRealized(lines) {
       cPrev = c;
     }
     const variance = (R.yearDays / W) * acc;
-    const value = roundHalfUp2(100 * Math.sqrt(variance));
+    const value = 100 * Math.sqrt(variance); // no decimal rounding: the line records x as computed
     const rd = relDiff(variance, L.variance);
-    maxRel = Math.max(maxRel, rd);
+    const rv = relDiff(value, L.value);
+    maxRel = Math.max(maxRel, rd, rv);
     if (!(rd <= TOL)) fail(S, L.seq, `variance ${L.variance} vs recomputed ${variance}`);
-    if (value !== L.value) fail(S, L.seq, `value ${L.value} vs recomputed ${value}`);
+    if (!(typeof L.value === 'number' && rv <= TOL)) fail(S, L.seq, `value ${L.value} vs recomputed ${value}`);
     if (L.returns !== withClose) fail(S, L.seq, `returns ${L.returns} vs ${withClose} days with a close`);
 
     // source and gaps
@@ -471,7 +473,7 @@ function verifyImplied(lines, dir) {
 
 const report = {};
 for (const [line, file, fn] of [
-  ['realized', 'record-volbtc-realized.jsonl', verifyRealized],
+  ['realized', 'record-qvol.jsonl', verifyRealized],
   ['implied', 'record-volbtc-implied.jsonl', verifyImplied],
 ]) {
   if (ONLY && ONLY !== line) continue;

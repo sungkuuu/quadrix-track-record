@@ -19,7 +19,7 @@ import { quotesSha256 } from '../vol-implied.mjs';
 import { handTable, syntheticTable, syntheticDays, writeOffline, writeSnapshot, fakeDeribit, tmpDir, readJsonl, cli, KEEPER, REPO, addDays, rulebookPath, impliedOnRoot } from './vol-helpers.mjs';
 
 const IMP = 'record-volbtc-implied.jsonl';
-const REA = 'record-volbtc-realized.jsonl';
+const REA = 'record-qvol.jsonl';
 const H = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const q = (mid) => [mid - 1 / 1024, mid + 1 / 1024];
 const US = 4102444800000000; // 2100-01-01T00:00:00Z, synthetic
@@ -135,7 +135,7 @@ test('T14 without --dry-run and inception null: NOT IN FORCE, exit 0, no file, n
 test('the switch: the implied line is off in the repository — every mode prints INACTIVE, exit 0, no request, nothing written', async () => {
   const realized = JSON.parse(fs.readFileSync(rulebookPath('realized'), 'utf8'));
   const implied = JSON.parse(fs.readFileSync(rulebookPath('implied'), 'utf8'));
-  assert.equal(realized.active, true);
+  assert.ok(!('active' in realized)); // the realized line has no switch: in force = inception only
   assert.equal(implied.active, false);
   const t = handTable([{ rows: good() }, { rows: good() }], US, { minutes: [30000, 50000] });
   const s = writeSnapshot(path.join(tmpDir('vol-off-snap'), 'snap'), t);
@@ -202,6 +202,14 @@ test('rulebook shape: what the code does not implement is refused (exit 2)', asy
   assert.match(mutate(ib, 'implied', (c) => (c.cutoff.count = 0)), /cutoff/);
   assert.match(mutate(ib, 'implied', (c) => (c.price = 'depth-weighted')), /price/);
   assert.match(mutate(rb, 'realized', (c) => (c.display.decimals = 4)), /decimals/);
+  // the realized line: id and series "qvol", no "active" key
+  assert.equal(rb.id, 'qvol');
+  assert.equal(rb.series, 'qvol');
+  assert.match(mutate(rb, 'realized', (c) => (c.id = 'volbtc')), /id must be "qvol"/);
+  assert.match(mutate(rb, 'realized', (c) => (c.series = 'volbtc-realized')), /series must be "qvol"/);
+  assert.match(mutate(rb, 'realized', (c) => (c.active = true)), /no switch/);
+  assert.match(mutate(rb, 'realized', (c) => (c.active = false)), /no switch/);
+  assert.match(mutate(ib, 'implied', (c) => (c.id = 'qvol')), /id must be "volbtc"/);
   // one line's file is not the other's
   assert.match(rulebookProblem(rb, 'implied'), /line must be "implied"/);
   assert.match(rulebookProblem(ib, 'realized'), /line must be "realized"/);
@@ -387,7 +395,7 @@ test('T19 scripts/verify-vol.mjs (separate code) agrees with the module on every
   const lines = readJsonl(path.join(ro, REA));
   assert.equal(lines.length, 5);
   const t2 = lines.map((l) => ({ ...l }));
-  t2[3].value = Math.round((t2[3].value + 0.01) * 100) / 100;
+  t2[3].value = t2[3].value * (1 + 1e-6); // beyond the relative 1e-9
   for (let i = 3; i < t2.length; i++) {
     t2[i].prevHash = i === 0 ? null : t2[i - 1].hash;
     delete t2[i].hash;
@@ -508,7 +516,7 @@ test('--tail: the record’s last line is context, the new line is checked again
   const ok = verify(writeLines(REA, [lines[2], lines[3]]), '--tail');
   assert.equal(ok.status, 0, ok.stdout);
   assert.match(ok.stdout, /"lines": 1/);
-  const changed = rehash({ ...lines[3], value: Math.round((lines[3].value + 0.01) * 100) / 100 });
+  const changed = rehash({ ...lines[3], value: lines[3].value * (1 + 1e-6) });
   const bad = verify(writeLines(REA, [lines[2], changed]), '--tail');
   assert.equal(bad.status, 1);
   assert.match(bad.stdout, /value .* vs recomputed/);
