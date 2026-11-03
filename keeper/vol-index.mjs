@@ -141,11 +141,15 @@ const hasPath = (obj, p) => {
 };
 
 /**
- * What the code implements; anything else in a line's rulebook JSON (rulebookFile)
- * is refused (exit 2). Common to both lines: line, id (realized "qvol",
- * implied "volbtc"), the inception, the owner-pending list and the display
- * decimals (display only: the record path never reads them). The implied line
- * has the active switch; the realized line has none (in force = inception only).
+ * What the code implements: a key checked below that holds another value is
+ * refused (exit 2). Keys not checked here (name, ticker, track, kind, status,
+ * asOf, _doc, close, display.unit, …) are neither read nor refused; in
+ * particular `close` is not checked — the code always takes the close of the
+ * latest-opened 1-minute bar. Checked for both lines: line, id (realized
+ * "qvol", implied "volbtc"), the inception, the owner-pending list and the
+ * display decimals (display only: the record path never reads them). The
+ * implied line has the active switch; the realized line has none (in force =
+ * inception only) and refuses an "active" key.
  */
 export function rulebookProblem(rb, line) {
   if (!LINES.includes(line)) return `line must be one of ${LINES.join(', ')}`;

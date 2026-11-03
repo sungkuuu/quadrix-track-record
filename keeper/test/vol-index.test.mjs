@@ -222,7 +222,9 @@ test('rulebook shape: what the code does not implement is refused (exit 2)', asy
   assert.match(mutate(rb, 'realized', (c) => (c.inception = { date: '2099-01-01', decision: 'x' })), /cannot have values pending the owner/);
   // what waits for the owner is marked in the realized rulebook, and every mark names a key
   const marked = rb.pendingOwner.map((e) => e.path);
-  for (const p of ['name', 'series', 'source', 'windowDays', 'sampling', 'mean', 'display.decimals']) assert.ok(marked.includes(p), `${p} not marked pendingOwner`);
+  for (const p of ['source', 'windowDays', 'sampling', 'mean', 'display.decimals']) assert.ok(marked.includes(p), `${p} not marked pendingOwner`);
+  // the realized line's name (qVOL) and series id (qvol) are decided: not pending
+  for (const p of ['name', 'series']) assert.ok(!marked.includes(p), `${p} still marked pendingOwner`);
   const markedImplied = ib.pendingOwner.map((e) => e.path);
   for (const p of ['active', 'name', 'series', 'source']) assert.ok(markedImplied.includes(p), `implied ${p} not marked pendingOwner`);
   // through the CLI, from a scratch root

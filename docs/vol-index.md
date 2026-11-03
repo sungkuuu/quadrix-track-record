@@ -260,13 +260,11 @@ last:
 | `.github/workflows/paper-index.yml` | two steps (realized, implied), the new record and anchor files in `git add`, a failure alert; no new key, schedule or concurrency group; whether the implied snapshot runs early in the daily job |
 | `scripts/watchdog.mjs` | freshness of both series and missing anchors |
 | `keeper/RUNBOOK.md`, `docs/paper-index.md`, `README.md` | the series, its failure states (missing bars, Deribit down, cannot compute, revised bars), "what it is not" |
-| `rulebooks/volbtc.md`, `rulebooks/README.md` | the public rulebook (one section per line) and its list entry |
+| `rulebooks/qvol.md` (realized line), a rulebook of its own for the implied line, `rulebooks/README.md` | the public rulebooks and their list entries |
 | `trackrecord/decisions/` | one inception decision per line |
 
 Open before any wiring: the classification of every number, the
 pre-registered reproducibility test and its result, whether the option
-quotes are published in the line, and the name; the keys that wait for the
-owner are listed in each rulebook's `pendingOwner`. The two rulebook JSON
-files hold numbers that cite no test; they are not pushed to this
-repository's remote before the classification is decided and its provenance
-file exists.
+quotes are published in the line, and the implied line's name; the keys
+that wait for the owner are listed in each rulebook's `pendingOwner`. The two
+rulebook JSON files hold numbers that cite no test.

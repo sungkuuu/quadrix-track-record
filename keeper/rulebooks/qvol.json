@@ -1,26 +1,27 @@
 {
   "id": "qvol",
   "line": "realized",
-  "name": "BTC volatility index, realized line (working name)",
-  "kind": "measurement-index",
+  "ticker": "qVOL",
+  "track": "trading-tool",
+  "name": "BTC volatility index, realized line",
+  "kind": "measurement-realized-volatility",
   "status": "draft — not in force; no inception decision; nothing is held, nothing can be bought, no fee",
   "asOf": "2026-11-03",
+  "_doc": "Rules of the qVOL realized line (keeper/vol-index.mjs --line realized). The rulebook is rulebooks/qvol.md in this repository; the inception decision pins this file's sha256, and every line carries it as rule.rulebookSha256. Every value below except display is a definition: the price source (owner 2026-11-02) or a measurement convention fixed by a published methodology document (rulebook appendix P). None is a tested value and none was chosen by a test: the one pre-registered test of this line is of reproducibility, which chooses no value. The line dated D uses the closes of UTC days D-31 ... D-1 and their 30 log returns; variance = (yearDays / windowDays) x the sum of squared returns, no mean subtracted; value = 100 x sqrt(variance), recorded as computed (binary64, no decimal rounding). display is an operating value of the page (rulebook appendix O), not part of the definition: the page shows the record value to two decimals as a presentation only; it never feeds the record or the vault mark. The vault mark is floor(value x 1,000,000) in the contract's 1e-6 unit, a truncation that rounds down; the keeper has no two-decimal rounding and no half-way rule. sampling: one return per UTC day, close to close, the day boundary at 00:00 UTC. close: the close of a UTC day is the close of the latest 1-minute bar that opened on that day. A day with other than 1,440 bars halts the series until a person accepts that exact set of bars in keeper/vol-index-gaps.json; bars are never filled; a day with no bar at all (only after an accepted gap) takes the previous close. There is no genesis level: a line's value is the measured volatility itself. There is no fee: nothing is held. Changing any value after a decision pinned this file is a rule change: a new decision, never an edit.",
   "series": "qvol",
   "source": { "host": "https://data-api.binance.vision", "path": "/api/v3/klines", "symbol": "BTCUSDT", "interval": "1m", "fallback": null },
   "windowDays": 30,
   "yearDays": 365,
   "sampling": "1d-close-00:00-utc",
   "mean": "zero",
+  "close": "latest-opened-1m-bar",
   "display": { "unit": "annualised volatility points (sigma x 100)", "decimals": 2 },
   "inception": { "date": null, "decision": null },
   "pendingOwner": [
-    { "path": "name", "what": "the public name; not chosen" },
-    { "path": "series", "what": "the series id is a neutral placeholder; it follows the public name" },
     { "path": "source", "what": "adopting Binance spot BTCUSDT 1-minute bars, with no fallback, as this line's source" },
     { "path": "windowDays", "what": "the 30-day window: no outside methodology document for a 30-day realized window is cited yet; without one the owner decides" },
     { "path": "sampling", "what": "what the line measures: daily close-to-close returns at 00:00 UTC as a measurement convention, or an estimate of true 30-day volatility, which makes the return interval a tested value; the 00:00 UTC day boundary: no outside methodology document is cited yet; without one the owner decides" },
     { "path": "mean", "what": "zero mean goes with the sampling decision" },
     { "path": "display.decimals", "what": "two decimals shown on the page, a display value only: the record value is not rounded and this value never feeds it; no outside methodology document is cited yet; without one the owner decides" }
-  ],
-  "classification": "open — every numeric value above is proposed as a measurement convention; none has been through a pre-registered test"
+  ]
 }
