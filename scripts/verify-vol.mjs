@@ -26,7 +26,7 @@
  *
  * Usage:
  *   node scripts/verify-vol.mjs --dir <dir> [--line realized|implied] [--rulebook <file>]... [--tail] [--recompute-only] [--quiet]
- * --rulebook <file>: a line's rulebook JSON (keeper/rulebooks/volbtc-<line>.json;
+ * --rulebook <file>: a line's rulebook JSON (keeper/rulebooks/qvol.json or volbtc-implied.json;
  *   its "line" key says which). Every line of that series must carry the rule
  *   the file implies (its sha256 and values). Give it once per line to check
  *   both. A series without its rulebook is only checked to carry the

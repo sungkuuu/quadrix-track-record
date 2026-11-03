@@ -33,7 +33,8 @@
  *   --gaps <file>             (realized, --dry-run) the gap acceptance file; default keeper/vol-index-gaps.json
  *   --quotes embed|hash       (implied) embed the quotes in the line (default) or only their sha256
  *
- * Each line has its own rulebook JSON, keeper/rulebooks/volbtc-<line>.json, so
+ * Each line has its own rulebook JSON (realized keeper/rulebooks/qvol.json,
+ * implied keeper/rulebooks/volbtc-implied.json), so
  * a line's rule (and the rulebookSha256 its lines carry) covers that line's
  * values only, and one line can start, stop or change without touching the
  * other's record.
@@ -127,7 +128,7 @@ const posInt = (x) => Number.isSafeInteger(x) && x > 0;
 
 export const LINES = ['realized', 'implied'];
 /** The rulebook file of a line, relative to the repository root. */
-export const rulebookFile = (line) => path.join('keeper', 'rulebooks', `volbtc-${line}.json`);
+export const rulebookFile = (line) => path.join('keeper', 'rulebooks', line === 'realized' ? 'qvol.json' : `volbtc-${line}.json`);
 
 /** Does a dotted path ("source", "display.decimals") name a key of the rulebook? */
 const hasPath = (obj, p) => {
@@ -140,7 +141,7 @@ const hasPath = (obj, p) => {
 };
 
 /**
- * What the code implements; anything else in keeper/rulebooks/volbtc-<line>.json
+ * What the code implements; anything else in a line's rulebook JSON (rulebookFile)
  * is refused (exit 2). Common to both lines: line, id (realized "qvol",
  * implied "volbtc"), the inception, the owner-pending list and the display
  * decimals (display only: the record path never reads them). The implied line

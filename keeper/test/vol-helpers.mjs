@@ -37,7 +37,7 @@ export function tmpDir(tag = 'vol') {
 }
 
 /** A line's rulebook file in the repository. */
-export const rulebookPath = (line) => path.join(KEEPER, 'rulebooks', `volbtc-${line}.json`);
+export const rulebookPath = (line) => path.join(KEEPER, 'rulebooks', line === 'realized' ? 'qvol.json' : `volbtc-${line}.json`);
 
 /**
  * A scratch repository root holding the implied rulebook with "active": true.

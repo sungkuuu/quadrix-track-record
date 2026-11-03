@@ -229,7 +229,7 @@ test('rulebook shape: what the code does not implement is refused (exit 2)', asy
   const root = tmpDir('vol-rb');
   const dir = path.join(root, 'keeper', 'rulebooks');
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'volbtc-realized.json'), JSON.stringify({ ...rb, id: 'other' }));
+  fs.writeFileSync(path.join(dir, 'qvol.json'), JSON.stringify({ ...rb, id: 'other' }));
   const r = await cli(run, ['--line', 'realized'], { root });
   assert.equal(r.code, 2);
   // no rulebook file for the line: refused

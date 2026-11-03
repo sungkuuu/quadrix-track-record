@@ -4,7 +4,7 @@
   "name": "BTC volatility index, realized line (working name)",
   "kind": "measurement-index",
   "status": "draft — not in force; no inception decision; nothing is held, nothing can be bought, no fee",
-  "asOf": "2026-10-13",
+  "asOf": "2026-11-03",
   "series": "qvol",
   "source": { "host": "https://data-api.binance.vision", "path": "/api/v3/klines", "symbol": "BTCUSDT", "interval": "1m", "fallback": null },
   "windowDays": 30,
@@ -20,7 +20,7 @@
     { "path": "windowDays", "what": "the 30-day window: no outside methodology document for a 30-day realized window is cited yet; without one the owner decides" },
     { "path": "sampling", "what": "what the line measures: daily close-to-close returns at 00:00 UTC as a measurement convention, or an estimate of true 30-day volatility, which makes the return interval a tested value; the 00:00 UTC day boundary: no outside methodology document is cited yet; without one the owner decides" },
     { "path": "mean", "what": "zero mean goes with the sampling decision" },
-    { "path": "display.decimals", "what": "two decimals, half up: no outside methodology document is cited yet; without one the owner decides" }
+    { "path": "display.decimals", "what": "two decimals shown on the page, a display value only: the record value is not rounded and this value never feeds it; no outside methodology document is cited yet; without one the owner decides" }
   ],
   "classification": "open — every numeric value above is proposed as a measurement convention; none has been through a pre-registered test"
 }

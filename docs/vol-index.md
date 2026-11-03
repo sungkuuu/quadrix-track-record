@@ -1,15 +1,18 @@
 # BTC volatility index (working name) — two draft lines
 
 **Status: draft. Not in force. Nothing is written to `trackrecord/`, nothing
-is anchored, and no number here is a rule yet.** The name is a working name;
-the series ids `volbtc-realized` and `volbtc-implied` are neutral placeholders.
-Every number in `keeper/rulebooks/volbtc-realized.json` and
+is anchored, and no number here is a rule yet.** The name is a working name.
+The realized line's id and series id are `qvol`; the implied line's series id
+`volbtc-implied` is a neutral placeholder.
+Every number in `keeper/rulebooks/qvol.json` and
 `keeper/rulebooks/volbtc-implied.json` is proposed as a measurement
 convention and the classification has not been confirmed. None of these
 values has been through a pre-registered test.
 
 **The implied line is switched off until its own decision**
 (`"active": false` in its rulebook): the keeper does not run it in any mode.
+The realized line has no switch: it is in force only through its
+`inception.date`.
 Its code and tests stay. Whether the realized line starts first is open.
 
 ## What it is
@@ -17,7 +20,7 @@ Its code and tests stay. Whether the realized line starts first is open.
 Two numbers, one line each per UTC day, both in annualised volatility points
 (sigma x 100; 40 means 40% a year):
 
-- **Realized** (`volbtc-realized`): how much BTC actually moved over the last
+- **Realized** (`qvol`): how much BTC actually moved over the last
   30 days, from daily closes.
 - **Implied** (`volbtc-implied`): how much movement over the next 30 days the
   listed BTC option quotes price in, at one moment of the day.
@@ -42,17 +45,23 @@ them to agree.
 
 ## Rulebooks and the switch
 
-Each line has its own rulebook JSON, `keeper/rulebooks/volbtc-<line>.json`
-(`"id": "volbtc"`, `"line": "realized" | "implied"`). The `rule` of every line
+Each line has its own rulebook JSON: `keeper/rulebooks/qvol.json`
+(`"id": "qvol"`, `"series": "qvol"`, `"line": "realized"`) and
+`keeper/rulebooks/volbtc-implied.json` (`"id": "volbtc"`, `"line": "implied"`).
+The `rule` of every line
 carries the sha256 of its own line's file, so a later change to one line's
 file (switching it on, its inception) does not change the other line's rule
 and does not stop its record.
 
-- `active` (`true` | `false`): the switch. With `false` every run of that line
-  — without `--dry-run`, with `--dry-run`, with `--collect-only` — prints
-  `INACTIVE` and exits 0: no network call, nothing written. A line with
-  `false` cannot carry an inception date.
-- `inception`: `{date, decision}`; `null` = not in force.
+- `active` (`true` | `false`, implied line only): the switch. With `false`
+  every run of that line — without `--dry-run`, with `--dry-run`, with
+  `--collect-only` — prints `INACTIVE` and exits 0: no network call, nothing
+  written. A line with `false` cannot carry an inception date. The realized
+  rulebook has no `active` key; a realized rulebook with one is refused.
+- `inception`: `{date, decision}`; `null` = not in force. For the realized
+  line this is the only thing that decides whether it is in force.
+- `display.decimals`: the number of decimals the page shows. A display value
+  only: the keeper and the verifier never read it for a line.
 - `pendingOwner`: `[{path, what}]` — the keys of this file whose value waits
   for the owner, with one sentence each. Every `path` must name a key of the
   file. A line with an inception date must have this list empty.
@@ -67,15 +76,17 @@ C_d       = close of UTC day d = close of the Binance spot BTCUSDT 1-minute
             normally the 23:59 bar)
 r_d       = ln(C_d / C_{d-1})
 variance  = (365 / 30) x sum of r_d^2, d = D-30 … D-1   (30 returns, 31 closes)
-value(D)  = 100 x sqrt(variance), two decimals, half up
+value(D)  = 100 x sqrt(variance)   (recorded as computed, not rounded)
 ```
 
 - The line dated D stands at 00:00 UTC of D and covers UTC days D-30 … D-1.
 - The mean return is taken as zero. The denominator is always 30.
 - Evaluation order in binary64: `C = Number(close)`; `r = ln(C / Cprev)`;
   `S = S + r * r` in ascending date order; `variance = (365 / 30) * S`;
-  `x = 100 * Math.sqrt(variance)`; `value = Math.floor(x * 100 + 0.5) / 100`
-  (half up, never half to even).
+  `x = 100 * Math.sqrt(variance)`; `value = x`. The line records x as the
+  binary64 number it is (JSON as `JSON.stringify` writes it): no decimal
+  rounding anywhere in the record. The page shows the value to two decimals;
+  that display never feeds the record.
 - A day must have 1,440 one-minute bars. Otherwise no line is written and the
   run stops (later days wait too). A day is computed only after a person has
   confirmed the gap in the acceptance file (below). With an accepted gap the
@@ -149,7 +160,7 @@ Both files are hash-chained like the other series:
 line's hash (null on the first). The key order is fixed; the hash depends on
 it. No state file: the last line is the state.
 
-`record-volbtc-realized.jsonl`:
+`record-qvol.jsonl` (`index` = `"qvol"`):
 `seq, date, observedAt, index, value, variance, late?, window, carriedFrom?,
 returns, source, sources? (first line only), gaps?, gapAccepted?, rule, keeper,
 shadow?, inception?, prevHash, hash`.
@@ -192,7 +203,7 @@ node keeper/vol-index.mjs --line realized
 
 # realized dry run over a past window (lines go under --out, each with "shadow": true)
 node keeper/vol-index.mjs --line realized --dry-run --replay 2019-03-04..2019-03-31 --out keeper/dryrun
-#   --offline <dir>   bars from <dir>/BTCUSDT-1m-<YYYY-MM-DD>.csv ("openTimeMs,open,high,low,close", no header)
+#   --offline <dir>   bars from <dir>/btcusdt-1m-<YYYY-MM-DD>.csv ("openTimeMs,open,high,low,close", no header)
 #   --gaps <file>     another gap acceptance file (dry run only)
 
 # implied (runs only while volbtc-implied.json has "active": true; now it prints INACTIVE):
@@ -203,27 +214,35 @@ node keeper/vol-index.mjs --line implied --dry-run --from-snapshot <book.json.gz
 
 # independent recomputation of every field (does not import keeper/)
 node scripts/verify-vol.mjs --dir keeper/dryrun
-#   --rulebook keeper/rulebooks/volbtc-realized.json   also check that line's rule against its rulebook JSON
-#                                                      (once per line; the file's "line" key says which)
+#   --rulebook keeper/rulebooks/qvol.json   also check that line's rule against its rulebook JSON
+#                                           (once per line; the file's "line" key says which)
 ```
 
-Exit codes: 0 = done, nothing to do, not in force, or inactive; 1 = data failure
+Exit codes: 0 = done, nothing to do, not in force, or inactive (implied); 1 = data failure
 (nothing written for the failed day); 2 = configuration (bad option, bad
 rulebook, bad acceptance file). Retries: at most 3 attempts per call, 2 s then
 4 s apart, on a network error, a time-out (30 s per attempt), HTTP 429 or 5xx;
-Binance calls at least 250 ms apart. Before a line is appended the keeper runs
+Binance calls at least 250 ms apart. The verifier recomputes the realized
+`variance` and `value` from the window and accepts each within a relative
+1e-9. Before a line is appended the keeper runs
 `scripts/verify-vol.mjs --recompute-only --rulebook <the rulebook it read>` on
 it in a child process and discards the line if that fails. A new line is
 checked after the record's last line (`--tail`); the first line on its own.
 
 **Gap acceptance file** (`keeper/vol-index-gaps.json`, empty): entries
-`{id, series: "volbtc-realized", day, sha256, missing: [{from, to, minutes}], note, confirmedAt}`.
+`{id, series: "qvol", day, sha256, missing: [{from, to, minutes}], note, confirmedAt}`.
 A day with fewer than 1,440 bars is computed only when its re-fetched
 canonical text has exactly that sha256. A stopped run prints the day's row
 count and sha256. Entries in this repository need the owner's confirmation.
 
 Tests (no network, Node built-ins only, synthetic data only):
-`node --test keeper/test/vol-*.test.mjs`. Two tests need private inputs and
+`node --test keeper/test/vol-*.test.mjs`. `keeper/test/vol-checks.test.mjs`
+holds the checks C1, C7 and C9–C13 of the reproducibility test on synthetic
+input; C8 is an empty number (the definition has no rounding, so there is no
+rounding check). C1: closes moving ±x every day (x = ln 1.01) give
+100 x sqrt(365) x x within a relative 1e-9. With `VOL_CHECK_DIR` naming a
+folder that holds `record-qvol.jsonl`, C7, C11, C12 and C13 also run on that
+record; without it that test is skipped. Two tests need private inputs and
 are skipped without `VOL_FIXTURE_DIR`; no market data, no other firm's index
 values and no table copied from a methodology document are committed here.
 
