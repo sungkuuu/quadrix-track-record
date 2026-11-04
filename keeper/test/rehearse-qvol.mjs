@@ -5,8 +5,14 @@
  * Needs a running fork (one at a time on the machine) and Binance's public
  * REST (read-only):
  *
- *   anvil --fork-url https://sepolia-rpc.giwa.io --port 8599 --host 127.0.0.1 &
+ *   anvil --fork-url https://sepolia-rpc.giwa.io --fork-block-number <a block of E> --port 8599 --host 127.0.0.1 &
  *   node keeper/test/rehearse-qvol.mjs --rpc http://127.0.0.1:8599 --out <dir>
+ *
+ * The fork's block is one mined on E (defined below; UTC, before 23:50): the fork's clock starts
+ * there, so the stand-in decision is anchored on its effective day E, as
+ * scripts/verify.mjs requires. Before run 1 and run 2 the fork's clock is set
+ * (evm_setTime) to the runner's clock of that run, so each line is anchored in
+ * a block of its own day, after the decision's anchor.
  *
  * Everything runs in temporary copies of this repository (the real
  * trackrecord/ and keeper/dryrun/ are never touched), with two fresh
@@ -47,10 +53,9 @@
  * and the dry run replay the answers runs 1 and 2 received (the same URLs,
  * so the same bars). Runs 1, 2 and the refusal runs are the module's run()
  * with the runner's clock set; run 3 and every other tool run as a command.
- * The stand-in decision is anchored on the fork's clock (today), after its
- * file-name date E — scripts/anchor-decision.mjs refuses that for a real
- * decision; it is dated E only so that the two lines are days whose bars
- * exist. Run it after 00:05 UTC (today's first 1-minute bar must be closed).
+ * The stand-in decision is dated E so that the two lines are days whose bars
+ * exist; it is anchored on the fork's clock at the fork block's day E.
+ * Run it after 00:05 UTC (today's first 1-minute bar must be closed).
  * Exit status is 1 when any check fails. LOCAL ONLY: it refuses to run under
  * GitHub Actions.
  */
@@ -259,6 +264,14 @@ for (const a of [ACCT0, ACCT1]) {
 const info = await pc.request({ method: 'anvil_nodeInfo' }).catch(() => null);
 const forkNumber = info?.forkConfig?.forkBlockNumber != null ? BigInt(info.forkConfig.forkBlockNumber) : await pc.getBlockNumber();
 const forkBlock = await pc.getBlock({ blockNumber: forkNumber });
+// The decision is anchored on its effective day E: the fork's clock starts at the fork block, which must be a block of E.
+const forkMs = Number(forkBlock.timestamp) * 1000;
+if (!(forkMs >= Date.parse(`${E}T00:00:00Z`) && forkMs < Date.parse(`${D1}T00:00:00Z`) - 10 * 60_000))
+  throw new Error(`fork a block mined on ${E} before 23:50 UTC (anvil --fork-block-number): the fork block ${forkNumber} is at ${new Date(forkMs).toISOString()}, and the stand-in decision ${DECISION} must be anchored on ${E}`);
+/** Sets the fork's clock to the runner's clock of a run (the next block carries that time or later). */
+const setChainTime = async (ms) => {
+  await pc.request({ method: 'evm_setTime', params: [Math.floor(ms / 1000)] });
+};
 const git = (args) => spawnSync('git', ['-C', REPO, ...args], { encoding: 'utf8' }).stdout.trim();
 const FILES = ['keeper/vol-index.mjs', 'keeper/test/vol-index.test.mjs', 'docs/vol-index.md', 'scripts/verify.mjs', 'scripts/verify-vol.mjs', 'keeper/test/rehearse-qvol.mjs'];
 results.setup = {
@@ -292,6 +305,7 @@ const DOC = Buffer.from(
 const DOC_SHA = sha(DOC);
 const decRc = await sendRaw(w0, { to: ACCT0, value: 0n, data: toHex(`qxdec:${DOC_SHA}`) });
 const decBlock = await pc.getBlock({ blockNumber: decRc.blockNumber });
+if (dayAt(Number(decBlock.timestamp) * 1000) !== E) throw new Error(`the stand-in decision's anchor is in block ${decRc.blockNumber} at ${new Date(Number(decBlock.timestamp) * 1000).toISOString()}, not on ${E}`);
 const LEDGER = { id: DECISION, file: `decisions/${DECISION}.md`, effectiveFrom: E, sha256: DOC_SHA, txHash: decRc.transactionHash, anchoredAt: new Date(Number(decBlock.timestamp) * 1000).toISOString() };
 results.standIn = { decision: DECISION, rulebookSha256: RB_SHA, documentSha256: DOC_SHA, anchorTx: decRc.transactionHash, anchorBlock: Number(decRc.blockNumber), anchoredAt: LEDGER.anchoredAt };
 say(`stand-in decision ${DECISION}: rulebook JSON sha256 ${RB_SHA} (keeper/rulebooks/qvol.json with status, inception {date ${D1}, decision ${DECISION}} and pendingOwner [] changed) · document sha256 ${DOC_SHA} · anchored on the fork in ${decRc.transactionHash} (block ${decRc.blockNumber}, ${LEDGER.anchoredAt}), calldata qxdec:<sha256>`);
@@ -348,6 +362,7 @@ async function main() {
   const ancA = path.join(A, 'keeper', 'dryrun', 'anchors-qvol.jsonl');
   const marksA = path.join(A, 'keeper', 'dryrun', 'marks-qvol.jsonl');
   const b1 = (await pc.getBlockNumber()) + 1n;
+  await setChainTime(T1);
   let L = await leg(A, 'copy-a', T1, liveFetch, `2-run1-${D1}`);
   let lines = readJsonl(recA);
   const L0 = lines[0];
@@ -380,6 +395,7 @@ async function main() {
 
   // ------------------------------------------------------------------ 3 run 2, run 3, the dry run, verify.mjs
   const b2 = (await pc.getBlockNumber()) + 1n;
+  await setChainTime(T2);
   L = await leg(A, 'copy-a', T2, liveFetch, `3a-run2-${D2}`);
   lines = readJsonl(recA);
   const L1 = lines[1];
