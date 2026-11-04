@@ -923,9 +923,15 @@ the first run after the deployment takes several steps, one transaction each
 **Fork rehearsal** (local only, no key; one fork at a time on the machine):
 
 ```bash
-anvil --fork-url https://sepolia-rpc.giwa.io --port 8599 --host 127.0.0.1 &
+anvil --fork-url https://sepolia-rpc.giwa.io --fork-block-number <a block of the day before yesterday> --port 8599 --host 127.0.0.1 &
 node keeper/test/rehearse-qvol.mjs --rpc http://127.0.0.1:8599 --out <dir>
 ```
+
+The fork block is one mined the day before yesterday (UTC, before 23:50), the
+stand-in decision's effective day: the fork's clock starts there, so the
+decision is anchored on its effective day, as `scripts/verify.mjs` requires.
+Before each of the two runs the script sets the fork's clock to that run's
+clock (00:25 UTC of the line's day), so each line is anchored on its own day.
 
 It works in temporary copies of this repository (the real `trackrecord/` and
 `keeper/dryrun/` are never touched), with two fresh addresses impersonated on
