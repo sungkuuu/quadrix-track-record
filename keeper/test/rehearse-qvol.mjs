@@ -469,7 +469,8 @@ async function main() {
   const regDPath = path.join(D, 'keeper', 'dryrun', 'leverage-vaults.json');
   const regD = readJson(regDPath);
   const vD = getAddress(regD.qbtc2x.address);
-  regD.qvol = { ...regD.qvol, address: vD };
+  // the impostor carries a real deployment (the keeper's own qBTC2X creation), so the vault-deployment check passes and the symbol check refuses
+  regD.qvol = { ...regD.qvol, address: vD, deployTx: regD.qbtc2x.deployTx, block: regD.qbtc2x.block };
   fs.writeFileSync(regDPath, JSON.stringify(regD, null, 2) + '\n');
   standIn(D);
   const dStart = (await pc.getBlockNumber()) + 1n;
@@ -477,8 +478,8 @@ async function main() {
   const linesD = readJsonl(path.join(D, 'keeper', 'dryrun', 'record-qvol.jsonl'));
   const ancD = readJsonl(path.join(D, 'keeper', 'dryrun', 'anchors-qvol.jsonl'));
   const anD = ancD[0] && linesD[0] ? await anchorOnFork(ancD[0], linesD[0]) : { ok: false };
-  check(`4d the fork registry's qvol entry names the qBTC2X vault ${vD}: the line is written and anchored, no setNav is sent, exit 1`,
-    r.code === 0 && (await read(vD, 'symbol')) === 'qBTC2X' && L.code === 1 && /is "qBTC2X", not qVOL — keeper\/dryrun\/leverage-vaults\.json names the wrong vault; no mark sent/.test(L.out) && linesD.length === 1 && anD.ok && (await read(vD, 'navPerShare')) === 1_000_000n && (await navEvents(vD, dStart)).length === 0,
+  check(`4d the fork registry's qvol entry names the qBTC2X vault ${vD} with its real deployment by the keeper: the deployment check passes, the symbol check refuses — the line is written and anchored, no setNav is sent, exit 1`,
+    r.code === 0 && (await read(vD, 'symbol')) === 'qBTC2X' && L.code === 1 && /created by the signer in 0x[0-9a-f]{64} \(block \d+\), as the registry says/.test(L.out) && /is "qBTC2X", not qVOL — keeper\/dryrun\/leverage-vaults\.json names the wrong vault; no mark sent/.test(L.out) && linesD.length === 1 && anD.ok && (await read(vD, 'navPerShare')) === 1_000_000n && (await navEvents(vD, dStart)).length === 0,
     upTo(L.out, 'qVOL vault marks FAILED', 'no mark sent'));
 
   // ------------------------------------------------------------------ 5 the freshness watchdog on the copy's record
