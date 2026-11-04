@@ -1,0 +1,453 @@
+The keeper and verifier test suite of this repository — 2026-11-04
+code: branch keeper/qvol-2026-11-02-verify at 8b6c57b (merge keeper/qvol-2026-11-02-verify); node v22.23.1
+$ node --test --test-concurrency=1 keeper/test/*.test.mjs      (exit 0, 2026-11-04T07:42:17Z → 2026-11-04T07:50:06Z)
+
+SUMMARY
+# tests 429
+# pass 416
+# fail 0
+# cancelled 0
+# skipped 12
+# todo 1
+
+== not ok lines
+not ok 133 - qBTC2X pins: every file the qBTC2X inception decision pins by sha256 either still has that sha256 here, or an anchored decision in trackrecord/decisions.jsonl names both the pinned and the current sha256 (a stated re-pin) # TODO medium: the three shared files change under a running series; the anchored qBTC2X text names the earlier bytes and no anchored decision names the new ones yet
+
+== every top-level result line
+ok 1 - review r2: a draft box opened as "<!-- ===== DRAFT", a TO FILL box, or any ⟦ / ⟧ is refused before the key is read
+ok 2 - review r2: a finished document passes the guard (control: it stops at the missing key, nothing sent)
+ok 3 - review r2: every decision already in the ledger still passes the new guard (none carries a draft box or a placeholder)
+ok 4 - a bytes32 zero passed to a timelock call is a value, not an empty sha256 (anchored 2026-10-23 decision, line 74)
+ok 5 - refused before the key, with line and text: angle brackets ⟨ ⟩
+ok 6 - refused before the key, with line and text: CJK angle brackets 〈 〉
+ok 7 - refused before the key, with line and text: tortoise-shell brackets 〔 〕
+ok 8 - refused before the key, with line and text: full-width square brackets ［ ］
+ok 9 - refused before the key, with line and text: template braces {{ }}
+ok 10 - refused before the key, with line and text: TODO
+ok 11 - refused before the key, with line and text: TBD, lower case
+ok 12 - refused before the key, with line and text: DRAFT in upper case, mid-sentence
+ok 13 - refused before the key, with line and text: quote-block banner
+ok 14 - refused before the key, with line and text: heading that says draft
+ok 15 - refused before the key, with line and text: line that opens with Draft
+ok 16 - refused before the key, with line and text: Status: draft
+ok 17 - refused before the key, with line and text: date placeholder YYYY-MM-DD
+ok 18 - refused before the key, with line and text: date placeholder 2026-10-XX
+ok 19 - refused before the key, with line and text: date placeholder 2026-MM-DD
+ok 20 - refused before the key, with line and text: empty sha256, 64 zeros
+ok 21 - refused before the key, with line and text: empty sha256, 0000…
+ok 22 - refused before the key, with line and text: empty sha256, ellipsis alone
+ok 23 - refused before the key, with line and text: ⟦ ⟧ (kept from the earlier guard)
+ok 24 - refused before the key, with line and text: placeholder XXX
+ok 25 - refused before the key, with line and text: placeholder xxx, lower case
+ok 26 - refused before the key, with line and text: placeholder 0x…
+ok 27 - refused before the key, with line and text: placeholder 0xXXXX
+ok 28 - refused before the key, with line and text: placeholder 0x____
+ok 29 - refused before the key, with line and text: bare 0x in code
+ok 30 - refused before the key, with line and text: empty hash beside the word bytes32
+ok 31 - refused before the key, with line and text: empty hash beside the word execute
+ok 32 - refused before the key, with line and text: empty hash beside the word schedule
+ok 33 - refused before the key, with line and text: empty hash after a bare schedule( in code
+ok 34 - refused before the key, with line and text: empty document hash in a cast send to the anchor
+ok 35 - refused before the key, with line and text: empty hash in a cast call that is not a timelock call
+ok 36 - refused before the key, with line and text: empty hash in a bare execute( in code
+ok 37 - refused before the key, with line and text: 64 zeros labelled sha256 on a call line
+ok 38 - control: the anchored decision unchanged passes the guard and stops at the missing key
+ok 39 - every decision in trackrecord/decisions/ passes the guard (no false refusal)
+ok 40 - a multi-line draft comment box is reported on the line that carries DRAFT
+ok 41 - a final document passes every guard (stops only at the missing key; nothing is sent)
+ok 42 - a TO FILL / TO-FILL-… marker in the body is refused although the draft comment lines are gone (A1 M1)
+ok 43 - the guards that were there still refuse (DRAFT and TO FILL comments, _to be deployed_)
+ok 44 - H4 blocked: an artifact of an older build (no setGuardian in the ABI, other code, honest metadata) — the tool no longer demands a guardian, but the reference check refuses it before anything is sent
+ok 45 - H4 BREAK (reproduced, rebutted): a crafted artifact — any runtime up to 3,067 bytes, immutableReferences {} and metadataBytes 6135 — makes codeShape() empty on both sides; the reference check passes and a dry run says "would deploy"
+ok 46 - H8 blocked (30 s): a receipt whose contractAddress is not where the code is — the read-back finds no code there, exit 1 after the bound, the registry is not written; the person who then writes that address by hand is stopped by set-guardian (REFUSED at the code check, the first read of the registry line)
+ok 47 - H8 blocked (30 s): a read-back whose values differ (navPerShare 2e6, depositCap 1) — reported after the bound, exit 1, no setGuardian sent, registry not written
+ok 48 - voidness: with the confirm-word line removed from a copy of the tool, --live alone SENDS — so the H3 block above is the line, not an accident
+ok 49 - voidness: with the code-shape comparison removed from a copy of the tool, the old-build artifact of H4 passes the reference check (and is then stopped by the simulation) — so the H4 block is that comparison
+ok 50 - H1: with qeth15 pointing at the qBTC2X vault, every owner action is refused before anything is sent — set-guardian, open-deposits (dry and live), pause; the qBTC2X vault is untouched and nothing is logged
+ok 51 - H1: the registry line is checked before every owner action — a vault with the right code and symbol but another keeper is refused on a live run; the right line sends exactly the one write
+ok 52 - H1 control: a registry address with no code behind it is refused on open-deposits by the code check (exit 2, nothing sent)
+ok 53 - H13 (one lost response): the hash and nonce are on disk before the broadcast — the node holds ONE deployment, the run exits 1 with a "signed" line naming it; the next run finds it mined and goes on from its receipt (dry run first), deploying nothing again
+ok 54 - H13 (every response lost): the "signed" line blocks the next run — on a node with no receipt for it and the nonce unused, dry and live runs are refused and nothing is signed; once the node shows it mined, the run goes on from its receipt
+ok 55 - fork, impersonated account: eth_signTransaction answers "No Signer available", the transaction goes by eth_sendTransaction and is logged "sent" with its hash; deploy and setGuardian complete
+ok 56 - H3 blocked: every loose form of --live / --confirm sends nothing — lower case, trailing space, "=" forms, a missing word
+ok 57 - H3b (reproduced, rebutted): isLocalRpc is a prefix test — "http://127.0.0.1:9@<host>" counts as local, and viem turns the userinfo into Basic auth and talks to <host>: a live fork run (--from, no key) is sent to the host after the @; a look-alike host is not local
+ok 58 - H5: --cap refuses every non-integer form; an integer passes with no bound and no human-unit echo (1000000 = 1 mUSD passes as written); a value past uint256 fails before any send
+ok 59 - H2 blocked: the guardian rule holds for every spelling — leading space, no 0x, bad checksum, 41 bytes, manager in any case; a contract address (MockUSD, the reference vault, the timelock itself) is accepted by the rule as written
+ok 60 - H7 blocked: a qeth15 deployment rewrites the registry with every other entry and _doc unchanged (fork: addresses emptied), keys in order
+ok 61 - the transaction is logged as soon as it is signed, before the broadcast — a receipt that never comes still leaves the hash and nonce on disk
+ok 62 - a read-back behind the receipt block is repeated until it agrees; the guardian is set and read back; the address is written with the gate unchanged; a second deployment is refused
+ok 63 - review r1: a deployment that was signed but has no outcome in the log, and no receipt on the chain, blocks a second deployment until a person resolves it
+ok 64 - a live run on a local RPC never uses KEEPER_PK and a live run without the confirm word is refused
+ok 65 - rehearsal C4: a fork rehearsal starts from the real registry with every address emptied (gates kept), so it still runs after the real vaults exist; a live run reads the registry as it is
+ok 66 - qETH1.5X — name "Quadrix ETH 1.5x Vault", symbol = the rulebook ticker; the registry entry exists, and a fork's copy of it has no address; a dry run on the fork deploys it after setGuardian; open-deposits and pause accept the index
+ok 67 - qVOL — a display vault: name "Quadrix BTC Realized Volatility Vault", symbol = the rulebook ticker qVOL; open-deposits is refused for qvol (exit 2) before anything is read from the RPC
+ok 68 - the guardian rule — missing, 0, = manager (keeper and owner), or a timelock role: REFUSED before anything is sent
+ok 69 - the reference vault is the registry's qBTC2X as committed — other code, another symbol, or guardian 0 is REFUSED
+ok 70 - the reference vault on a fork: the registry copy empties every address, but the reference is still read from the committed registry; a registry with no qBTC2X address is REFUSED
+ok 71 - a setGuardian that does not complete leaves the registry unwritten; the deployment then blocks a second one; once a person writes the address, --action set-guardian sets and reads it back
+ok 72 - the artifact is the build it states — immutables-zero codehash 0x4a333ad4…, metadata tail 53 bytes, 6,135 runtime bytes, setGuardian in the ABI, no local path
+ok 73 - a live deployment from a signer other than the manager is refused (setGuardian is the owner's); set-guardian refuses a registry address that is another vault or other code
+ok 74 - the artifact shape survives immutables and metadata; one changed opcode does not
+ok 75 - no code, "0x" or a missing answer is "not yet", never a disagreement
+ok 76 - nothing twice, then the right values: passes at the third read
+ok 77 - code present but the view calls revert (a node that has not yet run the block): retried, then passes
+ok 78 - a code of another shape keeps failing: reported after the bound, not before
+ok 79 - values that differ once the code is present are reported after the bound
+ok 80 - no code for the whole bound: reported as "not yet" after it
+ok 81 - a read that keeps throwing is "not yet" and is reported with its message after the bound
+ok 82 - open bidding is stated only when biddingOpen is true, with the curve read from the vault state
+ok 83 - keeper: a rulebook that lists pendingOwner is refused outside a rehearsal (exit 2), nothing written, no exchange or chain request; a dry run still runs
+ok 84 - verify: a published genesis line pinned to a draft rulebook JSON fails ("is a draft"), and for that reason only
+ok 85 - target: a qBTC2X rulebook that says 1.5 passes the keeper's shape check (1.5 is in TARGETS), but the verifier holds qBTC2X at 2 — no line is written (exit 1)
+ok 86 - qeth15 T1: the shipped pair (15 min · 2.3, target 1.5) x three months x (30 bp · 4.5%, 30 bp · 6%), every day-end equity === the engine # SKIP comparison missing — set LEVERAGE_ETH15_ENGINE (leverage-eth15.mjs) and LEVERAGE_ETH15_DATA; the public CI has no copy
+ok 87 - qeth15 T1e: the shipped pair over the whole decision region 2017-09-01 … 2026-09-29 at 30 bp · 4.5% and 30 bp · 6% # SKIP comparison missing — set LEVERAGE_ETH15_ENGINE (leverage-eth15.mjs) and LEVERAGE_ETH15_DATA; the public CI has no copy
+ok 88 - T1 engine diff: three months x three THROWAWAY pairs x two cost conventions, every day-end equity === the engine # SKIP comparison missing — set LEVERAGE_V6_ENGINE to the sixth test engine (leverage-params-v6.mjs); the public CI has no copy
+ok 89 - T1b engine diff over the whole decision region 2017-09-01 … 2026-09-29, BTC 120 · 2.2 at 30 bp · 6% (THROWAWAY pair) # SKIP comparison missing — LEVERAGE_V6_ENGINE not set
+ok 90 - T1c engine diff with a model liquidation: BTC daily reset without a trigger, 2020-03 (the engine liquidates on 2020-03-12) # SKIP comparison missing — LEVERAGE_V6_ENGINE not set
+ok 91 - T1d engine diff with the shipped values: each rulebook pair x three months x (its level convention, 30 bp · 6%), every day-end equity === the engine # SKIP comparison missing — LEVERAGE_V6_ENGINE not set
+ok 92 - T1e engine diff with the shipped values over the whole decision region 2017-09-01 … 2026-09-29 at each rulebook's level convention # SKIP comparison missing — LEVERAGE_V6_ENGINE not set
+ok 93 - qeth15: the shipped rulebook has the owner values and no pending decision; before its inception decision is anchored a live run stops with NOT IN FORCE (exit 0), nothing written, no exchange or chain request
+ok 94 - qeth15 dry run (THROWAWAY n = 120 · T = 1.7): target 1.5 comes from the rulebook alone; verify.mjs holds the target of the series
+ok 95 - T4: an empty or invalid tested value, or a throwaway value outside a dry run, is refused with exit 2 — no file written, no exchange or chain request
+ok 96 - T4b: the two shipped rulebooks carry one level convention (level.primary, owner 2026-10-05) and record no management fee in stage A
+ok 97 - T4: the shipped rulebooks (values filled 2026-10-05) pass the rule checks and stay NOT IN FORCE until their inception decision is in the ledger — exit 0, nothing written, no exchange or chain request
+ok 98 - not in force: no decision, a named decision not yet anchored, or before the inception date — exit 0, nothing written
+ok 99 - review r1: once the series has lines, a rulebook edited after inception is a refusal (exit 2, the failure issue opens), not a silent NOT IN FORCE
+ok 100 - review r2: an ANCHORED inception decision that the files do not satisfy is a refusal before the genesis line too (exit 2, the failure issue opens) — not a silent NOT IN FORCE on the opening day
+ok 101 - T5: a day is not written before the next day's first 1-minute bar has closed
+ok 102 - T6: a run that wakes late computes the missed days in order, from the same bars — only the timing fields differ; a second run writes nothing
+ok 103 - T7: 1,439 bars halt the series (exit 1, nothing written, later days neither); an accepted gap with the same sha256 is computed and recorded; a different sha256 or two differing fetches halt
+ok 104 - T8: every line is anchored with calldata qxpi-qbtc2x:<hash>, signed locally (the node is never asked to sign); a line left unanchored is anchored first
+ok 105 - T8: when the independent recompute rejects the new line nothing is appended or anchored (exit 1)
+ok 106 - T9: after the anchor the vault is marked to round(E × 1e6) in contract-bounded steps; marks are skipped without an address or a gate
+ok 107 - review r1: T9 on a load-balanced endpoint — a node behind the last step answers the next simulation from the old navPerShare; the simulation runs at a block >= the last receipt, so the steps still go through
+ok 108 - review r2: --no-new-lines (lines pushed before anything goes on chain, keeper-clock G2) — a keyless run writes the lines, a second run with --anchor --no-new-lines anchors every unanchored line in order and marks, computes no line and calls no exchange even when another day has ended
+ok 109 - T9: a mark that fails keeps the line and its anchor and exits 1; the next run finishes the steps
+ok 110 - T9: gate {mode: halt, pct: 15} stops a mark beyond 15% (exit 1, nothing sent) — the alternative the owner may choose
+ok 111 - T9 (owner 2026-10-06): a model liquidation halts the series until a person accepts it — nothing written, anchored or marked (exit 1); an entry with another bar, LTV or sha256, a gap entry, or one without an id does not accept it
+ok 112 - T9: an accepted model liquidation ends the series: level 0 with liquidationAccepted, anchored, the vault stepped to the floor (46 steps) and paused; the next run sends and writes nothing; verify fails the line without the id
+ok 113 - T2: scripts/verify.mjs recomputes 31 days of the leg's lines field for field; a tampered line fails it
+ok 114 - T2 on real bars: 2020-03 (BTC, with the 2020-03-04 exchange gap accepted) through the leg and verify # SKIP real-bar comparison missing — set LEVERAGE_V6_DIR (or LEVERAGE_V6_ENGINE) to the sixth test directory
+ok 115 - review r1: verify — between an anchored inception decision and the genesis line the series is "pending"; after that UTC day a missing file fails
+ok 116 - review r1: verify — a genesis line carrying checks, a renumbered seq, or a price host other than the rule's fails even when re-hashed
+ok 117 - shipped files: a ledger entry for the qeth15 inception decision whose document does not name the rulebook sha256 stalls the opening with a refusal (exit 2), not a quiet NOT IN FORCE; once the document names it, the day before is NOT IN FORCE and 2026-10-16 writes the genesis line that verify.mjs accepts
+ok 118 - cross-series: qeth15 lines offered as qETH2X or qBTC2X fail the verifier on index and target; re-labelled as a 2x series they fail on the 1.5 genesis book; qETH2X lines offered as qeth15 fail the same way
+ok 119 - cross-rulebook: keeper/rulebooks/qeth15.json holding the qETH2X rulebook (ticker qETH2X, target 2) passes the keeper's own checks and a decision that pins it, and is stopped only by the recompute (exit 1, nothing written)
+ok 120 - cross-decision: a qeth15 rulebook whose inception.decision names another index's decision (…-qeth2x-paper-inception) passes the keeper's ledger check and is stopped by the recompute (exit 1, nothing written)
+ok 121 - pendingOwner, keeper: every non-array form is a shape refusal (exit 2) before the ledger or the exchange is read; an empty array is "nothing pending" and the pinned rulebook runs
+ok 122 - pendingOwner, keeper: an entry that is not an object ([null]) is refused as a shape error (exit 2, naming the file) with nothing written and no request (finding F3, fixed)
+ok 123 - pendingOwner, verifier: a published qeth15 genesis line pinned to a rulebook with pendingOwner entries fails ("is a draft"); the same rulebook with pendingOwner as an object — which the keeper refuses as a shape error — is refused by the verifier too (finding F4, fixed)
+ok 124 - rehearsal flag: isLocalRpc reads the host as a URL parser does — a URL whose userinfo is 127.0.0.1 or localhost while its host is elsewhere is not local, so --rpc http://127.0.0.1:1@host/ --from 0x… is refused (finding F5, fixed)
+ok 125 - NOT IN FORCE edges: the second before the inception day, and a source that has not closed the first bar of the day, write nothing (exit 0); an inception.date edited away from the anchored decision is a refusal (exit 2); a ledger without the decision is NOT IN FORCE (exit 0)
+ok 126 - target: the trigger must sit above the series' own target (1.7 for qeth15 is accepted, 1.5 is not; 1.7 for qbtc2x is not); an index id in another spelling is refused
+ok 127 - target: a qETH2X rulebook that says 1.5 and a qeth15 rulebook that says 2 both pass the keeper's shape check (TARGETS) and are stopped by the verifier's table — no line written (exit 1)
+ok 128 - arithmetic at 1.5: the trigger and the model liquidation follow from the target, nothing is fixed at 2 — the same bar liquidates a 2 book and only triggers a 1.5 book; a 1.5 book liquidates at a deeper low
+ok 129 - watchdog: qeth15 is watched — pending until 16 h after its inception day begins, then "no record" is a problem; a written series goes stale after 40 h; the qeth2x pattern does not claim the qeth15 decision
+ok 130 - verifier states for qeth15: no file and no decision = not started (exit 0); a decision effective in the future and no file = pending (exit 0); a decision effective in the past and no file = FAIL (exit 1)
+ok 131 - wiring: paper-index.yml runs the qeth15 leg after qBTC2X with its own 20-minute limit on the same not-cancelled condition, stages its three files in "Commit records", and tails its log in the failure alert; leverage-dryrun.yml offers qeth15; the three tables (keeper INDEXES, verify.mjs, watchdog) and the rulebook agree
+ok 132 - qBTC2X under the changed files: the qBTC2X inception decision pins keeper/leverage-index.mjs, keeper/leverage-step.mjs and scripts/verify.mjs by sha256 at a commit; the files at that commit and the files here give the same 2x book, check log and level on the same bars, both verifiers accept the series, and the recorded qBTC2X lines verify under the files here
+not ok 133 - qBTC2X pins: every file the qBTC2X inception decision pins by sha256 either still has that sha256 here, or an anchored decision in trackrecord/decisions.jsonl names both the pinned and the current sha256 (a stated re-pin) # TODO medium: the three shared files change under a running series; the anchored qBTC2X text names the earlier bytes and no anchored decision names the new ones yet
+ok 134 - the website copy: verify.mjs --base needs record-qeth15.jsonl and rulebook-qeth15.json next to decisions.jsonl — without the rulebook every published line fails as "a rulebook changed after inception", without the record the series fails once its inception day has passed; with both it passes
+ok 135 - the live leg writes only files that "Commit records" stages (a tracked file outside that list would stop the push of every series); a draft qeth15 rulebook before any decision is a refusal (exit 2) every run, not NOT IN FORCE; draft dry-run lines placed in trackrecord/ fail the public verifier
+ok 136 - README: the --series list of scripts/verify.mjs names every series the verifier knows, qeth15 included (finding F6, fixed)
+ok 137 - F02a: a source clock days ahead does not make the keeper write tomorrow — only the line of the day that began on the runner's clock
+ok 138 - F02b: a source that still calls the day open a full day after it ended is a failure (exit 1), not a quiet "not final"
+ok 139 - C1: a Binance failure names the host and the day and says nothing was written; the next run writes the day
+ok 140 - F09: every Binance request is bounded, body included — a source that never answers, or never finishes its body, ends in a failure, not a hang
+ok 141 - C2: an anchored decision the rulebook JSON no longer matches is refused with what does not match — not "not anchored"
+ok 142 - F05a: a registry entry that names another index's vault is refused before any mark (exit 1); the right symbol marks
+ok 143 - F05d: a vault at navPerShare 3 cannot move — a non-liquidated level is a failure (exit 1, nothing sent), not "already there"
+ok 144 - F03: the verifier fails a series under another rule, another decision, another genesis bar, an empty file, or a line written before its day — and passes the honest one
+ok 145 - F03 D: with an RPC, an anchor whose block is older than the line's day fails, a late anchor prints how late, and a block seconds before observedAt is printed, not failed
+ok 146 - the keeper's own recompute carries the rulebook JSON (a line under the shipped rule is accepted end to end, nothing else written)
+ok 147 - (a) level vs an independent brute force in price space — three synthetic days with a crash, THROWAWAY pairs and conventions
+ok 148 - (a) the crash day of the synthetic window does trigger (the comparison above is not vacuous)
+ok 149 - aggregation: the engine rule, and a slot without a minute has no bar
+ok 150 - (b) T3: λ exactly T triggers (≥)
+ok 151 - (b) T3: at the day-end bar λ ≥ T counts once, as the reset
+ok 152 - (b) T3: a reset at λ = 2 exactly trades nothing and costs nothing
+ok 153 - (b) T3: a gap covering two grid times is judged once (gridTimes 2); the bar after it accrues d = 5 steps of interest
+ok 154 - (b) T3: LTV at the low exactly 0.86 is a model liquidation (level 0, series ends)
+ok 155 - (b) T3: a day whose last bar is not 23:45 (gap to midnight) resets at that bar's close
+ok 156 - ruleProblem: the refusal grid (spec §1-6 1–3)
+ok 157 - (c) T9 steps: −69.34% from 1.000000 is five contract-bounded steps ending on round(E × 1e6)
+ok 158 - (c) T9 steps: a model liquidation steps down to the floor, 3 units, in 46 steps
+ok 159 - live call() with a private-key signer (KEEPER_PK) signs locally and sends the raw transaction, with the same target, calldata and gas
+ok 160 - Barbell leg (sleeve path): a basket mark that fails after the record keeps the line and its anchor, exit 1
+ok 161 - qDEFI leg (ranked path): a basket mark that fails after the record keeps the line and its anchor, exit 1
+ok 162 - H9: the gate shape — {halt, pct 0}, {halt, pct -1}, {halt, pct "abc"}, {STEP}, {halt} are refused after the anchor and before any mark; {halt, pct "15"} (a string) and {halt, pct true} pass the shape check and halt at 15% / 1%
+ok 163 - H9 blocked: a registry line naming a vault with the right symbol but another keeper, or another symbol with the right keeper, is refused before any mark; a counterfeit with BOTH right (anyone can deploy one with manager = the keeper address) is marked
+ok 164 - unpricedMembers: only a finite number above zero is a usable price
+ok 165 - testDropSymbols: parsed on a dry run, ignored on a live run
+ok 166 - qX20 leg: a book name missing from the pull defers the whole mark, exit 0
+ok 167 - qX20 leg: a zero or non-finite price counts as missing
+ok 168 - qX20 leg: PAPER_INDEX_TEST_DROP_SYMBOL takes the same path on a dry run
+ok 169 - qX20 leg: a fully priced book is not deferred and computes the level from every name
+ok 170 - defaults: the block rule on rule marks is the spec rule; verification uses the computed bound
+ok 171 - 1. a new name alone, zero balance, nothing else marked (the qTRI AERO defect): auctions buy it to its target
+ok 172 - 2. ranked basket + an add: every name traded, every weight after the fills is the book weight
+ok 173 - 3. add + removal: the removal goes to zero, its last slice drains, a split removal is counted once
+ok 174 - 4. qX20 shape (signs mixed): value sold = value bought at fair, auctions ≤ sellers + buyers − 1
+ok 175 - 5. sleeve, no reset, a Quality add: BTC and WC untouched, every Quality name traded, the sleeve keeps its value
+ok 176 - 6. sleeve reset: every name, exactly as on main
+ok 177 - 7. a basket already at the book: nothing marked, no auction (as on main)
+ok 178 - 8. only a removal already flagged on chain: no block, no auction (as on main; option K drains it)
+ok 179 - 9. --reweight-block: the whole block without any mark
+ok 180 - 10. no registry change, one name 5 points off: the whole block (the one path that changes without an add)
+ok 181 - 10b. above the cap where the book is above it too (qX20 BTC): marked, does not open the block
+ok 182 - 10c. the vault above the cap while the book is not: opens the block
+ok 183 - 10d. the Quality sleeve cap (Triens): a name over the in-sleeve cap opens the sleeve only where the book is under it
+ok 184 - 11. rounding: decimals 0 and 18, sells within balances, no auction under $1, weights within (pairs × $1 + base units) / V
+ok 185 - 12. the balances a fair session leaves plan no further auction (also with --reweight-block)
+ok 186 - 13. a block worth nothing: no auction, no division by zero
+ok 187 - 14. the five plans of 2026-10-01: 22 · 14 · 15 · 11 · 8 auctions, entering names bought to the book
+ok 188 - 15. onlyForced (the executor's residual rounds): exactly as on main
+ok 189 - planRows: every held name is valued at its reference on chain, an add at its first reference, the book at the same prices; the market price is kept for the 5% guard
+ok 190 - planRows + computeTrades: auctions sized at the chain references and filled at them (the contract) leave every balance proportional to the book units
+ok 191 - bound: with no fill it is (traded names × $1) / V
+ok 192 - bound: every planned fill at the fair point or at the window edge (10,010 bp) is inside it; fills at 10,200 bp recorded as fair are not
+ok 193 - bound: a session filled at the open (--fill open, 10,200 bp) or below fair (natural, 9,900 bp) is bounded by its own factors
+ok 194 - bound: an entering name left at 0 fails verification (what the 5-point check let through)
+ok 195 - bound: a finished session still passes after a later mark moves the references (verify values the vault at the plan's sizing references)
+ok 196 - sizingRefOf: chainRefAtPlan of a registry name, the first reference of an add, null for a plan without chainRefAtPlan
+ok 197 - untradedGapNote: a plan that trades nothing names the largest gap to the book and --reweight-block; a plan that trades every name has no note
+ok 198 - weights helper sanity: the fixture vaults are worth what the spec says
+ok 199 - O1 retries (at most 3 attempts per call, waits 2 s then 4 s): an exchange that fails twice and then answers gives the line, byte for byte, of one that answers at once — with the real waits (about 6 s) and with none; a third failure is exit 1 and nothing written
+ok 200 - O2 call spacing (250 ms between Binance calls): the spacing measured at its real value, at none and at twice that gives the same line
+ok 201 - O3 time limit of one attempt (30 s): every attempt asks for 30,000 ms; an attempt that outlives it is cut and retried and gives the same line; when all three attempts outlive it: exit 1, nothing written (the abort timer runs at 1/1000 of the length asked for)
+ok 202 - O3b time limit at its real length: a first attempt that hangs is cut after 30 s and retried, and gives the same line # SKIP about 30 s: QVOL_REAL_TIMEOUT=1 node --test keeper/test/qvol-operating-values.test.mjs
+ok 203 - O5 display.decimals: neither keeper/vol-realized.mjs nor the record or mark code of keeper/vol-index.mjs reads it — its one read is the rulebook check, which refuses any value but 2 (exit 2, nothing read or written); with that check taken out of a scratch copy of the keeper, decimals 3 and 0 give the same lines and the same mark n6 (only the sha256 of the rulebook and of its decision differ)
+ok 204 - V1 --refetch-bars for qVOL (red team R47 F2): every day a line names is fetched again from the exchange; a day served differently fails that line naming the day and both sha256 (REVISED only with --allow-source-revision); a line whose sha256 the exchange still serves but whose close is not those bars' fails always; the same bars pass
+ok 205 - V2 the anchors' sender (red team R47 F3): with an RPC every qVOL anchor must be a self-send from the address that sent the inception decision's anchor — another sender, a transaction to another address or an answer without a sender fails, naming the anchor and both addresses; the keeper's own anchors pass
+ok 206 - V3 --keeper (final review F-V1): the keeper key from outside the repository — a forger who anchors the decision and every line again with a key of their own passes the sender check without it (the decision anchor named in the repository is theirs) and fails with it; the keeper's own record passes with it; without --keeper one notice line on stderr says where the key came from
+ok 207 - V4 the decision's anchor in time (final review F-V1): with an RPC it must be in a block no later than the end of the decision's effective day and before the first line's anchor — a decision anchored again later fails even without --keeper
+ok 208 - V5 the anchors' sender cannot be read — the first line's decision missing from decisions.jsonl, or its anchor transaction not on chain: each fails closed, never a pass
+ok 209 - V6 --allow-rehearsal binds every first line that is not a dry-run line: "shadow": false is bound to its decision and rulebook (a wrong effective date fails); "shadow": true is a dry run and is not
+ok 210 - weight = units × price ÷ the book value, 4 decimals, heaviest first
+ok 211 - weights are rounded to 4 decimals and sum to 1 within rounding
+ok 212 - a held member without a price is listed with weight null and price null, and left out of the denominator
+ok 213 - no book, no members
+ok 214 - with the current ledger, every existing close is rebuilt byte for byte
+ok 215 - a close whose ledger line carries members gets members and priceSource appended; the others are unchanged
+ok 216 - update-nav writes the members on the ledger line it appends
+ok 217 - after a rebalance the units are level × target ÷ price, so the members read back the target weights
+ok 218 - the join ignores the case of the chain transaction hash
+ok 219 - notYetReason: a node without the block, or an empty answer, is "not yet"; a revert is not
+ok 220 - retryRead: answers at the first read that succeeds
+ok 221 - retryRead: bounded — a node that never catches up throws ReadTimeout naming the read
+ok 222 - retryRead: an error retryIf rejects is thrown at once (a revert is final)
+ok 223 - pinnedReader: batch, read and getBlock() all name the block; a getBlock with its own block passes through
+ok 224 - blockAtLeast: the RPC head, never below the floor (a lagging head is raised to it)
+ok 225 - eventsIn: only the named emitter's events — a same-signature event from another contract in the receipt is not ours
+ok 226 - a clean tuple has no problems
+ok 227 - a duplicate add, a duplicate remove (any letter case) and an address in both are each refused
+ok 228 - chain symbol must be m + the plan symbol
+ok 229 - external fill first: another bidder takes the whole auction right after the open — recorded external with its bidder, our fill is not sent, no HALT at a factor (~10,200) outside our fair window; a drain then finalizes at once
+ok 230 - partial external fill: another bidder takes 30 of 100 after the open; our fill at the fair point takes the 70 left (sellRemaining), both recorded under \#1, the sum is the auction; a re-run records nothing again
+ok 231 - partial external fill in the race: another bidder fills between our read and our fill — a mined revert (CapExceeded) is read again and the rest filled; a refused simulation (AuctionClosed) ends the trade as done
+ok 232 - curve: an external fill below fair but on the curve (9,950 bp, lossAtRef > 0) is recorded without a HALT; one off the curve (past the duration) or a loss booked at or above fair HALTs after it is recorded (during our trade: and after our auction is cancelled)
+ok 233 - re-post at the open: both legs re-posted at their chain values right before an auction that waits for its fair point — a reference older than maxRefAge at the start is fresh from the open block on; the pre-fill re-posts stay
+ok 234 - re-post at the open: a reference moved after the trade read it is REFUSED before anything is opened; --fill open (filled at once) keeps its one pair of re-posts right after the open; a dry run lists the two re-posts before the open
+ok 235 - ourBidders: this run's bidder and keeper, the vault's roles, every fill sender in "sent" and every bidder of our own fills — not an adopted or external fill's bidder
+ok 236 - missed fair window: another bidder fills between our read and our cancel — the auction is read again after the cancel and their fill recorded; all taken → the trade is done (no reopen); part taken → only the rest is reopened
+ok 237 - race on a lagging node: our fill is refused (CapExceeded) at a block that has the other fill while the next node answers one block behind — the auction is read at the simulation's block, so the race is seen and the rest filled
+ok 238 - re-run: an auction with one recorded fill and one that is not — the second keeps the first's seq and round (a recorded fill of ours + an external one; a recorded external one + ours outside the fair window, which HALTs as planned)
+ok 239 - re-run with an orphan: the auction an earlier run left open is cancelled before any fill is recorded and read again after the cancel — a fill by another bidder that lands between our read and the cancel is recorded in this run, so round 1 does not trade it again; a HALT comes only after the orphan is cancelled
+ok 240 - five re-drains before PENDING (review 2.7 K-2)
+ok 241 - a drained removal is ok; a 1-unit remnant worth under $1 is PENDING, not ok
+ok 242 - a remnant worth $1 or more is neither ok nor PENDING (it is traded, or the stage fails)
+ok 243 - PENDING never covers a held name: a traded name outside tolerance stays OUTSIDE
+ok 244 - helpers are defined in paper-index.mjs
+ok 245 - a reconstitution-day weight equals units x price / book value
+ok 246 - the book weight differs from the target where the tolerance kept a name
+ok 247 - the next mark of the same book at the same prices shows the same weights
+ok 248 - bookWeight is null when the book has no value
+ok 249 - main() writes the book weight and the target separately on a reconstitution line
+ok 250 - announce on a lagging node records the same plan.announce as on a clean node, and the hash is in plan.sent before the receipt
+ok 251 - announce: a node that never serves the receipt block — the record is saved (at = eta − delay) BEFORE the check gives up
+ok 252 - announce: the receipt never comes — the hash is on disk; the re-run settles it and adopts the pending change
+ok 253 - announce: a pending change with this tuple and no record (no sent list either) is adopted from the log; a dry run only says so
+ok 254 - announce: another change pending is still refused
+ok 255 - settleSent: an entry without a receipt is REFUSED with the hash and what to check
+ok 256 - a live run refuses while the signer has a transaction sent but not mined (a cancelled run that lost its sent list)
+ok 257 - execute on a lagging node: recorded from the receipt, then the registry read at the receipt block — same record as a clean node
+ok 258 - execute: registry read never answers — plan.execute is on disk with the tx before the error
+ok 259 - execute re-run: our execute mined but not recorded — found through plan.sent, recorded as ours (not a third party), nothing sent
+ok 260 - first prices on a lagging node: recorded, then checked at the receipt block; a re-run adopts a post it finds on chain
+ok 261 - fills: a mined fill missing from plan.fills is recorded as its planned seq and NOT traded again; a dry run only says so
+ok 262 - fills: under the fair policy an adopted fill outside the fair window HALTs (after it is recorded), like a fill made now
+ok 263 - fills: verify (dry run too) and finalize hold an adopted fill to the same HALT rules — once recorded, the auctions stage would not see it again
+ok 264 - fills: two planned trades with the fill's pair → REFUSED (record it by hand); a fill of no planned pair → adopted-<id>
+ok 265 - fills: a fill of our auction by ANOTHER bidder (the bidder changed between runs, e.g. BIDDER_PK set) is recorded, not traded again
+ok 266 - fills: a fill whose receipt never came — the re-run settles it from plan.sent and records it as its planned seq
+ok 267 - sizing references: day7 refuses before it sends execute when a reference moved since the plan; nothing is sent
+ok 268 - reference guard: day7 refuses before it sends execute when a reference is more than 5% from the plan's market price; nothing is sent and the change stays pending
+ok 269 - sizing references: a day7 re-run after execute is not refused before the auctions stage, which records the earlier run's fill and cancels its open auction BEFORE it refuses the moved reference
+ok 270 - sizing references: the auctions stage with every reference as planned goes on
+ok 271 - auctions stage re-run on a lagging node: the fill an earlier run made but did not record is NOT traded again; its orphan-free session goes on with the rest
+ok 272 - orphans: an auction an earlier run opened and never filled is cancelled before anything is opened (dry run: printed only)
+ok 273 - finalize: a removal out of the registry but not in plan.finalize is recorded from RemovalFinalized
+ok 274 - runTrade on a lagging node: the same sent calls and the same plan records as on a clean node; the id comes from AuctionOpened
+ok 275 - day 7 end to end on a lagging node (execute → first prices → auctions → finalize → verify): the same calls sent and the same plan records as on a clean node
+ok 276 - call(): a simulation after a write runs at a block ≥ the last receipt — a lagging node cannot fake a revert; a real revert is still refused
+ok 277 - call(): a node that answers a void function's simulation with null at a block it has not got (the public op-reth node) cannot pass a call that reverts — nothing is sent
+ok 278 - day7 before execute (A2 N1): roles, an unpriced name, an add outside the tuple and each add's first-price gate are refused while the change is pending; nothing is sent
+ok 279 - runDay7 (the day7 stage itself): a plan the first-price gate refuses sends nothing and leaves the change pending; a good plan runs the session with the same calls as the stages one by one
+ok 280 - planner notes (pure): the 5% reference guard and the first-price gate, at the settings in force
+ok 281 - auctions stage re-run after execute (A1 L4): with a reference moved more than 5% since the plan, the earlier run's fill is recorded and its open auction cancelled BEFORE the guard refuses
+ok 282 - applyToleranceAndTrade alone does not preserve the book value (the M9 defect)
+ok 283 - renormaliseBook brings the book back to the pre-trade level, weights pro rata
+ok 284 - renormaliseBook leaves a fully traded book untouched (k = 1, units unchanged)
+ok 285 - the qREV / qDEFI / qAI reconstitution branch renormalises right after the tolerance step
+ok 286 - (a) 15 eligible + 1 grace name → 15 seats; the name left out is the lowest-ranked (the 2026-10-01 case)
+ok 287 - (a) 16 claimants to 15 seats: the worst-ranked claimant (here an incumbent) loses its seat
+ok 288 - (a) 16 claimants to 15 seats: a grace name that is the worst-ranked claimant loses its seat and exits (not carried on notice)
+ok 289 - (b) 14 eligible + 1 grace name → 15, every name seated
+ok 290 - (c) a grace name ranked above an eligible newcomer keeps its seat; the newcomer is cut
+ok 291 - (c) a grace name keeps its seat against a newcomer outside the entry buffer even when it ranks below it (buffer, then fill)
+ok 292 - a grace name with no positive revenue (P/HR null) ranks last, as P/HR = infinity
+ok 293 - names that cannot be ranked, or were already on notice, exit instead of taking grace
+ok 294 - (d) Triens Quality sleeve, 8 eligible + 1 grace under N = 10: unchanged — same members, order and notice as before the fix
+ok 295 - a lagging node: isBidder at the receipt block reads true after retries (at latest it would still say false)
+ok 296 - a node that never serves the block: nulls with the reason, no throw (the log line is still written)
+ok 297 - --timelock-out is refused with --live and outside the announce stage
+ok 298 - the decision draft names the timelock schedule day and the longer lag only with --owner-delay-hours
+ok 299 - the markers are the two signatures measured on chain
+ok 300 - the shape is read from the code: one shape's two markers, else refused
+ok 301 - announce encodes per shape: three arguments, or four with the prices
+ok 302 - the plan tuple: unpriced-adds keeps the plan order; priced-adds sorts adds (prices alongside) and removes ascending
+ok 303 - the event decodes on both shapes with the same tuple hash; the priced one carries addRefPrices
+ok 304 - priced-adds announce: sorted tuple with the committed prices sent, recorded, and readable on chain
+ok 305 - priced-adds announce refuses before sending: order, missing prices, a price that is not the plan's, the two-source gate, a plan not made today
+ok 306 - a plan for one shape is refused on a vault of the other
+ok 307 - priced-adds announce mined but not recorded: the re-run adopts it with the prices from the event
+ok 308 - priced-adds announce mined but not recorded, its log before the plan's block: the re-run records the prices committed on chain, and notes the one that is not the plan's
+ok 309 - priced-adds day 7: the band of the committed price is checked before execute; nothing is sent when today's price is outside it
+ok 310 - priced-adds day 7: execute → the auctions refuse until the first post → first-prices posts even at the committed price → re-run sends nothing
+ok 311 - committedPostRefusal and committedBandNote: the same ±15% band, in the executor and in the plan
+ok 312 - buildPlan writes vaultAbi and the tuple for the vault's shape (adds with prices, ascending) — both fake vaults
+ok 313 - C1 closed form: closes moving +-x every day, x = ln 1.01 → 100 x sqrt(365) x x within a relative 1e-9 (no rounding)
+ok 314 - C7 chain: hash and prevHash recomputed on every line agree; a changed byte is found
+ok 315 - C9 (a) a day with 1,439 bars: the run stops (exit 1); no line for it and none after
+ok 316 - C9 (b) the acceptance list holds the same sha256: the run goes on; a different sha256 still stops
+ok 317 - C9 (c) a whole day without a bar: null in the window, its return 0, returns 29, denominator still 30
+ok 318 - C9 (d) the first close of the window missing: carriedFrom holds the nearest earlier close
+ok 319 - C10 canonical text: the same value in other digits ("64000.00000000" and "64000") gives the same sha256
+ok 320 - C11 value range: every value >= 0, a flat price gives 0
+ok 321 - C12 variance formula: (365/30) x sum r^2 recomputed from each window, bit for bit
+ok 322 - C13 window join: line D window[0..29] = line D-1 window[1..30]
+ok 323 - W1 the rule has no bar length: rulebook without barMinutes, lines without rule.barMinutes, lastBar = the latest 1-minute bar
+ok 324 - C7 C11 C12 C13 on a real record — only with VOL_CHECK_DIR # SKIP VOL_CHECK_DIR not set
+ok 325 - known answer, chain A: hand-computed sigma^2 = 1627589/5018112
+ok 326 - known answer, chain B: forward from K/(1-(c-p)) and the (F/K0 - 1)^2 term; sigma^2 = 53748395/150700176
+ok 327 - termVariance core takes dollar values at expiry (either adapter): same as the BTC path times F
+ok 328 - known answer, interpolation: M1 = 21,600, M2 = 64,800, s1 = 0.16, s2 = 0.36 → V30 = 0.25 s1 + 0.75 s2 = 0.31 → 55.68
+ok 329 - T8 interpolation step against the Cboe sample calculation (five published numbers) → 13.93
+ok 330 - T8b one-term variance from the Cboe appendix table (dollar adapter) — only with VOL_FIXTURE_DIR # SKIP the Cboe appendix table is not in a public fixture; set VOL_FIXTURE_DIR to a private copy (cboe-sample-table.json)
+ok 331 - T9 synthetic flat-vol Black-76 table recovers sigma0 = 0.3 within 0.05 points, forward within 1e-9
+ok 332 - T9 synthetic flat-vol Black-76 table recovers sigma0 = 0.6 within 0.05 points, forward within 1e-9
+ok 333 - T9 synthetic flat-vol Black-76 table recovers sigma0 = 1.2 within 0.05 points, forward within 1e-9
+ok 334 - interpolation: equal term variances give the same 30-day variance; M1 = 43,200 gives the near term alone
+ok 335 - T10-1 one invalid put is skipped; the walk goes on
+ok 336 - T10-2 two invalid in a row end the walk: valid strikes beyond are not used
+ok 337 - T10-3 K0 quote invalid → k0-quote-invalid
+ok 338 - no forward: 1 - (c* - p*) = 0 or < 0 → k0-quote-invalid, atm kept, no forward field
+ok 339 - T10-4 every OTM put excluded → no-otm-puts
+ok 340 - T10-5 ATM tie → the lower strike
+ok 341 - T10-6 bid >= ask is invalid
+ok 342 - T11 expiry choice: exactly 43,200 minutes is near; nothing beyond 30 days → no-bracket
+ok 343 - T21 minute flooring on integer microseconds: 1 µs short of a whole minute floors one lower; M = 0 is no candidate
+ok 344 - T22 ladder: a strike with only a call is not on the ladder (not counted in the walk); no strike <= F → k0-quote-invalid
+ok 345 - joinQuotes: instruments only in one call are dropped; a changed shape is a FormatError
+ok 346 - T20 saved snapshot of 2026-10-05 (throwaway input) — only with VOL_FIXTURE_DIR # SKIP VOL_FIXTURE_DIR not set (the snapshot is not a public fixture)
+ok 347 - T12 cannot compute: no-bracket → the line is written with value null and that reason
+ok 348 - T12 cannot compute: no-atm-pair → the line is written with value null and that reason
+ok 349 - T12 cannot compute: k0-quote-invalid → the line is written with value null and that reason
+ok 350 - T12 cannot compute: no-otm-puts → the line is written with value null and that reason
+ok 351 - T12 cannot compute: no-otm-calls → the line is written with value null and that reason
+ok 352 - T12 cannot compute: non-positive-variance → the line is written with value null and that reason
+ok 353 - T13 hash chain and key order
+ok 354 - T14 without --dry-run and inception null: NOT IN FORCE, exit 0, no file, no request
+ok 355 - the switch: the implied line is off in the repository — every mode prints INACTIVE, exit 0, no request, nothing written
+ok 356 - configuration refusals exit 2 before anything is read from the network
+ok 357 - rulebook shape: what the code does not implement is refused (exit 2)
+ok 358 - T15 no key: the calculation files, the verifier and the test helpers read no signing key and import no wallet client; keeper/vol-index.mjs reads KEEPER_PK only in the signer of its in-force path and loads viem only there
+ok 359 - T17 Deribit error or missing field → exit 1, no line; one-sided instruments are dropped
+ok 360 - T18 --collect-only: two gz files, sha256 of raw and gz, one manifest line, no value, no record
+ok 361 - determinism: the same saved snapshot twice, at different times → lines byte-identical apart from observedAt and hash
+ok 362 - T19 scripts/verify-vol.mjs (separate code) agrees with the module on every field; a changed field fails it
+ok 363 - expiry choice is re-made from snapshot.expiries: a wrong near term or empty terms with a bracket fail the verifier, hashed lines included
+ok 364 - forward: 1 - (c* - p*) <= 0 gives no forward → a line with k0-quote-invalid (was an exit 1 when the difference was exactly 1)
+ok 365 - --rulebook: the rule of every line is checked against its line's rulebook JSON (sha256 and values)
+ok 366 - --tail: the record’s last line is context, the new line is checked against it; a changed new line fails
+ok 367 - fetch time-out: each attempt gets an abort signal; a time-out is retried, then the call fails
+ok 368 - in force T-IF1: NOT IN FORCE while inception is null, while the decision is not in the ledger, and before inception.date 00:00 UTC — exit 0, nothing written, no request to Binance or the chain, the key not read
+ok 369 - in force T-IF2: an anchored decision that the files do not satisfy is refused (exit 2) — no rulebook sha256 in it, a changed decision file, an effective date other than the day before inception.date; once the record has a line, a missing decision is refused too
+ok 370 - in force T-IF3: the first line is dated inception.date (the day after the decision's effective date) and written at 00:25 UTC that day without "late"; it carries inception {decision, decisionSha256} and no "shadow", and otherwise the dry run's fields, values and order; scripts/verify-vol.mjs agrees; it is anchored with calldata qxpi-qvol:<line hash>, signed here and sent raw
+ok 371 - in force T-IF4 late: a day the earlier runs missed is written by a later run from the same closed bars and carries "late": true, the day of the run does not; days before the first line are never written; line D is not written before D 00:00 UTC
+ok 372 - in force T-IF5: when scripts/verify-vol.mjs rejects the new line, nothing is appended, anchored or marked (exit 1)
+ok 373 - in force T-IF6: no mark before the anchor — a line whose anchor fails stays written (exit 1, nothing marked) and the next run anchors it first, then marks; without the key lines are written unanchored and nothing is marked
+ok 374 - in force T-IF7 mark: after the anchor the display vault is marked to n6 = floor(value x 1e6) — navPerShare and indexLevel both n6 — in setNav steps within the contract's 25% bound (markSteps); a vault whose symbol() is not the rulebook's ticker gets no mark (exit 1); no address or no gate: no mark
+ok 375 - in force T-IF8 mark steps: n6 = floor(x x 1e6) cuts and never rounds; markSteps (keeper/leverage-step.mjs) keeps every step inside the contract bound, up from 1.000000 and back down
+ok 376 - in force T-IF9 the mark method does not change the record: gate {"mode":"step"} and {"mode":"halt","pct":15} write byte-identical lines; the halt only stops the mark (exit 1, no setNav)
+ok 377 - in force T-IF10 DISPLAY_ONLY: keeper/deploy-mark-vault.mjs refuses open-deposits for qvol before any RPC call (exit 2); qvol is the display vault "Quadrix BTC Realized Volatility Vault" whose symbol is the rulebook ticker; its registry entry has no address yet and the mark method step
+ok 378 - in force T-IF11: a dry run reads no key and sends nothing even with KEEPER_PK in its environment — its lines carry "shadow" and no inception, and no anchors file is written
+ok 379 - in force T-IF12 cap invariant: a display vault whose depositCap() is not 0 is not marked — the line is written and anchored, no setNav is sent, exit 1; with cap 0 the next run marks it
+ok 380 - in force T-IF13 scripts/verify.mjs --series qvol: not started, pending, then the published record VERIFIED — recomputed by scripts/verify-vol.mjs (run as a child, not repeated), bound to its decision effective the day before the first line, and with an RPC every anchor checked; a changed value, a dry-run line, another effective date or another rulebook fails
+ok 381 - in force T-IF14 fork rehearsal flags: --rpc and --from only together, a local node only (the host as a URL parser reads it), an address, never with --dry-run, --line implied or --out, never under GitHub Actions — refused (exit 2) before any Binance or chain request, nothing written
+ok 382 - in force T-IF15 a fork rehearsal never writes the record or registry of the line in force and never signs: its line, anchor and marks go under keeper/dryrun/ (nothing under trackrecord/, no keeper/marks-qvol.jsonl, keeper/leverage-vaults.json unread for the mark and unchanged); every request goes to the --rpc node, every transaction is eth_sendTransaction from --from, KEEPER_PK in the environment is not used; the line is byte for byte the line the keeper key writes
+ok 383 - in force T-IF16 a fork rehearsal prints each step's result in order — the rehearsal line, the decision, each line, its recompute by scripts/verify-vol.mjs, its anchor, the mark and every mark step; each refusal prints what stopped and what stays: no decision → no line; a deposit cap above 0 or another vault's symbol → the line written and anchored, no mark, exit 1
+ok 384 - in force T-IF17 (F1): a line without an anchor is anchored only after the whole-record recompute and a fetch of the bars it records — a hand-appended line that scripts/verify-vol.mjs rejects (a date that does not follow, a second line for a day, a changed value, a broken hash) is refused (exit 2, nothing sent); a fully self-consistent line built from false bars is refused by the fetch (exit 1, nothing sent); an unanchored line before an anchored one, or an anchor entry that names another hash, is refused (exit 2); an honest unanchored line is anchored (control)
+ok 385 - in force T-IF18 (F2): before the series continues from its last line, the bars of that line's day are read again from Binance (one more fetch) — other bars than the line records stop the run (exit 1; nothing written, anchored or marked; the message names the day and both sha256) and the same bars let it continue (control); an anchored line whose day the source changed later goes on once a person confirms that change; a line without an anchor is never anchored on bars the source does not serve (a self-consistent line appended by hand: PoC 4 a2); a dry run that continues a record reads that day again too
+ok 386 - in force T-IF19 (F12): before line D is written, Binance's daily candle of D-1 (on the first line: of every window day, in one request) must close where the 1-minute bars close the day — another close or no candle stops the run (exit 1; nothing written, anchored or marked; the message names both closes) and the same close lets it write (control); a person who finds the 1-minute bars right confirms the difference and the next run writes the line from them; a dry run checks it only with --daily <file>
+ok 387 - in force T-IF20 (F4): once per run, before anything is sent or appended, scripts/verify-vol.mjs recomputes the whole record (hash chain, dates, windows, values) — an old line edited in place, an edited line re-hashed, a whole chain re-hashed after an edit, a line dated after the runner's clock, a dry-run line, another decision on the first line: each refused (exit 2), nothing appended, anchored or marked; the honest record goes on (control)
+ok 388 - in force T-IF21 (F6): only an inception decision of this series starts it — a rulebook naming another series' decision that quotes this rulebook's sha256 (…-qeth15-paper-inception), or an id not of the form <YYYY-MM-DD>-qvol-inception, is NOT IN FORCE (exit 0, nothing read or written, no request); a ledger entry effective on another day than its id's date is refused (exit 2); the series' own decision starts it (control)
+ok 389 - in force T-IF22 (F7): a run that can anchor first reads the inception decision's own anchor transaction (the ledger's txHash) — not on chain, sent by another key, not a self-send, carrying other calldata, reverted, or unreadable: NOT IN FORCE / a chain failure (exit 1), nothing read from Binance, nothing written or sent; the signer's self-send of qxdec:<the decision's sha256> lets the series go on (control); a run without the key reads no chain
+ok 390 - in force T-IF23 (F8): each run that can anchor reads the last anchor again — a transaction no longer on chain (dropped, as by a reorg) has its line anchored again first (one new transaction, the same calldata), then the run goes on; an entry whose transaction is not the keeper's anchor of that line (another key, other calldata) is refused (exit 2), nothing sent; an anchor still on chain lets the run go on with no new anchor of old lines (control)
+ok 391 - in force T-IF24 (F9): the keeper waits for a receipt at most RECEIPT_TIMEOUT_MS (5 minutes; a few hundred ms here) — an anchor whose receipt never comes: exit 1 within that limit, the line stays on disk without an anchor entry, nothing marked, and the next run anchors it first (a second transaction with the same calldata, harmless); a setNav step whose receipt never comes: exit 1 after the line's anchor, and the next run goes on from the vault's value
+ok 392 - in force T-IF25 (F10): before any mark the registry entry's deployTx must be the keeper's own contract creation of the entry's address — an impostor entry (a vault with the right symbol, keeper and cap) whose deployTx is missing, not on chain, another key's, not a creation, the creation of another contract, or in another block gets no mark (exit 1; the line written and anchored, no setNav); the keeper's own deployment is marked (control)
+ok 393 - in force T-IF26 idempotency: an anchor sent and mined whose receipt answer is lost — exit 1, the line stays on disk without an anchor entry, nothing marked; the next run anchors it again with the same calldata (two anchor transactions for one line, harmless) and the anchors file names the later one; the run after reads that one again and sends nothing more for the line
+ok 394 - in force T-IF27 idempotency: a mark that fails part-way (setNav step 3 reverts) leaves the line written and anchored and exits 1; the next run goes on from the vault's value — the steps already done are not sent again and the marks file ends as one uninterrupted mark would
+ok 395 - in force T-IF28 (F12 resume): a daily-close entry lets the run go on only when both of its closes are the ones the run reads — an entry for the same day with another daily close, or another 1-minute close, still stops the run (exit 1, nothing written); the exact pair goes on (control)
+ok 396 - in force T-IF29 (F2 resume): a refetch entry never passes a line without an anchor — a run without the key that continues from an unanchored line whose day Binance now serves differently stops (exit 1, nothing written) although the file holds the exact entry; the same entry passes the anchored line (control)
+ok 397 - in force T-IF30 (F2, first line): an unanchored first line is anchored only after every one of its window days is fetched again — a hand-appended first line whose older window close is forged (value computed from it, every recorded sha256 the real one) is refused (exit 1, nothing sent); the honest first line is anchored (control)
+ok 398 - in force T-IF31 (red team M3): the keeper computes each transaction's hash from the bytes it signed — a node that answers eth_sendRawTransaction with another hash, or a receipt that names another transaction, is a failed anchor (exit 1, the line on disk without an anchor entry, nothing marked); the next run with an honest node anchors it (control)
+ok 399 - T1 closed form: returns of +-ln(1.01) every day give 100 x sqrt(365) x ln(1.01)
+ok 400 - T1b known answer on a hand-written window: (365/30) x sum r^2, mean not subtracted
+ok 401 - T2 day close: the close of the 1-minute bar that opened latest that day (W1)
+ok 402 - T3 canonical text: the same value written with other digits gives the same sha256
+ok 403 - null-day rule: a day with no bar counts as the previous close; the next return spans both days
+ok 404 - T4a completeness: a day with 1,439 bars stops the run (exit 1), no line for it and none after
+ok 405 - T4b accepted gap: a matching sha256 writes the line with gaps; a mismatch stops
+ok 406 - T4c accepted day with 23:45-23:59 missing: the close is the latest 1-minute bar before the gap
+ok 407 - T4d accepted whole-day gap inside the window: null in the window, returns 29, the next return spans two days
+ok 408 - T4e first close missing (accepted empty day at D-31): carriedFrom from the nearest earlier close, then carried on
+ok 409 - T4e-2 two empty days at the window start: later lines carry [date, close] only; an accepted partial carried day adds its acceptance id
+ok 410 - acceptance entry: the missing list is compared field by field (key order does not matter)
+ok 411 - T5 finality: the next day’s first bar missing or not yet closed → no line, exit 0
+ok 412 - T6 catch-up and determinism: two ended days → two lines in order, only the first late; a late run writes the same lines; a second run writes none
+ok 413 - T7 two fetches of the same day differ → exit 1, nothing written
+ok 414 - REST path: 1-minute bars twice per day in two pages; window and sources cover D-31 … D-1
+ok 415 - watches the five paper series, the leverage levels and the qVOL realized line; stale after 40 h, missing after 16 h
+ok 416 - a series with neither a file nor an inception decision has not started — no problem
+ok 417 - missing: inception anchored, no record file — clear at 15.98 h after I 00:00 UTC, flagged at 16.02 h (the 18:47 UTC watchdog run of day I)
+ok 418 - a postponed opening: the latest inception decision counts, so the earlier date raises no false alarm (red team F07b)
+ok 419 - a series ended by a model liquidation is not "stale" (red team F07c); its unanchored lines are still flagged
+ok 420 - an empty record file counts as missing, and a decision for another index does not count
+ok 421 - stale: last line dated D — clear at D + 39.98 h, flagged at D + 40.02 h
+ok 422 - unanchored: a line with no anchor, or an anchor without a 0x… transaction hash, is flagged
+ok 423 - a record file with no anchors file: every line is flagged
+ok 424 - each --simulate name trips exactly one problem on an otherwise clear folder; an unknown name is refused
+ok 425 - a simulate name with nothing it applies to still produces a problem (an alarm test that trips nothing must not pass)
+ok 426 - this repository's own series are clear at a fixed clock of 2026-10-05T12:00Z (paper series fresh and anchored; leverage not started or pending)
+ok 427 - qVOL: its decision (<date>-qvol-inception) is effective the day before the first line — missing only 16 h after that first day began; then stale and unanchored as the other series
+ok 428 - qVOL recompute (red team R47 F5): the watchdog runs scripts/verify.mjs --recompute-only --series qvol — an honest record is quiet; a corrupted old line, which the freshness and anchor checks do not see, is one problem line naming the failure; only qvol is recomputed, and this repository (no qVOL record yet) is quiet
+ok 429 - scripts/watchdog.mjs check 6: the watchdog itself runs the qVOL recompute and a record that does not verify is one of its problems (run offline in a scratch checkout: the gas check fails for want of a network, the rest is the scratch files)
+
+== totals
+# tests 429
+# pass 416
+# fail 0
+# cancelled 0
+# skipped 12
+# todo 1

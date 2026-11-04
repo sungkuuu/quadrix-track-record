@@ -1,0 +1,2 @@
+shasum -a 256 -c daily-manifest.sha256 in /tmp/qvol-daily (node v22.23.1 convert)
+exit 0 · OK 3331 · mismatches 0 · total 3331

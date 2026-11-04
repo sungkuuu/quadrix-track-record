@@ -1,0 +1,15 @@
+{
+  "end": "2026-11-02",
+  "restStart": "2026-08-01",
+  "symbol": "BTCUSDT",
+  "host": "https://data-api.binance.vision/api/v3",
+  "serverTimeStart": 1793689764689,
+  "serverTimeEnd": 1793689839326,
+  "calls": 194,
+  "restDays": 94,
+  "restRows": 135360,
+  "daily1dCalls": 4,
+  "daily1dRows": 3365,
+  "elapsedMs": 74631,
+  "node": "v22.23.1"
+}

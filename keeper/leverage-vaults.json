@@ -1,5 +1,5 @@
 {
-  "_doc": "Testnet mark vaults of the leverage series (QuadrixIndexVault, deployed with deposit cap 0 by keeper/deploy-mark-vault.mjs). Not part of the rulebook: a vault displays the level, it is not the rule. address null = no vault (marks skipped); gate null = the owner has not chosen the mark gate (marks skipped). gate {\"mode\":\"step\"} marks in steps inside the contract bound, never stopping on size; {\"mode\":\"halt\",\"pct\":15} stops the marks when the move exceeds pct and waits for a person.",
+  "_doc": "Testnet mark vaults of the leverage series and the qVOL display vault (QuadrixIndexVault, deployed with deposit cap 0 by keeper/deploy-mark-vault.mjs). Not part of the rulebook: a vault displays the level, it is not the rule. address null = no vault (marks skipped); gate null = the owner has not chosen the mark gate (marks skipped). gate {\"mode\":\"step\"} marks in steps inside the contract bound, never stopping on size; {\"mode\":\"halt\",\"pct\":15} stops the marks when the move exceeds pct and waits for a person. qvol: share price = the qVOL value cut to the contract unit (navPerShare = n6 = floor(x x 1,000,000), x = the unrounded record value; a truncation that rounds down; no two-decimal rounding and no half-way rule in the keeper); its deposit cap stays 0.",
   "qbtc2x": {
     "chainId": 91342,
     "address": "0x8b0200B7e920a7fB06e94890d5Efb6aB7d2C1378",
@@ -26,5 +26,14 @@
     },
     "deployTx": "0xe5ff35f50e1c60ee6c5da52527ba998b3da25b76e98e7a1b548cb0064a121e23",
     "block": 39228502
+  },
+  "qvol": {
+    "chainId": 91342,
+    "address": null,
+    "gate": {
+      "mode": "step"
+    },
+    "deployTx": null,
+    "block": null
   }
 }

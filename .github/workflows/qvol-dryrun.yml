@@ -1,0 +1,106 @@
+name: qvol-dryrun
+
+# Replays the qVOL realized line from Binance bars in CI — by hand from the
+# Actions tab, never scheduled — on node v22.23.1, the runtime of its
+# registered reproducibility test, recomputes it with scripts/verify-vol.mjs
+# against its rulebook JSON, and prints the lines it would write (date, value,
+# variance, the sha256 of the day's 1-minute bars). Output: keeper/dryrun/ as
+# an artifact.
+#
+#   node keeper/vol-index.mjs --line realized --dry-run --replay FROM..TO
+#
+# It NEVER commits, anchors or touches a vault: permissions are contents:
+# read, KEEPER_PK is not passed (a step fails if one is in the environment),
+# and a dry run reads no key and sends no transaction (--anchor is refused with
+# --dry-run). No npm install: a dry run uses Node built-ins only. Inputs reach
+# the shell through `env:` and are checked.
+on:
+  workflow_dispatch:
+    inputs:
+      replay:
+        description: 'FROM..TO (FROM = the first line date, TO = the last line date), e.g. 2026-10-31..2026-11-04'
+        required: true
+        default: '2026-10-31..2026-11-04'
+  # GitHub dispatches only a workflow it has registered, and it registers one
+  # from the default branch or from a run. This push trigger (this branch and
+  # this file only) registers it before it is on main; the job below is skipped
+  # for every event but a dispatch.
+  push:
+    branches: [keeper/qvol-2026-11-02]
+    paths: [.github/workflows/qvol-dryrun.yml]
+
+permissions:
+  contents: read
+
+# Its own group, not keeper-key: nothing here signs, and a pending run in
+# keeper-key would displace a pending keeper run.
+concurrency:
+  group: qvol-dryrun
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      REPLAY: ${{ inputs.replay }}
+    steps:
+      - name: Guard — valid input, no signing key
+        run: |
+          set -euo pipefail
+          printf '%s' "$REPLAY" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.\.[0-9]{4}-[0-9]{2}-[0-9]{2}$' || { echo "::error::replay must be FROM..TO"; exit 1; }
+          if [ "${KEEPER_PK:-}" != "" ]; then echo "::error::KEEPER_PK is set — a dry run must not be able to sign"; exit 1; fi
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.1'
+          check-latest: false
+
+      - name: Runtime — node v22.23.1 only
+        run: |
+          set -euo pipefail
+          node -p "'node ' + process.version + ' · v8 ' + process.versions.v8 + ' · ' + process.platform + '-' + process.arch"
+          echo "node binary $(command -v node) sha256 $(sha256sum "$(command -v node)" | cut -d' ' -f1)"
+          if [ "$(node --version)" != "v22.23.1" ]; then echo "::error::qVOL runs only on node v22.23.1 (the registered runtime), not $(node --version)"; exit 1; fi
+
+      - name: Replay
+        run: |
+          set -o pipefail
+          node keeper/vol-index.mjs --line realized --dry-run --replay "$REPLAY" 2>&1 | tee replay.log
+
+      - name: Recompute with verify-vol.mjs
+        run: |
+          set -o pipefail
+          node scripts/verify-vol.mjs --dir keeper/dryrun --line realized --rulebook keeper/rulebooks/qvol.json 2>&1 | tee verify.log
+
+      - name: Lines (date, value, variance, sha256 of the day's 1-minute bars)
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            const lines = fs.readFileSync('keeper/dryrun/record-qvol.jsonl', 'utf8').split('\n').filter((l) => l.trim());
+            for (const l of lines.map((x) => JSON.parse(x))) console.log([l.seq, l.date, l.value, l.variance, l.source.day, l.source.rows, l.source.sha256, l.late ? 'late' : '-', l.shadow ? 'shadow' : '-'].join(' '));
+          " | tee lines.txt
+          { echo '## qVOL dry run — seq date value variance source.day rows source.sha256'; echo '```'; cat lines.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Tripwire — nothing outside keeper/dryrun/ changed
+        if: ${{ !cancelled() }}
+        run: |
+          changed=$(git status --porcelain --untracked-files=no -- . ':(exclude)keeper/dryrun' || true)
+          if [ "$changed" != "" ]; then echo "::error::tracked files changed outside keeper/dryrun/:"; echo "$changed"; exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: qvol-dryrun-${{ github.run_id }}
+          path: |
+            keeper/dryrun/
+            replay.log
+            verify.log
+            lines.txt
+          retention-days: 30

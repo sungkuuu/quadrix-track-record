@@ -1,7 +1,9 @@
 name: mark-vault-setup
 
-# The testnet mark vault of a leverage series (qBTC2X, qETH2X, qETH1.5X), by
-# hand from the Actions tab. Never scheduled.
+# The testnet mark vault of a leverage series (qBTC2X, qETH2X, qETH1.5X) and
+# the qVOL display vault (deposit cap 0; it displays the value and cannot be
+# bought — open-deposits is refused for qvol), by hand from the Actions tab.
+# Never scheduled.
 #
 #   deploy         keeper/deploy-mark-vault.mjs — QuadrixIndexVault (checked
 #                  against the code of the qBTC2X vault in
@@ -31,10 +33,10 @@ on:
         type: choice
         options: [deploy, set-guardian, open-deposits, pause]
       index:
-        description: 'qbtc2x | qeth2x | qeth15'
+        description: 'qbtc2x | qeth2x | qeth15 | qvol'
         required: true
         type: choice
-        options: [qbtc2x, qeth2x, qeth15]
+        options: [qbtc2x, qeth2x, qeth15, qvol]
       manager:
         description: 'deploy: constructor manager_ (becomes owner and keeper; must be the keeper key, which also sends setGuardian)'
         required: false

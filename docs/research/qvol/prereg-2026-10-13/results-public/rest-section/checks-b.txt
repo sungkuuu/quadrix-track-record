@@ -1,0 +1,2 @@
+C11 (B, REST section): lines 63 value<0 or NaN: 0 []
+C10 (B, synthetic): long-digits sha256 55607c40221431ec short-digits sha256 55607c40221431ec equal: True ; first-line sources all equal: True

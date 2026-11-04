@@ -1,0 +1,9 @@
+{
+  "what": "The five numbers of the sample calculation's constant-maturity step in a public methodology document, used to check the interpolation formula. Only these numbers are copied; the document's option table is not.",
+  "source": "Cboe, \"Volatility Index Methodology: Cboe Volatility Index\", Appendix 3 (sample calculation). https://cdn.cboe.com/api/global/us_indices/governance/Volatility_Index_Methodology_Cboe_Volatility_Index.pdf — read 2026-10-05, sha256 5e0e8dd278a5e4c2e0315ff573b60a314d31946841e6fc67eac784dfba729622",
+  "nearMinutes": 34484,
+  "nextMinutes": 44954,
+  "nearVariance": 0.019233906,
+  "nextVariance": 0.019423884,
+  "publishedValue": 13.93
+}

@@ -9,17 +9,21 @@
  *   2. every LIVE record has an anchor with a txHash,
  *   3. the keeper has posted a NAV mark within 12h,
  *   4. the anchoring account still holds gas,
- *   5. the paper indexes and the leverage levels are fresh and anchored
- *      (scripts/watchdog-series.mjs: a series past its inception with no
- *      file 16h after its opening day began, a last line more than 40h old
- *      unless it ended in a model liquidation, a line without an anchor).
+ *   5. the paper indexes, the leverage levels and the qVOL realized line are
+ *      fresh and anchored (scripts/watchdog-series.mjs: a series past its
+ *      inception with no file 16h after its first line's day began, a last
+ *      line more than 40h old unless it ended in a model liquidation, a line
+ *      without an anchor),
+ *   6. the qVOL realized line verifies: scripts/verify.mjs --recompute-only
+ *      --series qvol (hashes, chain, every value recomputed, the decision
+ *      binding; no network) — a fresh, anchored line can still be wrong.
  *
  * Exit 1 with a report on stdout when anything trips; the workflow turns that
  * into an issue. `--simulate <check>` trips one check on purpose so the alert
  * path itself can be tested — an untested alarm is not an alarm.
  */
 import fs from 'node:fs';
-import { checkSeries, SIMULATE as SERIES_SIMULATE } from './watchdog-series.mjs';
+import { checkSeries, recomputeSeries, SIMULATE as SERIES_SIMULATE } from './watchdog-series.mjs';
 
 const RPC = 'https://sepolia-rpc.giwa.io';
 const simulate = process.argv.includes('--simulate') ? process.argv[process.argv.indexOf('--simulate') + 1] : null;
@@ -48,14 +52,23 @@ const lastMark = marks[marks.length - 1];
 const markAgeH = (now - Date.parse(lastMark.postedAt)) / H;
 if (markAgeH > 12 || simulate === 'keeper') problems.push(`keeper silent: last NAV mark ${lastMark.postedAt} (${markAgeH.toFixed(1)}h ago)`);
 
-// 5. the paper and leverage series (run sheet option 18 — "the job did not run at all")
+// 5. the paper, leverage and qVOL series (run sheet option 18 — "the job did not run at all")
 let seriesSummary = [];
 try {
   const s = checkSeries({ dir: 'trackrecord', now, simulate: SERIES_SIMULATE.includes(simulate) ? simulate : null });
   problems.push(...s.problems);
   seriesSummary = s.summary;
 } catch (e) {
-  problems.push(`could not check the paper and leverage series: ${e.message}`);
+  problems.push(`could not check the paper, leverage and qVOL series: ${e.message}`);
+}
+
+// 6. the qVOL realized line recomputed by the public verifier (red team R47 F5)
+try {
+  const v = recomputeSeries({ dir: 'trackrecord' });
+  problems.push(...v.problems);
+  seriesSummary.push(...v.summary);
+} catch (e) {
+  problems.push(`could not run scripts/verify.mjs on the qVOL record: ${e.message}`);
 }
 
 // 4. gas on the anchoring account (read from the last anchor tx — nothing hardcoded)

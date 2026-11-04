@@ -10,6 +10,7 @@
  *     keeper/dryrun/leverage-vaults.json with the gate unchanged;
  *   - a second deployment for an index that already names a vault is refused;
  *   - qETH1.5X: its name and symbol (the rulebook's ticker);
+ *   - qVOL: its name and symbol; open-deposits refused for the display vault;
  *   - the guardian rule (not 0, not the keeper, not the owner, no timelock
  *     role), before anything is sent and on the chain after setGuardian;
  *   - the reference vault: the registry's qBTC2X line as committed (also on a
@@ -259,11 +260,15 @@ test('rehearsal C4: a fork rehearsal starts from the real registry with every ad
   assert.deepEqual(readVaults(path.join(dir, 'missing.json'), seed, false), real);
 });
 
-test('qETH1.5X — name "Quadrix ETH 1.5x Vault", symbol = the rulebook ticker; the registry entry exists with no address; a dry run deploys it after setGuardian; open-deposits and pause accept the index', async () => {
+test('qETH1.5X — name "Quadrix ETH 1.5x Vault", symbol = the rulebook ticker; the registry entry exists, and a fork\'s copy of it has no address; a dry run on the fork deploys it after setGuardian; open-deposits and pause accept the index', async () => {
   const rb = JSON.parse(fs.readFileSync(path.join(KEEPER_DIR, 'rulebooks', 'qeth15.json'), 'utf8'));
   assert.deepEqual(NAMES.qeth15, ['Quadrix ETH 1.5x Vault', rb.ticker]);
   assert.equal(rb.ticker, 'qETH1.5X');
-  assert.deepEqual({ ...SEED.qeth15, gate: undefined }, { chainId: 91342, address: null, gate: undefined, deployTx: null, block: null });
+  // the committed entry names the vault deployed on 2026-10-21; a fork starts from it with the address emptied (rehearsal C4)
+  const { readVaults } = await import('../deploy-mark-vault.mjs');
+  assert.equal(SEED.qeth15.chainId, 91342);
+  const forked = readVaults(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lev-qeth15-')), 'missing.json'), path.join(KEEPER_DIR, 'leverage-vaults.json'), true);
+  assert.deepEqual({ ...forked.qeth15, gate: undefined }, { chainId: 91342, address: null, gate: undefined, deployTx: null, block: null });
   reset();
   const s = await server({ index: 'qeth15' });
   try {
@@ -281,10 +286,19 @@ test('qETH1.5X — name "Quadrix ETH 1.5x Vault", symbol = the rulebook ticker; 
     }
     r = await runTool(['--index', 'qeth3x', '--manager', FROM, '--guardian', GUARD, '--rpc', s.url]);
     assert.equal(r.code, 2);
-    assert.match(r.out, /--index must be one of qbtc2x, qeth2x, qeth15/);
+    assert.match(r.out, /--index must be one of qbtc2x, qeth2x, qeth15, qvol \(got qeth3x\)/);
   } finally {
     s.srv.close();
   }
+});
+
+test('qVOL — a display vault: name "Quadrix BTC Realized Volatility Vault", symbol = the rulebook ticker qVOL; open-deposits is refused for qvol (exit 2) before anything is read from the RPC', async () => {
+  const rb = JSON.parse(fs.readFileSync(path.join(KEEPER_DIR, 'rulebooks', 'qvol.json'), 'utf8'));
+  assert.deepEqual(NAMES.qvol, ['Quadrix BTC Realized Volatility Vault', rb.ticker]);
+  // a closed local port: a refusal that came after an RPC read would fail on the connection instead
+  const r = await runTool(['--index', 'qvol', '--action', 'open-deposits', '--cap', '1', '--rpc', 'http://127.0.0.1:9']);
+  assert.equal(r.code, 2, r.out);
+  assert.match(r.out, /REFUSED: qvol is a display vault: it takes no deposits by definition \(deposit cap 0\)/);
 });
 
 test('the guardian rule — missing, 0, = manager (keeper and owner), or a timelock role: REFUSED before anything is sent', async () => {

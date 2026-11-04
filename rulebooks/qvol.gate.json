@@ -1,0 +1,104 @@
+{
+  "schema": "quadrix-gate-report/2",
+  "index": "qvol",
+  "track": "trading-tool",
+  "stage": "testnet",
+  "rulebook": {
+    "path": "rulebooks/qvol.md",
+    "repo": "record",
+    "sha256": "121174c6b317253f1114884e5f297ed182ec3c6b3fd6cdc355f60fc2965f3fea"
+  },
+  "keeperJson": {
+    "path": "keeper/rulebooks/qvol.json",
+    "sha256": "7e4d6e38f346fee0f3deb04935b4ef6c93213f1841d0c44656d722cc888a44e8"
+  },
+  "provenance": {
+    "path": "keeper/rulebooks/qvol.provenance.json",
+    "sha256": "93b9def05fd68961f1b672b1a1a0d36af2697a23df245711cf8d55fc42f963d2"
+  },
+  "checklistRun": {
+    "path": "docs/methodology/checklist-runs/qvol/2026-11-05.json",
+    "sha256": "7c587523564fc6acf31bfebaa23f6a9d53d143ed4a0b614155e706550cc79c7f"
+  },
+  "siteCommit": "f5e3aadb4f3bd3c2e6d2c290594d9c6439cbbbc3",
+  "siteCommitPushed": true,
+  "base": "origin/main",
+  "counts": {
+    "tested": 0,
+    "partial": 0,
+    "definition": 11,
+    "definitionNumeric": 7,
+    "price": 0,
+    "absent": 0,
+    "exposureLimit": 0,
+    "exception": {
+      "product-definition": 0,
+      "model-assumption": 0,
+      "no-data": 0,
+      "stage-only": 0
+    },
+    "reference": 1,
+    "inheritedUntested": 1,
+    "untested": 0
+  },
+  "changedParams": [
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P09",
+    "P12",
+    "P13",
+    "P14",
+    "P15"
+  ],
+  "exceptionsAmongChanged": 0,
+  "exposureAmongChanged": 0,
+  "exceptions": [],
+  "pendingSteps": [
+    {
+      "id": "D13",
+      "after": "anchor",
+      "closeBy": "개시 결정문의 앵커 tx와 첫 기록 줄(2026-11-06, 00:25 UTC 정기 실행)",
+      "record": "docs/methodology/checklist-runs/qvol/2026-11-05.json"
+    },
+    {
+      "id": "D14",
+      "after": "deploy",
+      "closeBy": "배포 뒤 역할별 주소의 체인 읽기(R64) — 뒤 날짜 기록",
+      "record": "docs/methodology/checklist-runs/qvol/2026-11-05.json"
+    },
+    {
+      "id": "D16",
+      "after": "anchor",
+      "closeBy": "개시 결정문의 앵커 tx",
+      "record": "docs/methodology/checklist-runs/qvol/2026-11-05.json"
+    },
+    {
+      "id": "D17",
+      "after": "deploy",
+      "closeBy": "배포 tx · 배포 뒤 읽기(R64) · 사이트 반영(배포 규율) 뒤 프로덕션 재확인 · 첫 마크와 그 줄의 대조(결정문 「Order」) — 뒤 날짜 기록(follow-up) · 페이지 블록의 스테이징 커밋이 사이트 main의 조상이다(D12)",
+      "record": "docs/methodology/checklist-runs/qvol/2026-11-05.json"
+    },
+    {
+      "id": "D18",
+      "after": "launch",
+      "closeBy": "개시 뒤 30일 안 첫 감사 기록(뒤의 날짜 기록)",
+      "record": "docs/methodology/checklist-runs/qvol/2026-11-05.json"
+    },
+    {
+      "id": "R64",
+      "after": "deploy",
+      "closeBy": "배포 뒤 체인 읽기 — 코드 해시가 qBTC2X 마크 볼트와 같음 · owner = keeper = 키퍼 키 · pending owner 0 · 가디언 ≠ 0 · ≠ keeper · ≠ owner · 주가 1.000000 · 공급 0 · 예치 캡 0. 볼트는 앵커 뒤에 배포되므로 뒤 날짜 기록(follow-up)에서 run으로 닫는다(gate.md §3 대기 표)",
+      "record": "docs/methodology/checklist-runs/qvol/2026-11-05.json"
+    }
+  ],
+  "judgments": [],
+  "untestedAmongChanged": 0,
+  "checksSkipped": [],
+  "result": "pass",
+  "violationsByCheck": {}
+}

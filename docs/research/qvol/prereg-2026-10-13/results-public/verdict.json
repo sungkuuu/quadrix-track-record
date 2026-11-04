@@ -1,0 +1,224 @@
+{
+  "registration": "0649c4b4",
+  "reproduced": true,
+  "note": "판정 규칙을 적용하면 — four lines must all pass for 「재현됨」 (§6-4)",
+  "ranges": {
+    "file": [
+      "2017-09-18",
+      "2026-09-29"
+    ],
+    "rest": [
+      "2026-09-01",
+      "2026-11-02"
+    ],
+    "overlap": [
+      "2026-09-01",
+      "2026-09-29"
+    ],
+    "preFile": [
+      "2025-09-02",
+      "2026-09-29"
+    ],
+    "preRest": [
+      "2026-09-01",
+      "2026-10-06"
+    ]
+  },
+  "scope": {
+    "A file range": {
+      "lines": 3299,
+      "inScope": 3299,
+      "outOfScope": 0,
+      "first": "2017-09-18"
+    },
+    "A REST range": {
+      "lines": 63,
+      "inScope": 63,
+      "outOfScope": 0,
+      "first": "2026-09-01"
+    },
+    "B file range": {
+      "lines": 3299,
+      "inScope": 3299,
+      "outOfScope": 0,
+      "first": "2017-09-18"
+    },
+    "B REST range": {
+      "lines": 63,
+      "inScope": 63,
+      "outOfScope": 0,
+      "first": "2026-09-01"
+    },
+    "A file range run 2": {
+      "lines": 3299,
+      "inScope": 3299,
+      "outOfScope": 0,
+      "first": "2017-09-18"
+    }
+  },
+  "gapDays": [
+    "2017-09-06",
+    "2017-12-04",
+    "2017-12-18",
+    "2018-01-04",
+    "2018-02-08",
+    "2018-02-09",
+    "2018-02-10",
+    "2018-02-11",
+    "2018-06-26",
+    "2018-06-27",
+    "2018-07-04",
+    "2018-10-19",
+    "2018-11-14",
+    "2019-03-12",
+    "2019-05-15",
+    "2019-06-07",
+    "2019-08-15",
+    "2019-11-13",
+    "2019-11-25",
+    "2020-02-09",
+    "2020-02-19",
+    "2020-03-04",
+    "2020-04-25",
+    "2020-06-28",
+    "2020-11-30",
+    "2020-12-21",
+    "2020-12-25",
+    "2021-02-11",
+    "2021-03-06",
+    "2021-04-20",
+    "2021-04-25",
+    "2021-08-13",
+    "2021-09-29",
+    "2023-03-24"
+  ],
+  "tests": [
+    {
+      "id": "V1",
+      "pass": true,
+      "mismatches": 0,
+      "evidence": "realized-ab.csv",
+      "compared": 3362,
+      "missingLines": 0,
+      "maxValueRelDiff": 3.7137324887372116e-16,
+      "maxVarianceRelDiff": 3.802507002870737e-16,
+      "pre1006": {
+        "file": {
+          "lines": 393,
+          "mismatches": 0
+        },
+        "rest": {
+          "lines": 36,
+          "mismatches": 0
+        }
+      },
+      "threshold": {
+        "valueRelDiffMax": 1e-9,
+        "varianceRelDiffMax": 1e-9,
+        "relDiff": "|a - b| / max(|a|, |b|); both 0 -> 0; only one 0 -> 1"
+      }
+    },
+    {
+      "id": "V2",
+      "pass": true,
+      "mismatches": 0,
+      "evidence": "realized-ab.csv",
+      "daysCompared": 3422,
+      "snapshotDaysCompared": 93,
+      "aVsB": 0,
+      "aRestVsSnapshot": 0,
+      "list": [],
+      "threshold": {
+        "mismatchesMax": 0
+      }
+    },
+    {
+      "id": "V3",
+      "pass": true,
+      "mismatches": 0,
+      "evidence": "realized-close-check.csv, rest-vs-file.csv",
+      "ga": {
+        "compared": 6658,
+        "mismatches": 0,
+        "nullSkipped": 0
+      },
+      "na": {
+        "compared": 6844,
+        "mismatches": 0,
+        "nullSkipped": 0,
+        "list": []
+      },
+      "da": {
+        "linesCompared": 58,
+        "mismatches": 0,
+        "expectedLines": 58
+      },
+      "threshold": {
+        "mismatchesMax": 0,
+        "parts": [
+          "(가) 1m close = last 15m bar close (file-range windows)",
+          "(나) 1m close = exchange 1d close (file + REST windows, registration snapshot only)",
+          "(다) K fields, REST-range line vs file-range line, overlap days"
+        ]
+      }
+    },
+    {
+      "id": "V4",
+      "pass": true,
+      "mismatches": 0,
+      "evidence": "determinism.txt",
+      "runs": 2,
+      "linesCompared": 3299,
+      "threshold": {
+        "mismatchesMax": 0,
+        "minRuns": 2,
+        "fields": "K + seq + sources, JSON.stringify bytes"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "role": "A file range",
+      "path": "results-2026-11-03/file-section/a-run4/record-qvol.jsonl",
+      "sha256": "6242ce98b6ef6efd86d2504c043836a912e3a21c74c5993779048ab8c80873cb"
+    },
+    {
+      "role": "A REST range",
+      "path": "results-2026-11-03/rest-section/a-rest/record-qvol.jsonl",
+      "sha256": "2427cd0f14523d4805e6129ef73a781b315245df6e52e564b4eead7ad33beed8"
+    },
+    {
+      "role": "B file range",
+      "path": "results-2026-11-03/file-section/b-run1/record.jsonl",
+      "sha256": "cf064f1b961fc5e03a3fc2412e850df680fd8a0388c5e2d351e5714c7e150476"
+    },
+    {
+      "role": "B REST range",
+      "path": "results-2026-11-03/rest-section/b-rest/record.jsonl",
+      "sha256": "6b3c698ff6ab1c07489a9b39170d7825ba08027b107f491834679c99785646e2"
+    },
+    {
+      "role": "A file range run 2",
+      "path": "results-2026-11-03/file-section/a-run5/record-qvol.jsonl",
+      "sha256": "a760428b60395d957b1c586ac2efedda17831cb708ce41647af24b16d55fe649"
+    },
+    {
+      "role": "snapshot canonical-1m.sha256",
+      "path": "snapshot/E-2026-11-02/canonical-1m.sha256",
+      "sha256": "23270baf09306ae0320d75e8b0f742fa8dd8ada6ec295bcc97d2a71672c36183",
+      "days": 94
+    },
+    {
+      "role": "snapshot 1d",
+      "path": "snapshot/E-2026-11-02/daily-1d/btcusdt-1d-2017-08-17-to-2026-11-02.json.gz",
+      "sha256": "96ec4af8e88bc4f26ad37ae3eb1c3bedd9c3329eefb1d751fbf09081b191c4c0",
+      "days": 3365
+    },
+    {
+      "role": "15m file",
+      "path": "btcusdt-15m.csv.gz",
+      "sha256": "86ff9e2449172dc2155be980b05040e4d67ff936797e7afa01c5a96e075ed375",
+      "days": 3331
+    }
+  ]
+}

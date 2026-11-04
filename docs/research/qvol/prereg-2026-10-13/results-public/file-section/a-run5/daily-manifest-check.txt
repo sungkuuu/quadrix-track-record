@@ -1,0 +1,4 @@
+shasum -a 256 -c inputs-2026-11-02/daily-manifest.sha256 (in /tmp/qvol-daily, node v22.23.1 conversion)
+OK: 3331
+mismatch/other: 0
+total listed: 3331

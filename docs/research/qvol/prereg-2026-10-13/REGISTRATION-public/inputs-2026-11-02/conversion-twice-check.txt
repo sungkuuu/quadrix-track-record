@@ -1,0 +1,9 @@
+conversion run twice (2026-11-02, node v22.23.4)
+  run1 -> /tmp/qvol-daily/run1   run2 -> /tmp/qvol-daily/run2   (same script, same v6 input)
+byte-for-byte identical (diff -r, plus per-file sha256 lists compared with cmp): yes
+files per run: 3331 / 3331   (UTC days 2017-08-17 .. 2026-09-29)
+rows per run:  4787768 / 4787768
+bytes per run: 350298424 / 350298424
+empty (0-row) files: 0
+stdout summary of both runs identical: yes
+daily-manifest.sha256: 3331 lines, sha256 bd3a834f9191a8ddb67b67aca08651b27845a3cc40a3973a7da12d91f3c6b97a

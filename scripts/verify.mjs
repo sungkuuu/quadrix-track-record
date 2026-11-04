@@ -29,8 +29,9 @@
  * genesis 2026-09-01), the five paper-index series (record-{qrev,qdefi,qai,
  * barbell,triens}.jsonl, anchor prefix `qxpi-<index>:`), the leverage
  * series (record-{qbtc2x,qeth2x,qeth15}.jsonl, same prefix form; reported as
- * "not started" while neither file nor an inception decision exists), and qX20's
- * daily closes (qx20-daily.jsonl). qX20 is not hash-chained: each close names the
+ * "not started" while neither file nor an inception decision exists), the qVOL
+ * realized line (record-qvol.jsonl, prefix `qxpi-qvol:`, the same "not
+ * started" rule), and qX20's daily closes (qx20-daily.jsonl). qX20 is not hash-chained: each close names the
  * keeper's setNav transaction, and the check is that the transaction exists,
  * succeeded, went to a qX20 vault, carries the stated level, and sits in the
  * stated block at the stated time. It does not prove the close was the day's
@@ -52,16 +53,36 @@
  * model-liquidation line must name the entry in which a person accepted it
  * (`liquidationAccepted`).
  *
+ * The qVOL realized line (keeper/vol-index.mjs --line realized) is also
+ * RECOMPUTED: every line's value and variance from the 31 closes in its window,
+ * and the window, sources and dates against the line before it, by
+ * scripts/verify-vol.mjs — a second implementation of the definition that
+ * imports nothing from keeper/. It runs here as a child process on a copy of
+ * the record, with the rulebook JSON (keeper/rulebooks/qvol.json, mirrored as
+ * rulebook-qvol.json) as --rulebook, so this file does not repeat that
+ * arithmetic: keep scripts/verify-vol.mjs next to this file. Checked here: the
+ * first line names the anchored inception decision `<date>-qvol-inception`
+ * whose text contains the rulebook JSON's sha256 and which is effective on
+ * the day BEFORE the first line (the decision is anchored on its effective day;
+ * the first line is dated the next UTC day); that JSON hashes to the sha256
+ * every line states and names that first day and decision; no line is a
+ * dry-run ("shadow") line; inception appears on the first line only; no line
+ * was written before its own day began, and with an RPC no anchor block is
+ * older than its line's day and every anchor is a self-send from the address
+ * that sent the anchor of the inception decision (one key anchors the decision
+ * and the lines: an anchor sent by any other address fails, naming both).
+ *
  * What VERIFIED does not cover: that the bars are the ones Binance serves
  * (--refetch-bars compares them; a difference is REVISED, a failure only with
- * --strict-source); who sent an anchor; the vault marks; that the accepting
- * entry exists in keeper/leverage-gaps.json (the repository's history shows it).
+ * --strict-source); who sent an anchor, except for qVOL (checked with an RPC);
+ * the vault marks; that the accepting entry exists in keeper/leverage-gaps.json
+ * or keeper/vol-index-gaps.json (the repository's history shows it).
  *
  * Options:
  *   --base <url>     fetch <base>/trackrecord/… (the site's mirror)
  *   --dir <path>     read the files from a local directory
  *   --series <name>  dry | live | qrev | qdefi | qai | barbell | triens | qbtc2x |
- *                    qeth2x | qeth15 | qx20 | all (default: all). The paper indexes are
+ *                    qeth2x | qeth15 | qvol | qx20 | all (default: all). The paper indexes are
  *                    keeper/paper-index.mjs's rules-only levels: same hash-chain
  *                    shape, anchor prefix `qxpi-<index>:`, no `decisions` field.
  *   --rpc <url>      JSON-RPC endpoint (default: https://sepolia-rpc.giwa.io)
@@ -69,12 +90,38 @@
  *                    (no anchor, qX20 or decision-anchor RPC; decision documents
  *                    are still hashed). The leverage keeper runs this before it
  *                    appends a line.
- *   --refetch-bars   leverage series: fetch every line's day again from Binance
- *                    and compare the 1-minute text's sha256 and the 15-minute
- *                    bars; a difference prints REVISED (not a failure unless
- *                    --strict-source — a line's own bars are the record).
- *   --allow-rehearsal accept leverage lines marked "rehearsal" (keeper/dryrun/
- *                    output, throwaway rule values). Without it such a line fails.
+ *   --refetch-bars   fetch every day a line names again from Binance
+ *                    (data-api.binance.vision, never a host a line names).
+ *                    Leverage series: compare the 1-minute text's sha256 and
+ *                    the 15-minute bars. qVOL: each line's source.day, and on
+ *                    the first line its 31 sources days (and the day it
+ *                    carries a close from, if any); the day is paged as the
+ *                    keeper pages it and its 1-minute text built by the
+ *                    keeper's own function (keeper/vol-sources.mjs,
+ *                    keeper/vol-realized.mjs — imported, not repeated: run
+ *                    from a clone of the repository), and the text's sha256
+ *                    and the day's close are compared with the line.
+ *                    Leverage: a difference prints REVISED (not a failure
+ *                    unless --strict-source — a line's own bars are the
+ *                    record). qVOL: a difference FAILS (a sha256 the source
+ *                    never served is how a forged line looks); with
+ *                    --allow-source-revision it prints REVISED instead. A
+ *                    qVOL line whose sha256 Binance still serves but whose
+ *                    close or row count is not those bars' fails always: the
+ *                    line contradicts the bars it names.
+ *   --strict-source  with --refetch-bars: a REVISED day is a failure.
+ *   --allow-source-revision  qVOL with --refetch-bars: a day Binance now serves
+ *                    differently prints REVISED instead of failing.
+ *   --keeper <address>  qVOL with an RPC: the keeper key, from outside this
+ *                    repository (the address printed on the decision page).
+ *                    The decision's anchor and every line anchor must be sent
+ *                    by it. Without it, the address is taken from the
+ *                    decision's anchor named in this repository (a notice on
+ *                    stderr says so). Either way the decision's anchor must be
+ *                    in a block no later than the end of its effective day and
+ *                    before the first line's anchor.
+ *   --allow-rehearsal accept leverage lines marked "rehearsal" and qVOL lines marked
+ *                    "shadow" (keeper/dryrun/ output). Without it such a line fails.
  *
  * The point of this file is that you can read all of it. If you don't trust
  * the copy served by the site, verify the same data with your own code —
@@ -82,7 +129,10 @@
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -97,6 +147,12 @@ const RECOMPUTE_ONLY = args.includes('--recompute-only');
 const REFETCH_BARS = args.includes('--refetch-bars');
 const STRICT_SOURCE = args.includes('--strict-source');
 const ALLOW_REHEARSAL = args.includes('--allow-rehearsal');
+const ALLOW_SOURCE_REVISION = args.includes('--allow-source-revision');
+const KEEPER = args.includes('--keeper') ? String(opt('--keeper', '')).toLowerCase() : null;
+if (KEEPER !== null && !/^0x[0-9a-f]{40}$/.test(KEEPER)) {
+  console.error(`--keeper must be a 20-byte 0x address (got ${opt('--keeper', '(nothing)')})`);
+  process.exit(2);
+}
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
@@ -162,6 +218,9 @@ let decisions = [];
 /** The latest inception decision of a leverage index (a postponement is a later one — red team F07b). */
 const latestInception = (index) =>
   decisions.filter((d) => new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${index}-paper-inception$`).test(d.id)).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).at(-1) ?? null;
+/** The latest inception decision of the qVOL realized line: `<date>-qvol-inception`, effective the day before its first line. */
+const latestVolInception = (series) =>
+  decisions.filter((d) => new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${series}-inception$`).test(d.id)).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).at(-1) ?? null;
 try {
   decisions = await loadLines('decisions.jsonl');
 } catch {
@@ -188,6 +247,9 @@ const SERIES_FILES = {
   qbtc2x: { label: 'QBTC2X', records: 'record-qbtc2x.jsonl', anchors: 'anchors-qbtc2x.jsonl', anchorPrefix: 'qxpi-qbtc2x:', checkDecisions: false, leverage: { index: 'qbtc2x', ticker: 'qBTC2X', symbol: 'BTCUSDT', target: 2 } },
   qeth2x: { label: 'QETH2X', records: 'record-qeth2x.jsonl', anchors: 'anchors-qeth2x.jsonl', anchorPrefix: 'qxpi-qeth2x:', checkDecisions: false, leverage: { index: 'qeth2x', ticker: 'qETH2X', symbol: 'ETHUSDT', target: 2 } },
   qeth15: { label: 'QETH1.5X', records: 'record-qeth15.jsonl', anchors: 'anchors-qeth15.jsonl', anchorPrefix: 'qxpi-qeth15:', checkDecisions: false, leverage: { index: 'qeth15', ticker: 'qETH1.5X', symbol: 'ETHUSDT', target: 1.5 } },
+  // The qVOL realized line (keeper/vol-index.mjs): a measurement, one line per UTC day. Same chain and anchor
+  // shape; its recompute is scripts/verify-vol.mjs (qVOL section below).
+  qvol: { label: 'QVOL', records: 'record-qvol.jsonl', anchors: 'anchors-qvol.jsonl', anchorPrefix: 'qxpi-qvol:', checkDecisions: false, vol: { series: 'qvol', ticker: 'qVOL', symbol: 'BTCUSDT' } },
 };
 const ALL = [...Object.keys(SERIES_FILES), 'qx20'];
 if (SERIES !== 'all' && !ALL.includes(SERIES)) {
@@ -199,10 +261,12 @@ const totals = { records: 0, anchors: 0, series: [] };
 async function verifySeries(key) {
   const f = SERIES_FILES[key];
   let records, anchors;
-  if (f.leverage) {
-    // A leverage series exists from its inception decision on. Before that,
+  if (f.leverage || f.vol) {
+    // A leverage series (and the qVOL line) exists from its inception decision on. Before that,
     // neither file exists and nothing is wrong ("not started").
-    const inception = latestInception(f.leverage.index);
+    const inception = f.leverage ? latestInception(f.leverage.index) : latestVolInception(f.vol.series);
+    // the qVOL decision is effective the day before its first line; a leverage decision on its genesis day
+    const firstDay = inception ? lev.nextDate(inception.effectiveFrom, f.vol ? 1 : 0) : null;
     records = await loadLines(f.records).catch(() => null);
     anchors = await loadLines(f.anchors).catch(() => null);
     // an empty record file is no series either (red team F03 E)
@@ -213,10 +277,10 @@ async function verifySeries(key) {
       // written by the first keeper run after that date's 00:00 UTC. Until the
       // end of the effective day the missing file is "pending", not a failure.
       const today = new Date().toISOString().slice(0, 10);
-      if (inception && today <= inception.effectiveFrom) {
-        console.log(`\n[${f.label}] pending — inception decision ${inception.id} is effective from ${inception.effectiveFrom}; the genesis line is written by the first keeper run after ${inception.effectiveFrom}T00:00Z (a failure if ${f.records} is still missing after that UTC day)`);
-        totals.series.push(`${f.label} pending (inception ${inception.effectiveFrom})`);
-      } else if (inception) fail(`${f.label}: inception decision ${inception.id} (effective ${inception.effectiveFrom}) is anchored but ${f.records} is missing`);
+      if (inception && today <= firstDay) {
+        console.log(`\n[${f.label}] pending — inception decision ${inception.id} is effective from ${inception.effectiveFrom}; the ${f.vol ? 'first' : 'genesis'} line is written by the first keeper run after ${firstDay}T00:00Z (a failure if ${f.records} is still missing after that UTC day)`);
+        totals.series.push(`${f.label} pending (inception ${inception.effectiveFrom}${f.vol ? `, first line ${firstDay}` : ''})`);
+      } else if (inception) fail(`${f.label}: inception decision ${inception.id} (effective ${inception.effectiveFrom}${f.vol ? `, first line ${firstDay}` : ''}) is anchored but ${f.records} is missing`);
       else {
         console.log(`\n[${f.label}] not started — no ${f.records} and no inception decision`);
         totals.series.push(`${f.label} not started`);
@@ -286,12 +350,16 @@ async function verifySeries(key) {
   }
 
   if (f.leverage) await verifyLeverage(f, records);
+  if (f.vol) await verifyVol(f, records);
   if (RECOMPUTE_ONLY) {
     console.log(`\n[${f.label}] anchors not checked (--recompute-only)`);
     return;
   }
 
   console.log(`\n[${f.label}] anchors — ${anchors.length} on-chain commitment(s) via ${RPC}`);
+  // qVOL: one key anchors the inception decision and every line (red team R47 F3) — the sender of the
+  // decision's anchor transaction is that key, and a line anchored by any other key fails.
+  const signer = f.vol && anchors.length ? await volSigner(f, records) : null;
   for (const a of anchors) {
     const rec = records.find((r) => r.seq === a.seq);
     if (!rec) {
@@ -323,11 +391,30 @@ async function verifySeries(key) {
       fail(`anchor seq ${a.seq}: calldata does not carry ${f.anchorPrefix}${a.headHash.slice(0, 12)}…`);
       continue;
     }
-    // Leverage lines: the anchor's block time is when the line demonstrably existed. It cannot be older than the
+    let by = '';
+    if (f.vol) {
+      const from = String(tx.from ?? '').toLowerCase();
+      const to = String(tx.to ?? '').toLowerCase();
+      if (!ADDRESS.test(from) || to !== from) {
+        fail(`anchor seq ${a.seq} ${a.date} (${a.txHash.slice(0, 14)}…): sent by ${tx.from ?? 'no sender'} to ${tx.to ?? 'no recipient'} — a ${f.vol.ticker} anchor is a self-send from ${signer.address ?? signer.label}`);
+        continue;
+      }
+      if (signer.address && from !== signer.address) {
+        fail(`anchor seq ${a.seq} ${a.date} (${a.txHash.slice(0, 14)}…): sent by ${from}, not by ${signer.address}, ${signer.label}`);
+        continue;
+      }
+      // the decision came first: its anchor is in an earlier block than the first line's (a re-anchored decision is not)
+      if (a.seq === records[0].seq && signer.block !== null && !(parseInt(receipt.blockNumber, 16) > signer.block)) {
+        fail(`anchor seq ${a.seq} ${a.date} (${a.txHash.slice(0, 14)}…): block ${parseInt(receipt.blockNumber, 16)} is not after the decision's anchor (block ${signer.block}) — the decision is anchored before the first line`);
+        continue;
+      }
+      by = `, self-send from ${from}`;
+    }
+    // Leverage and qVOL lines: the anchor's block time is when the line demonstrably existed. It cannot be older than the
     // line's own day, and how much later than observedAt it came is printed (a line rewritten as "on time" shows
     // here — red team F03 D; final review F-1 for the day bound).
     let when = '';
-    if (f.leverage) {
+    if (f.leverage || f.vol) {
       let block = null;
       try {
         block = await rpc('eth_getBlockByNumber', [receipt.blockNumber, false]);
@@ -347,7 +434,7 @@ async function verifySeries(key) {
       const afterH = (blockMs - observed) / 3_600_000;
       when = `, ${new Date(blockMs).toISOString()}${afterH >= 1 ? ` — ${afterH.toFixed(1)} h after observedAt` : blockMs < observed ? ` — ${Math.ceil((observed - blockMs) / 1000)} s before observedAt (clock difference)` : ''}`;
     }
-    ok(`seq ${a.seq} ${a.date} anchored in ${a.txHash.slice(0, 14)}… (block ${parseInt(receipt.blockNumber, 16)}${when})`);
+    ok(`seq ${a.seq} ${a.date} anchored in ${a.txHash.slice(0, 14)}… (block ${parseInt(receipt.blockNumber, 16)}${when}${by})`);
   }
   // Every record must have exactly one anchor — a record without one is a
   // claim nobody can check the date of.
@@ -658,6 +745,217 @@ async function verifyLeverage(f, records) {
     if (failures === before) ok(`#${rec.seq} ${D} level ${rec.level}${rec.late ? ' (late)' : ''}${k > 0 ? ` — recomputed: ${rec.slots.length} check(s), ${rec.dayStats.triggers} trigger(s)` : ' — genesis'}${rec.liquidated ? ', MODEL LIQUIDATION (series ends)' : ''}`);
   }
   if (REFETCH_BARS) console.log(`  re-fetched ${refetchOk} day(s) unchanged`);
+}
+
+// ---------------------------------------------------------------------- qVOL
+// The values are recomputed by scripts/verify-vol.mjs, which states the definition in its own code (it
+// imports nothing from keeper/ and nothing from this file). It runs as a child process on a copy of the
+// record, with the rulebook JSON as --rulebook (every line's rule must be that file's: its sha256 and
+// values). This file adds what binds the record to its decision, the anchors' sender (volSigner) and, with
+// --refetch-bars, the comparison with the exchange (refetchVol — the one part that imports keeper code: the
+// paging of a day and the 1-minute text whose sha256 a line records, so that the bytes compared are the keeper's).
+const VERIFY_VOL = path.join(path.dirname(fileURLToPath(import.meta.url)), 'verify-vol.mjs');
+const ADDRESS = /^0x[0-9a-f]{40}$/;
+
+/**
+ * The address that sent the anchor of the qVOL line's inception decision (the decision named by the first line,
+ * its txHash in decisions.jsonl): {address, label}. address is null after a FAIL (no decision, no transaction, or
+ * an answer that names no sender).
+ */
+async function volSigner(f, records) {
+  // --keeper pins the key from outside this repository; without it the key is the one this repository's ledger points at
+  const pinned = (address, label, block) => (KEEPER ? { address: KEEPER, label: 'the keeper key given with --keeper', block } : { address, label, block });
+  const id = records[0]?.inception?.decision;
+  const d = decisions.find((x) => x.id === id);
+  if (!d) {
+    fail(`${f.label}: the anchors' sender cannot be checked — the first line's decision ${id} is not in decisions.jsonl`);
+    return pinned(null, `the sender of decision ${id}'s anchor (unknown)`, null);
+  }
+  const label = `the sender of decision ${d.id}'s anchor ${String(d.txHash).slice(0, 14)}…`;
+  if (!KEEPER) console.error(`notice: ${f.label}: the keeper address is taken from the anchor of decision ${d.id} named in this repository's decisions.jsonl; pass --keeper <the address printed on the decision page> to pin it`);
+  try {
+    const tx = await rpc('eth_getTransactionByHash', [d.txHash]);
+    const from = String(tx?.from ?? '').toLowerCase();
+    if (!tx) {
+      fail(`${f.label}: decision ${d.id}: anchor tx ${d.txHash} not found on chain — the anchors' sender cannot be checked`);
+      return pinned(null, `${label} (unknown)`, null);
+    }
+    if (!ADDRESS.test(from)) {
+      fail(`${f.label}: decision ${d.id}: the answer for ${d.txHash} names no sender — the anchors' sender cannot be checked`);
+      return pinned(null, `${label} (unknown)`, null);
+    }
+    if (KEEPER && from !== KEEPER) fail(`${f.label}: decision ${d.id}: its anchor ${d.txHash} was sent by ${from}, not by the keeper ${KEEPER} given with --keeper`);
+    // when: no later than the end of the decision's effective day (the decision anchored again later is not the decision)
+    let block = null;
+    const receipt = await rpc('eth_getTransactionReceipt', [d.txHash]);
+    const head = receipt ? await rpc('eth_getBlockByNumber', [receipt.blockNumber, false]) : null;
+    if (!receipt || receipt.status !== '0x1' || !head) fail(`${f.label}: decision ${d.id}: anchor tx ${d.txHash} not confirmed — its time cannot be checked`);
+    else {
+      block = parseInt(receipt.blockNumber, 16);
+      const at = parseInt(head.timestamp, 16) * 1000;
+      if (!(at < lev.day0(d.effectiveFrom) + lev.DAY)) fail(`${f.label}: decision ${d.id}: its anchor is in block ${block} at ${new Date(at).toISOString()}, after its effective day ${d.effectiveFrom} ended — a decision is anchored on or before its effective day`);
+    }
+    return pinned(from, label, block);
+  } catch (e) {
+    fail(`${f.label}: decision ${d.id}: rpc unavailable — ${e.message}`);
+  }
+  return pinned(null, `${label} (unknown)`, null);
+}
+
+/**
+ * --refetch-bars for qVOL (red team R47 F2). Recomputing a line from its own closes cannot see closes that never
+ * came from the exchange; asking the exchange again can. Every day a line names is fetched again from
+ * data-api.binance.vision — each line's source.day; on the first line its 31 sources days and, when it has one,
+ * the day it carries a close from — paged and kept as the keeper pages a day (binanceDayOnce,
+ * keeper/vol-sources.mjs), and its 1-minute text is built by the function whose sha256 a line records
+ * (canonicalMinuteText, keeper/vol-realized.mjs; its close by dayClose there). Both are imported, not repeated.
+ * Per day:
+ *   the line's sha256, rows and close        → unchanged;
+ *   the line's sha256, other rows or close   → FAIL: the line contradicts the bars it names;
+ *   another sha256                           → REVISED (Binance now serves other bars), a FAIL with --strict-source;
+ *   no answer, or bars outside the day       → FAIL.
+ */
+async function refetchVol(f, records, bad) {
+  const V = f.vol;
+  let K;
+  try {
+    const [realized, sources] = await Promise.all([import('../keeper/vol-realized.mjs'), import('../keeper/vol-sources.mjs')]);
+    K = { parseKlines: realized.parseKlines, canonicalMinuteText: realized.canonicalMinuteText, dayClose: realized.dayClose, binanceDayOnce: sources.binanceDayOnce };
+  } catch (e) {
+    bad(records[0], `--refetch-bars: keeper/vol-realized.mjs and keeper/vol-sources.mjs are needed beside scripts/ (run this from a clone of the repository) — ${e.message}`);
+    return;
+  }
+  const get = async (pathq) => {
+    const r = await fetch(`https://${lev.HOST}${pathq}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status} from ${lev.HOST}`);
+    return r.json();
+  };
+  const binance = {
+    async klines(symbol, startMs, endMs, limit) {
+      const q = new URLSearchParams({ symbol, interval: '1m', startTime: String(startMs), limit: String(limit) });
+      if (endMs != null) q.set('endTime', String(endMs));
+      return K.parseKlines(await get(`/api/v3/klines?${q}`));
+    },
+  };
+  console.log(`  --refetch-bars: every day the lines name, again from ${lev.HOST} (${V.symbol} 1-minute bars)`);
+  let serverTime;
+  try {
+    const t = Number((await get('/api/v3/time'))?.serverTime);
+    if (!Number.isFinite(t)) throw new Error('/api/v3/time answered no serverTime');
+    serverTime = t >= 1e15 ? Math.floor(t / 1000) : t;
+  } catch (e) {
+    bad(records[0], `--refetch-bars: ${e.message}`);
+    return;
+  }
+  const days = new Map(); // a day is fetched once, however many lines name it
+  const dayOf = (day) => {
+    if (!days.has(day))
+      days.set(day, K.binanceDayOnce(binance, V.symbol, day, serverTime).then((m) => ({ sha: sha256(K.canonicalMinuteText(m)), rows: m.length, close: K.dayClose(m).close })));
+    return days.get(day);
+  };
+  let unchanged = 0;
+  const check = async (rec, where, day, want) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day))) return bad(rec, `--refetch-bars: ${where} names no day (${JSON.stringify(day)})`);
+    let got;
+    try {
+      got = await dayOf(day);
+    } catch (e) {
+      return bad(rec, `--refetch-bars ${where} ${day}: ${e.message}`);
+    }
+    if (got.sha === want.sha) {
+      if (got.rows === want.rows && got.close === want.close) unchanged++;
+      else bad(rec, `${where} ${day}: Binance serves the bars whose sha256 the line records (${want.sha}) — ${got.rows} row(s), close ${got.close} — but the line says ${want.rows} row(s), close ${want.close}: the line contradicts the bars it names`);
+      return;
+    }
+    totals.revised = (totals.revised ?? 0) + 1;
+    console.log(`  REVISED ${V.series} #${rec.seq} ${rec.date}: ${where} ${day} — Binance now serves ${got.rows} row(s), close ${got.close}, sha256 ${got.sha}; the line records ${want.rows} row(s), close ${want.close}, sha256 ${want.sha} — the line's closes stand`);
+    if (STRICT_SOURCE || !ALLOW_SOURCE_REVISION) bad(rec, `${where} ${day} revised: Binance now serves sha256 ${got.sha}, the line records ${want.sha}${STRICT_SOURCE ? ' (--strict-source)' : ' (a failure for qVOL unless --allow-source-revision)'}`);
+  };
+  for (const rec of records) {
+    const win = Array.isArray(rec.window) ? rec.window : [];
+    const src = rec.source ?? {};
+    const last = { sha: src.sha256, rows: src.rows, close: win.at(-1)?.[1] ?? null };
+    if (rec === records[0] && Array.isArray(rec.sources)) {
+      // sources[k] = [day, rows, sha256(, acceptance id)] of window[k]; the last one is source.day
+      for (const [k, s] of rec.sources.entries()) await check(rec, `sources[${k}]`, s?.[0], { sha: s?.[2], rows: s?.[1], close: win.find((w) => Array.isArray(w) && w[0] === s?.[0])?.[1] ?? null });
+      const c = rec.carriedFrom; // [day, close, rows, sha256(, acceptance id)] on the first line
+      if (Array.isArray(c) && c.length >= 4) await check(rec, 'carriedFrom', c[0], { sha: c[3], rows: c[2], close: c[1] });
+      if (!rec.sources.some((s) => s?.[0] === src.day)) await check(rec, 'source.day', src.day, last);
+    } else await check(rec, 'source.day', src.day, last);
+  }
+  console.log(`  re-fetched ${unchanged} day(s) unchanged`);
+}
+
+async function verifyVol(f, records) {
+  const V = f.vol;
+  console.log(`\n[${f.label}] recompute — ${records.length} line(s) by ${path.basename(VERIFY_VOL)} (the window's closes, the rule)`);
+  if (!records.length) return;
+  const g = records[0];
+  const bad = (rec, msg) => fail(`${f.label} #${rec.seq} ${rec.date}: ${msg}`);
+  for (const rec of records) {
+    if (rec.shadow !== undefined && !ALLOW_REHEARSAL) bad(rec, 'a dry-run line ("shadow": true) — not a published series line (pass --allow-rehearsal for keeper/dryrun/ output)');
+    if (rec.seq !== g.seq && rec.inception !== undefined) bad(rec, 'inception on a line after the first');
+    if (!(Date.parse(rec.observedAt) >= lev.day0(rec.date))) bad(rec, `observedAt ${rec.observedAt} is before ${rec.date}T00:00Z — a line is never written before its day began`);
+  }
+  // the rulebook JSON: the site's mirror (rulebook-qvol.json), or the repository's keeper/rulebooks/qvol.json
+  let rbBytes = null;
+  try { rbBytes = await loadBytes(`rulebook-${V.series}.json`); } catch { rbBytes = null; }
+  if (!rbBytes && !BASE) {
+    const local = path.join(DIR, '..', 'keeper', 'rulebooks', `${V.series}.json`);
+    if (fs.existsSync(local)) rbBytes = fs.readFileSync(local);
+  }
+  // the recompute (scripts/verify-vol.mjs, separate code)
+  if (!fs.existsSync(VERIFY_VOL)) bad(g, `${VERIFY_VOL} is missing — the qVOL recompute is that script; keep it next to this file`);
+  else {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'verify-qvol-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'record-qvol.jsonl'), records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+      const argv = [VERIFY_VOL, '--dir', tmp, '--line', 'realized', '--recompute-only'];
+      if (rbBytes) {
+        fs.writeFileSync(path.join(tmp, `rulebook-${V.series}.json`), rbBytes);
+        argv.push('--rulebook', path.join(tmp, `rulebook-${V.series}.json`));
+      }
+      const r = spawnSync(process.execPath, argv, { encoding: 'utf8', env: { PATH: process.env.PATH ?? '' } });
+      const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+      let rep = null;
+      try { rep = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)); } catch { rep = null; }
+      if (r.status !== 0) {
+        const lines = out.split('\n').filter((l) => l.startsWith('FAIL ')).slice(0, 20);
+        for (const l of lines) bad(g, `verify-vol.mjs: ${l.slice(5)}`);
+        if (!lines.length) bad(g, `verify-vol.mjs exited ${r.status}: ${out.trim().split('\n').slice(-3).join(' | ')}`);
+      } else ok(`${rep?.report?.realized?.lines ?? records.length} line(s) recomputed by verify-vol.mjs — value and variance within a relative 1e-9 (largest ${rep?.maxRelativeDiff ?? '?'}), windows, sources and dates continue${rbBytes ? '; every rule is the rulebook JSON\'s' : ''}`);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+  if (REFETCH_BARS) await refetchVol(f, records, bad);
+  if (g.shadow === true) return; // a dry run has no decision (any other first line is bound to its decision and rulebook)
+  // the first line and its decision
+  const rule = g.rule ?? {};
+  const inc = g.inception ?? {};
+  if (g.seq !== 0 || g.prevHash !== null) bad(g, 'the first line is not seq 0 with prevHash null');
+  if (!new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${V.series}-inception$`).test(String(inc.decision))) bad(g, `inception.decision ${inc.decision} is not a <date>-${V.series}-inception decision`);
+  if (!rbBytes) bad(g, `rulebook JSON unavailable (rulebook-${V.series}.json${BASE ? '' : ` or ../keeper/rulebooks/${V.series}.json`}) — the lines' rule cannot be bound to it`);
+  else if (sha256(rbBytes) !== rule.rulebookSha256) bad(g, `rule.rulebookSha256 ${String(rule.rulebookSha256).slice(0, 12)}… is not the rulebook JSON's ${sha256(rbBytes).slice(0, 12)}… (a rulebook changed after inception needs its own decision)`);
+  else {
+    let rb = null;
+    try { rb = JSON.parse(rbBytes.toString('utf8')); } catch (e) { bad(g, `rulebook JSON unreadable (${e.message})`); }
+    if (rb) {
+      if (rb.ticker !== V.ticker || rb.series !== V.series || rb.inception?.date !== g.date || rb.inception?.decision !== inc.decision) bad(g, `rulebook JSON names ${rb.ticker} ${rb.series}, inception ${rb.inception?.date} ${rb.inception?.decision} — not this series' first line ${g.date} and decision ${inc.decision}`);
+      if (!Array.isArray(rb.pendingOwner) || rb.pendingOwner.length) bad(g, 'rulebook JSON is a draft — pendingOwner is not an empty list; a published line cannot rest on it');
+    }
+  }
+  const d = decisions.find((x) => x.id === inc.decision);
+  if (!d) bad(g, `inception decision ${inc.decision} is not in decisions.jsonl`);
+  else {
+    checkedDecisionIds.add(d.id);
+    if (inc.decisionSha256 !== d.sha256) bad(g, `inception.decisionSha256 differs from the ledger's ${d.sha256.slice(0, 12)}…`);
+    // the decision is effective on the day it is anchored; the first line is dated the next UTC day
+    if (lev.nextDate(d.effectiveFrom) !== g.date) bad(g, `inception decision is effective from ${d.effectiveFrom}, so the first line is dated ${lev.nextDate(d.effectiveFrom)}, not ${g.date}`);
+    let text = '';
+    try { text = (await loadBytes(d.file)).toString('utf8'); } catch (e) { bad(g, `decision document unreadable (${e.message})`); }
+    if (text && !text.includes(rule.rulebookSha256)) bad(g, `decision ${d.id} does not contain the rulebook sha256 ${rule.rulebookSha256}`);
+  }
 }
 
 // qX20: the keeper's setNav(uint256 navPerShare, uint256 indexLevel) marks,

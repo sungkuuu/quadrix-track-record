@@ -39,14 +39,49 @@ document against the hash committed on chain. qX20 is not a hash chain: each
 daily close is checked against the keeper's own `setNav` transaction instead.
 Exit code 0 means every check passed. `--series <name>` restricts it to one
 (`dry`, `live`, `qrev`, `qdefi`, `qai`, `barbell`, `triens`, `qbtc2x`, `qeth2x`,
-`qeth15`, `qx20`).
+`qeth15`, `qvol`, `qx20`).
 
 For the leverage series it also recomputes every line from its own bars and
 binds the rule each line states to `keeper/rulebooks/<index>.json` (the file
-whose sha256 the inception decision contains). What it does not check: that the
-bars are the ones Binance serves (`--refetch-bars` re-fetches them and prints
-`REVISED` for a difference; `--strict-source` makes that a failure), who sent an
-anchor, and the testnet vault marks.
+whose sha256 the inception decision contains). What it does not check for the
+leverage series: that the bars are the ones Binance serves (`--refetch-bars`
+re-fetches them and prints `REVISED` for a difference; `--strict-source` makes
+that a failure), who sent an anchor, and the testnet vault marks.
+
+For the qVOL realized line (`qvol`; "not started" until its inception decision
+is anchored) it recomputes every line with `scripts/verify-vol.mjs`, a second
+implementation of the definition that it runs as a separate process — keep
+that file next to `verify.mjs` — and binds the first line to its inception
+decision, which is effective the day before the first line. With `--rpc` it
+also checks each anchor's calldata, receipt, block time and sender: every qVOL
+anchor must be a self-send from the keeper key, and the decision's own anchor
+must be sent by that key in a block no later than its effective day and before
+the first line's anchor. With `--refetch-bars` it fetches every day a line names
+again from Binance; for qVOL a difference fails (`--allow-source-revision`
+prints it as `REVISED` instead). This uses two keeper files
+(`keeper/vol-sources.mjs`, `keeper/vol-realized.mjs`), so run it from a clone of
+this repository. The full check:
+
+```bash
+node scripts/verify.mjs --dir ./trackrecord --series qvol --rpc https://sepolia-rpc.giwa.io --keeper 0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902 --refetch-bars --strict-source
+```
+
+What each flag pins: `--rpc` the chain, which dates each line and names who
+anchored it; `--keeper` the anchoring key, given from outside this repository
+(the address printed on the decision page), so that a decision and lines
+anchored again by another key fail — without it the key is read from the
+decision anchor this repository names, and a notice says so; `--refetch-bars
+--strict-source` the exchange, so that a line built from bars Binance never
+served fails. Lighter checks:
+
+```bash
+node scripts/verify.mjs --dir ./trackrecord --series qvol --recompute-only
+node scripts/verify.mjs --dir ./trackrecord --series qvol --recompute-only --refetch-bars --strict-source
+```
+
+The first reads the record alone, with no network (hashes, chain, every value
+recomputed, the decision binding); the second adds every day again from
+Binance, without the chain.
 
 To check the copy served by the site instead of this one:
 

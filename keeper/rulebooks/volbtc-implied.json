@@ -1,0 +1,27 @@
+{
+  "id": "volbtc",
+  "line": "implied",
+  "name": "BTC volatility index, implied line (working name)",
+  "kind": "measurement-index",
+  "status": "draft — inactive: the keeper does not run this line while active is false; not in force; no inception decision",
+  "asOf": "2026-10-13",
+  "active": false,
+  "series": "volbtc-implied",
+  "source": { "host": "https://www.deribit.com", "calls": ["/api/v2/public/get_instruments?currency=BTC&kind=option&expired=false", "/api/v2/public/get_book_summary_by_currency?currency=BTC&kind=option"], "fallback": null },
+  "constantMaturityMinutes": 43200,
+  "yearMinutes": 525600,
+  "price": "top-of-book-mid",
+  "validQuote": "bid>0 && ask>bid",
+  "cutoff": { "rule": "consecutive-invalid", "count": 2 },
+  "forward": "K/(1-(c-p))",
+  "snapshot": "first-success-after-00:00-utc",
+  "display": { "unit": "annualised volatility points (sigma x 100)", "decimals": 2 },
+  "inception": { "date": null, "decision": null },
+  "pendingOwner": [
+    { "path": "active", "what": "this line is switched off until its own decision; whether the realized line starts first is open" },
+    { "path": "name", "what": "the public name; not chosen" },
+    { "path": "series", "what": "the series id is a neutral placeholder; it follows the public name" },
+    { "path": "source", "what": "using the option quotes as this line's source, and publishing them in the line, are not settled" }
+  ],
+  "classification": "open — every numeric value above is proposed as a measurement convention; none has been through a pre-registered test; this line is registered separately from the realized line"
+}
