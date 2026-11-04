@@ -1,0 +1,288 @@
+qVOL fork rehearsal — the realized line in force on a local fork of GIWA Sepolia — 2026-11-04
+RESULT: PASS — 27 of 27 checks, exit 0, 43.8 s; no FAIL line
+
+== setup
+code: branch keeper/qvol-2026-11-02 at e9dce9787fca410e3df09c8cdeb7ce30b9252626, tree clean; node v22.23.1
+fork: anvil 1.8.3 --fork-url https://sepolia-rpc.giwa.io --port 8599 --host 127.0.0.1 --compute-units-per-second 150 --fork-retry-backoff 2000 --retries 10 --timeout 60000
+fork block: 40423371 (hash 0xa9e6096ddd136711de8e3a2dac9b7345eea8e31c0c50fecd5efbc28f02e9600b, 2026-11-04T05:01:27.000Z); chain id 91342 (anvil/v1.8.3 at 127.0.0.1:8599)
+keys: none. KEEPER_PK and BIDDER_PK unset (env -u). The leg ran in its fork mode (--rpc, --from): no key read, eth_sendTransaction to 127.0.0.1:8599 only. Both addresses are fresh and impersonated on the fork. No transaction on GIWA Sepolia.
+accounts: keeper = manager = owner 0xdf917a558745fba8253bAd08E7Dd12819a899657 · guardian and user 0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B
+stand-in inception decision (this rehearsal only; written into each temporary copy, never committed):
+  id 2026-11-02-qvol-inception — keeper/rulebooks/qvol.json with status, inception {date 2026-11-03, decision 2026-11-02-qvol-inception} and pendingOwner [] changed, sha256 f69d579f3c2cf33aca9be4c0eb5f708ef68f4284fee4af2abab9b13613e27cac;
+  a document that pins that sha256, sha256 c38fde5df53f1c30ab1a3c90aecbfc296286ef3ed0ceda10f2b1d3b0988280d3, anchored on the fork in 0x0f310595a3d365e8f2fd138d3311e3da7131ad8ac93db6cff3177acd9395fcf7 (block 40423372) with the calldata of scripts/anchor-decision.mjs, qxdec:<sha256>;
+  the ledger line that script appends, in the copy's trackrecord/decisions.jsonl.
+  It is anchored on the fork's clock (2026-11-04T05:01:44.000Z), after its file-name date; scripts/anchor-decision.mjs refuses that for a real decision. The days are the rehearsal day's: yesterday's line (2026-11-03) and today's (2026-11-04), both from closed Binance days.
+Binance: data-api.binance.vision; 132 live calls (runs 1 and 2); the refusal runs and the dry run replayed those answers (383 calls, the same URLs)
+sha256 of the files at e9dce97 (the commit that adds this file does not change them):
+  525562cd645ff475d8407cc6487d9d9dbbeb4e87eda8d7cfadbea37e05926cf4  keeper/vol-index.mjs
+  053e271be54e13c268d43717fb3b4c073495e4fad90cb018e06f1b4c20e2e3b6  keeper/test/vol-index.test.mjs
+  533440e4a09eac73b50d1df66075ad4e1eb31b5223341798793bd0a38abdd8e0  docs/vol-index.md
+  e571c5d949df8f2168dce540cc94a72a7c9c7d589edcdd244df3fdb0b3516c6d  scripts/verify.mjs
+  c8bee502a19eaec6c1bf01cd6752d7b7a51326a36ad5274f61ba052389b11e2f  scripts/verify-vol.mjs
+  1203f64089ccf1a001ed2ca805e72a32ed3cbe1639b18554b1d9e99371eba3ba  keeper/test/rehearse-qvol.mjs
+
+== commands
+$ anvil … (the fork line above)
+$ env -u KEEPER_PK -u BIDDER_PK node keeper/test/rehearse-qvol.mjs --rpc http://127.0.0.1:8599 --out <out>      exit 0, 43.8 s
+$ node docs/research/qvol/evidence/dryrun-identity.mjs b8769aa      exit 0 (dryrun-identity-2026-11-04.txt)
+Every command the script ran, with its output and exit code, is in the transcript below; <out> is the script's scratch folder and <out>/copy-a … copy-d its temporary copies of this repository.
+
+== step results
+1 deploy — PASS. keeper/deploy-mark-vault.mjs --index qvol, the code path of mark-vault-setup target qvol: vault 0xD83675c016F0eCe6Fb8E37476FDDd7eD3a57eA21, tx 0xc783538df4305ea874d8120c282d7dc81be61e75d064a6dc3facf5c820b1d89a, block 40423373. Read back on the fork: name "Quadrix BTC Realized Volatility Vault", symbol qVOL, deposit cap 0, share price 1.000000, keeper = owner = the keeper address, guardian set; the creation input ends with the encoded constructor arguments.
+2 run 1, runner's clock 2026-11-03T00:25Z — PASS. Line 2026-11-03 = 29.236724503606453 (source day 2026-11-02, 1440 bars, sha256 24bbfa4d7a5cef56c423c30dde0c6eab7da7d140a0222163cf115917fdc35bfd) appended to the copy's keeper/dryrun/record-qvol.jsonl after scripts/verify-vol.mjs agreed (largest relative difference 0). Anchored in 0xf4ecd041e4dbd601775ca1fdd72843d02248e6ecbe67e75a577ad70c9307bbd8 (block 40423375; a zero-value self-send, calldata qxpi-qvol:<line hash>). Marked after the anchor to n6 = 29236724 in 16 setNav steps, each within ±25% of the price before it.
+3 run 2, runner's clock 2026-11-04T00:25Z — PASS. Line 2026-11-04 = 28.47374564801124 (source day 2026-11-03, 1440 bars, sha256 a5a5988ccd8ee6f9d5c4e07a23e8d20a26f71d083470c72a9fbe02c5ccf6ba03), recomputed, anchored in 0xa26f927bfd9f9f8ffb6496a1316eb40d274be750738f9be497b4d2777726b95f (block 40423392), marked 29236724 → 28473745 in 1 step (-2.61%). Run 3, the same command on the machine's clock: exit 0, nothing written, nothing sent. The two lines equal a dry run of the same bars. scripts/verify.mjs --series qvol --rpc <fork>: VERIFIED — 2 records, 2 anchors, 1 decision, 0 failures.
+4 refusals, one run each — PASS.
+  deposit cap 1000000000000 set by the owner on the fork: the line written, recomputed and anchored, no setNav, exit 1; with the cap back at 0 the next run marks the line.
+  the decision missing (no document, no ledger line) and not anchored (its document, no ledger line): NOT IN FORCE, exit 0, no line, no Binance call, nothing sent.
+  the decision in the ledger with its document missing: exit 2, no line, no Binance call, nothing sent.
+  open-deposits on the qVOL vault: refused (exit 2) before any request, the cap still 0; a deposit at cap 0 reverts "cap exceeded".
+  the fork registry's qvol entry naming a qBTC2X vault: the line written and anchored, no setNav, exit 1.
+5 watchdog, scripts/watchdog-series.mjs on the copy's record — PASS. Fresh at the time of the run; nothing at 2026-11-05T15:59Z, stale at 16:01Z; with the decision and no record, pending, then missing at 2026-11-03T16:01Z.
+the real repository — PASS. trackrecord/record-qvol.jsonl, anchors-qvol.jsonl and decisions.jsonl, keeper/marks-qvol.jsonl, keeper/leverage-vaults.json, keeper/rulebooks/qvol.json and keeper/dryrun/ unchanged.
+
+== not rehearsed here
+- the keeper key's own path: KEEPER_PK, transactions signed by the keeper and sent raw to GIWA Sepolia (the fork mode reads no key); tests T-IF3 to T-IF13 run that path against a fake node
+- the daily workflow step (.github/workflows/paper-index.yml: the node v22.23.1 check, the commit of the record, anchor and mark files)
+- the real inception decision and the real rulebook JSON (a stand-in with the same rule values was used), and a vault owned by a timelock
+- live Binance answers for the refusal runs (they replay the answers runs 1 and 2 received)
+
+== transcript (the script's output, then every run in order)
+
+qVOL fork rehearsal 2026-11-04T05:01:40.878Z · rpc http://127.0.0.1:8599 (anvil/v1.8.3) · chain id 91342 · fork block 40423371 (0xa9e6096ddd136711de8e3a2dac9b7345eea8e31c0c50fecd5efbc28f02e9600b, 2026-11-04T05:01:27.000Z)
+code e9dce9787fca410e3df09c8cdeb7ce30b9252626 (tree clean) · node v22.23.1 · keeper/manager/owner 0xdf917a558745fba8253bAd08E7Dd12819a899657 · guardian/user 0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B (fresh, impersonated on the fork; no key)
+sha256 525562cd645ff475d8407cc6487d9d9dbbeb4e87eda8d7cfadbea37e05926cf4  keeper/vol-index.mjs
+sha256 053e271be54e13c268d43717fb3b4c073495e4fad90cb018e06f1b4c20e2e3b6  keeper/test/vol-index.test.mjs
+sha256 533440e4a09eac73b50d1df66075ad4e1eb31b5223341798793bd0a38abdd8e0  docs/vol-index.md
+sha256 e571c5d949df8f2168dce540cc94a72a7c9c7d589edcdd244df3fdb0b3516c6d  scripts/verify.mjs
+sha256 c8bee502a19eaec6c1bf01cd6752d7b7a51326a36ad5274f61ba052389b11e2f  scripts/verify-vol.mjs
+sha256 1203f64089ccf1a001ed2ca805e72a32ed3cbe1639b18554b1d9e99371eba3ba  keeper/test/rehearse-qvol.mjs
+stand-in decision 2026-11-02-qvol-inception: rulebook JSON sha256 f69d579f3c2cf33aca9be4c0eb5f708ef68f4284fee4af2abab9b13613e27cac (keeper/rulebooks/qvol.json with status, inception {date 2026-11-03, decision 2026-11-02-qvol-inception} and pendingOwner [] changed) · document sha256 c38fde5df53f1c30ab1a3c90aecbfc296286ef3ed0ceda10f2b1d3b0988280d3 · anchored on the fork in 0x0f310595a3d365e8f2fd138d3311e3da7131ad8ac93db6cff3177acd9395fcf7 (block 40423372, 2026-11-04T05:01:44.000Z), calldata qxdec:<sha256>
+PASS  1 deploy: keeper/deploy-mark-vault.mjs --index qvol (the mark-vault-setup target qvol) deploys and reads back the display vault, sets the guardian and writes the fork registry — 0xD83675c016F0eCe6Fb8E37476FDDd7eD3a57eA21 tx 0xc783538df4305ea874d8120c282d7dc81be61e75d064a6dc3facf5c820b1d89a block 40423373
+PASS  1 on the fork: name "Quadrix BTC Realized Volatility Vault", symbol qVOL (the rulebook ticker), deposit cap 0, share price 1.000000, keeper = owner = the keeper address, guardian = the second address, no shares — {"name":"Quadrix BTC Realized Volatility Vault","symbol":"qVOL","depositCap":"0","navPerShare":"1000000","keeper":"0xdf917a558745fba8253bAd08E7Dd12819a899657","owner":"0xdf917a558745fba8253bAd08E7Dd12819a899657","guardian":"0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B","totalSupply":"0"}
+PASS  1 fork registry entry qvol: the vault, chain 91342, mark method {"mode":"step"} kept from the committed entry — {"chainId":91342,"address":"0xD83675c016F0eCe6Fb8E37476FDDd7eD3a57eA21","gate":{"mode":"step"},"deployTx":"0xc783538df4305ea874d8120c282d7dc81be61e75d064a6dc3facf5c820b1d89a","block":40423373}
+PASS  1 the creation input ends with the constructor arguments (usd, "Quadrix BTC Realized Volatility Vault", "qVOL", cap 0, manager)
+PASS  2 run 1 (2026-11-03T00:25Z): exit 0, one line 2026-11-03 under keeper/dryrun/ — seq 0, inception {2026-11-02-qvol-inception, the document's sha256}, no "shadow", no "late", the stand-in rulebook's sha256 — value 29.236724503606453 · variance 0.0854786059699782 · source day 2026-11-02 rows 1440 sha256 24bbfa4d7a5cef56c423c30dde0c6eab7da7d140a0222163cf115917fdc35bfd · head 7107eebc4cea819196e513b1d5ed68647743f34f57a49c4c737a5c5d4845a1ac
+PASS  2 run 1: scripts/verify-vol.mjs recomputed the line before it was appended — agrees (the leg prints it)
+PASS  2 scripts/verify-vol.mjs on the written record, the rule against the stand-in rulebook JSON — exit 0 — lines 1, failures 0, largest relative difference 0
+PASS  2 run 1: anchored on the fork — a zero-value self-send by the keeper address, calldata qxpi-qvol:<line hash>, mined after the decision's anchor — 0xf4ecd041e4dbd601775ca1fdd72843d02248e6ecbe67e75a577ad70c9307bbd8 (block 40423375)
+PASS  2 run 1: marked after the anchor to n6 = floor(29.236724503606453 x 1e6) = 29236724 — markSteps from 1.000000, every NavUpdated within ±25% of the price before it, indexLevel n6 in each, read back — 16 setNav: 1250000 → 1562500 → 1953125 → 2441406 → 3051757 → 3814696 → 4768370 → 5960462 → 7450577 → 9313221 → 11641526 → 14551907 → 18189883 → 22737353 → 28421691 → 29236724; txs 0x4618d39c05b78660edd9b7ffc7cbb1daf6af620c5f0766f1843f9cbc62fbca57 0xb536aa4682d0b5e2081f71cc2b832c0632d6824ce4c1c189a73a2d1b5857486d 0x2fe185c58a074e437634fc1d30984108fb11a1d44339aed69ff0e30c1665b2cf 0xcc0f9eca25ba25cb1394f5b3babe3c2587e2ea791b5291004c24ef7279e752aa 0xefc12d1c9cc2bacef343ffc33362d682d4949df43f9c846b1990a859c9267610 0x0e7e76c6e92938538be9a37a84f1001112ce694b454ff906dae6163fa8ef5f4e 0x5d87b48e206c75241d056866403aaa85cb52f5ac73e8960752ccabf463740da6 0x82a33ff339fe0b93b37f48b778b29020ff3ebbdb4cb64a265426afa28ff2b998 0x1a66dc374b17d00fc0c276d6c85c2b5aa2e89c23634dcb0deb367fb2e3aa7add 0x3d4a0cc67565ff7d7985b40fedfdd22dc9765e45b1ea32cf20bf0b56bb3b62ad 0xec8bc1a7305f1b3d8834b31e2af0138ea527b62bf73be72319832727c31a256a 0x0a0afbcc13cfae704e47ddbdadc6dc85d6f978da5c6560db224139cd30b2f29c 0x5ff4688d52934e21b2ca8b39f6dc36487fe7e647f0bc21ab0febfa25f1ff3d66 0xb694fc920d103742f2c4be3e20f60e3e420ca7bf5ca7030cc5a6683ffc46666d 0x6341e6fd5bfd3ba47eb79281cebcfba1a8fa2b0a646dea3c8bb6d8db0010c068 0x3ae9637eb78416ce6f29f0decd470c7e71048c36337f8ff8d33633e5dbeea82d
+PASS  3 run 2 (2026-11-04T00:25Z): exit 0, line 2026-11-04 (seq 1, chained to line 0, no inception, no "late"), recomputed — agrees, anchored on the fork after line 0's marks — value 28.47374564801124 · variance 0.0810754191227639 · source day 2026-11-03 rows 1440 sha256 a5a5988ccd8ee6f9d5c4e07a23e8d20a26f71d083470c72a9fbe02c5ccf6ba03 · anchor 0xa26f927bfd9f9f8ffb6496a1316eb40d274be750738f9be497b4d2777726b95f (block 40423392)
+PASS  3 run 2: marked from 29236724 to n6 = 28473745 — markSteps, every NavUpdated within ±25%, after the anchor — 1 setNav: 28473745 (-2.61%); txs 0xdc07551be9897dd3df93f2e20bccb97ec8a04d21a4a28a31791e8551e22178d1
+PASS  3 run 3, the command on the machine's clock: exit 0, nothing written (line 2026-11-05 not before its day), nothing sent (the vault already shows the last line) — qvol: line 2026-11-05 not written: the runner's clock (2026-11-04T05:02:18.169Z) is before 2026-11-05T00:00Z — a day is never written before it has ended ·   vault 0xD83675c016F0eCe6Fb8E37476FDDd7eD3a57eA21: navPerShare 28473745 → target 28473745 (n6 of the value 28.47374564801124) — already there
+PASS  3 the two lines in force equal a dry run of the same days from the same bars (fields, order and values; the dry run adds "shadow" and no inception)
+PASS  3 scripts/verify.mjs --series qvol on the fork: verify-vol.mjs recompute, the decision binding, both anchors and the decision's own anchor — 0 failures — VERIFIED — 2 records, 2 anchors, 0 qX20 closes, 1 decisions, 0 failures
+PASS  4a deposit cap 1000000000000 set by the owner (tx 0xcdd6b5a4bda03cefa4e1c973e4adb938cc9dd9627d92a4cab0f6946c9ebb167c): the line is written, recomputed and anchored, no setNav is sent, exit 1 — qVOL vault marks FAILED after line #0 was written and anchored: REFUSED: vault 0x56234A71e7aDbd33bAC8aaE1FbB594Ba7d67Cff1 has deposit cap 1000000000000, not 0 — a display vault takes no deposits; no mark sent
+PASS  4a the replayed bars give run 1's line byte for byte
+PASS  4a the cap back at 0: the next run (no new day) marks the anchored line — share price n6 = 29236724
+PASS  4b decision missing (the rulebook names it; no document, no ledger line): exit 0, no line, no Binance call, nothing sent — qvol: NOT IN FORCE: decision not anchored or does not pin this rulebook (2026-11-02-qvol-inception is not in trackrecord/decisions.jsonl)
+PASS  4b decision not anchored (its document, no ledger line): exit 0, no line, no Binance call, nothing sent — qvol: NOT IN FORCE: decision not anchored or does not pin this rulebook (2026-11-02-qvol-inception is not in trackrecord/decisions.jsonl)
+PASS  4b decision anchored (the ledger line) but its document missing: exit 2, no line, no Binance call, nothing sent — qvol: the inception decision 2026-11-02-qvol-inception is anchored, but decisions/2026-11-02-qvol-inception.md missing — the series cannot start
+PASS  4c keeper/deploy-mark-vault.mjs --index qvol --action open-deposits: refused (exit 2) before any request, nothing sent, the cap still 0 — REFUSED: qvol is a display vault: it takes no deposits by definition (deposit cap 0) — raising the cap needs a new decision, not this tool
+PASS  4c a deposit of 1,000 mUSD into the qVOL vault at cap 0 reverts "cap exceeded"; no shares exist — revert reason "cap exceeded"
+PASS  4d the fork registry's qvol entry names the qBTC2X vault 0x98f0c98F29b51E3b52EF96D81D93aAE25DFc7192: the line is written and anchored, no setNav is sent, exit 1 — qVOL vault marks FAILED after line #0 was written and anchored: vault 0x98f0c98F29b51E3b52EF96D81D93aAE25DFc7192 is "qBTC2X", not qVOL — keeper/dryrun/leverage-vaults.json names the wrong vault; no mark sent
+PASS  5 watchdog, fresh (now, 2026-11-04T05:02:23.357Z): no problem — qvol 2 lines → 2026-11-04
+PASS  5 watchdog, stale: nothing at 2026-11-05T15:59:00.000Z; at 2026-11-05T16:01:00.000Z "stale" — qvol: stale — latest line is 2026-11-04 (seq 1), 40.0h after that day began; the next line is overdue
+PASS  5 watchdog, the decision anchored and no record: "pending" until 2026-11-03T16:00:00.000Z, then "no record-qvol.jsonl" — qvol: no record-qvol.jsonl 16.0h after its first line's day 2026-11-03 00:00 UTC (decision 2026-11-02-qvol-inception) — the daily job has not written the first line
+PASS  the real repository: trackrecord/record-qvol.jsonl, anchors-qvol.jsonl and decisions.jsonl, keeper/marks-qvol.jsonl, the registry, the rulebook JSON and keeper/dryrun/ unchanged — trackrecord/record-qvol.jsonl absent, trackrecord/anchors-qvol.jsonl absent, trackrecord/decisions.jsonl 1a0da18682da…, keeper/marks-qvol.jsonl absent, keeper/leverage-vaults.json 29f66da15262…, keeper/rulebooks/qvol.json cf2eb766a329…, keeper/dryrun/record-qvol.jsonl absent, keeper/dryrun/anchors-qvol.jsonl absent, keeper/dryrun/marks-qvol.jsonl absent, keeper/dryrun/leverage-vaults.json absent
+
+Binance: 132 live call(s), 383 replayed · 42 s
+REHEARSAL PASSED — 27/27 checks · logs in <out>
+
+== every run, in order (command, output, exit code)
+
+--- 1-deploy-qvol
+(copy-a) $ node keeper/deploy-mark-vault.mjs --index qvol --manager 0xdf917a558745fba8253bAd08E7Dd12819a899657 --guardian 0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B --live --confirm EXECUTE --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657
+[mark-vault] LIVE from 0xdf917a558745fba8253bAd08E7Dd12819a899657; deploy qvol; rpc http://127.0.0.1:8599 (anvil/v1.8.3)
+[mark-vault] artifact = the code of the reference vault 0x8b0200B7e920a7fB06e94890d5Efb6aB7d2C1378 (qBTC2X, guardian set; immutables and metadata aside); simulated deployment returns the expected runtime (6135 bytes, keccak 0x4d17aa8972b68080…)
+[mark-vault] constructor: usd 0xf70B2b744eE604728D661b7D07460843DBD1be76, name "Quadrix BTC Realized Volatility Vault", symbol qVOL, depositCap 0 (closed), manager 0xdf917a558745fba8253bAd08E7Dd12819a899657 (owner and keeper)
+[mark-vault] then setGuardian(0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B) — guardian check passed: not 0, not the keeper, not the owner (no --timelock given: the timelock part is not checked)
+[mark-vault] deployed qVOL at 0xD83675c016F0eCe6Fb8E37476FDDd7eD3a57eA21 tx=0xc783538df4305ea874d8120c282d7dc81be61e75d064a6dc3facf5c820b1d89a block 40423373 gas 1604434; read back ok: owner = keeper = 0xdf917a558745fba8253bAd08E7Dd12819a899657, navPerShare 1000000, depositCap 0, not paused; guardian 0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B set (tx 0x8e6e95ef72f48fcaca8784af4a72bbf686b8d015604b91de1bf18ee3a8929c2e) and read back; keeper/dryrun/leverage-vaults.json written (gate unchanged: {"mode":"step"})
+exit 0 (1.4 s)
+
+--- 2-run1-2026-11-03
+(copy-a, runner's clock 2026-11-03T00:25:00.000Z, Binance live) node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657   [in process: run(argv, {now, fetch})]
+qvol: FORK REHEARSAL — node http://127.0.0.1:8599, signer 0xdf917a558745fba8253bAd08E7Dd12819a899657 (unlocked on that node; KEEPER_PK is not read); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/
+qVOL (qvol) in force: decision 2026-11-02-qvol-inception · first line 2026-11-03 · rulebook f69d579f3c2c… · 0 line(s) in keeper/dryrun/record-qvol.jsonl
+qvol #0 2026-11-03 29.236724503606453 · head 7107eebc4cea8191…
+  #0 2026-11-03 recomputed by scripts/verify-vol.mjs before it was appended — agrees
+  anchored #0 2026-11-03 in 0xf4ecd041e4dbd601775ca1fdd72843d02248e6ecbe67e75a577ad70c9307bbd8 (block 40423375)
+qvol: line 2026-11-04 not written: the runner's clock (2026-11-03T00:25:00.000Z) is before 2026-11-04T00:00Z — a day is never written before it has ended
+  vault 0xD83675c016F0eCe6Fb8E37476FDDd7eD3a57eA21: navPerShare 1000000 → target 29236724 (n6 of the value 29.236724503606453) in 16 step(s)
+    step 1/16: navPerShare 1250000 tx=0x4618d39c05b78660edd9b7ffc7cbb1daf6af620c5f0766f1843f9cbc62fbca57 block 40423376
+    step 2/16: navPerShare 1562500 tx=0xb536aa4682d0b5e2081f71cc2b832c0632d6824ce4c1c189a73a2d1b5857486d block 40423377
+    step 3/16: navPerShare 1953125 tx=0x2fe185c58a074e437634fc1d30984108fb11a1d44339aed69ff0e30c1665b2cf block 40423378
+    step 4/16: navPerShare 2441406 tx=0xcc0f9eca25ba25cb1394f5b3babe3c2587e2ea791b5291004c24ef7279e752aa block 40423379
+    step 5/16: navPerShare 3051757 tx=0xefc12d1c9cc2bacef343ffc33362d682d4949df43f9c846b1990a859c9267610 block 40423380
+    step 6/16: navPerShare 3814696 tx=0x0e7e76c6e92938538be9a37a84f1001112ce694b454ff906dae6163fa8ef5f4e block 40423381
+    step 7/16: navPerShare 4768370 tx=0x5d87b48e206c75241d056866403aaa85cb52f5ac73e8960752ccabf463740da6 block 40423382
+    step 8/16: navPerShare 5960462 tx=0x82a33ff339fe0b93b37f48b778b29020ff3ebbdb4cb64a265426afa28ff2b998 block 40423383
+    step 9/16: navPerShare 7450577 tx=0x1a66dc374b17d00fc0c276d6c85c2b5aa2e89c23634dcb0deb367fb2e3aa7add block 40423384
+    step 10/16: navPerShare 9313221 tx=0x3d4a0cc67565ff7d7985b40fedfdd22dc9765e45b1ea32cf20bf0b56bb3b62ad block 40423385
+    step 11/16: navPerShare 11641526 tx=0xec8bc1a7305f1b3d8834b31e2af0138ea527b62bf73be72319832727c31a256a block 40423386
+    step 12/16: navPerShare 14551907 tx=0x0a0afbcc13cfae704e47ddbdadc6dc85d6f978da5c6560db224139cd30b2f29c block 40423387
+    step 13/16: navPerShare 18189883 tx=0x5ff4688d52934e21b2ca8b39f6dc36487fe7e647f0bc21ab0febfa25f1ff3d66 block 40423388
+    step 14/16: navPerShare 22737353 tx=0xb694fc920d103742f2c4be3e20f60e3e420ca7bf5ca7030cc5a6683ffc46666d block 40423389
+    step 15/16: navPerShare 28421691 tx=0x6341e6fd5bfd3ba47eb79281cebcfba1a8fa2b0a646dea3c8bb6d8db0010c068 block 40423390
+    step 16/16: navPerShare 29236724 tx=0x3ae9637eb78416ce6f29f0decd470c7e71048c36337f8ff8d33633e5dbeea82d block 40423391
+exit 0 (32.8 s)
+
+--- 2-verify-vol
+(copy-a) $ node scripts/verify-vol.mjs --dir keeper/dryrun --line realized --rulebook keeper/rulebooks/qvol.json
+{
+ "dir": "<out>/copy-a/keeper/dryrun",
+ "report": {
+  "realized": {
+   "lines": 1,
+   "first": "2026-11-03",
+   "last": "2026-11-03",
+   "late": 0,
+   "gapDays": 0,
+   "shadow": 0
+  }
+ },
+ "rulebook": {
+  "realized": "f69d579f3c2cf33aca9be4c0eb5f708ef68f4284fee4af2abab9b13613e27cac",
+  "implied": "not checked"
+ },
+ "tail": false,
+ "maxRelativeDiff": 0,
+ "failures": 0
+}
+exit 0 (0.1 s)
+
+--- 3a-run2-2026-11-04
+(copy-a, runner's clock 2026-11-04T00:25:00.000Z, Binance live) node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657   [in process: run(argv, {now, fetch})]
+qvol: FORK REHEARSAL — node http://127.0.0.1:8599, signer 0xdf917a558745fba8253bAd08E7Dd12819a899657 (unlocked on that node; KEEPER_PK is not read); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/
+qVOL (qvol) in force: decision 2026-11-02-qvol-inception · first line 2026-11-03 · rulebook f69d579f3c2c… · 1 line(s) in keeper/dryrun/record-qvol.jsonl
+qvol #1 2026-11-04 28.47374564801124 · head 698f93c003522f34…
+  #1 2026-11-04 recomputed by scripts/verify-vol.mjs before it was appended — agrees
+  anchored #1 2026-11-04 in 0xa26f927bfd9f9f8ffb6496a1316eb40d274be750738f9be497b4d2777726b95f (block 40423392)
+qvol: line 2026-11-05 not written: the runner's clock (2026-11-04T00:25:00.000Z) is before 2026-11-05T00:00Z — a day is never written before it has ended
+  vault 0xD83675c016F0eCe6Fb8E37476FDDd7eD3a57eA21: navPerShare 29236724 → target 28473745 (n6 of the value 28.47374564801124) in 1 step(s)
+    step 1/1: navPerShare 28473745 tx=0xdc07551be9897dd3df93f2e20bccb97ec8a04d21a4a28a31791e8551e22178d1 block 40423393
+exit 0 (1.6 s)
+
+--- 3b-run3-cli
+(copy-a) $ node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657
+qvol: FORK REHEARSAL — node http://127.0.0.1:8599, signer 0xdf917a558745fba8253bAd08E7Dd12819a899657 (unlocked on that node; KEEPER_PK is not read); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/
+qVOL (qvol) in force: decision 2026-11-02-qvol-inception · first line 2026-11-03 · rulebook f69d579f3c2c… · 2 line(s) in keeper/dryrun/record-qvol.jsonl
+qvol: line 2026-11-05 not written: the runner's clock (2026-11-04T05:02:18.169Z) is before 2026-11-05T00:00Z — a day is never written before it has ended
+qvol: no new line
+  vault 0xD83675c016F0eCe6Fb8E37476FDDd7eD3a57eA21: navPerShare 28473745 → target 28473745 (n6 of the value 28.47374564801124) — already there
+exit 0 (0.3 s)
+
+--- 3c-dry-run
+(copy-a, runner's clock 2026-11-04T00:25:00.000Z, Binance replayed) node keeper/vol-index.mjs --line realized --dry-run --replay 2026-11-03..2026-11-04 --out <out>/dry-a   [in process]
+qvol 2026-11-03 29.236724503606453 (late)
+qvol 2026-11-04 28.47374564801124
+qvol: replay complete through 2026-11-04 (2 line(s) written this run)
+exit 0 (0.0 s)
+
+--- 3d-verify
+(copy-a) $ node scripts/verify.mjs --dir keeper/dryrun --series qvol --rpc http://127.0.0.1:8599
+
+[QVOL] chain — 2 record(s), record-qvol.jsonl
+  ok    #0 2026-11-03 qvol head 7107eebc4cea…
+  ok    #1 2026-11-04 qvol head 698f93c00352…
+
+[QVOL] recompute — 2 line(s) by verify-vol.mjs (the window's closes, the rule)
+  ok    2 line(s) recomputed by verify-vol.mjs — value and variance within a relative 1e-9 (largest 0), windows, sources and dates continue; every rule is the rulebook JSON's
+
+[QVOL] anchors — 2 on-chain commitment(s) via http://127.0.0.1:8599
+  ok    seq 0 2026-11-03 anchored in 0xf4ecd041e4db… (block 40423375, 2026-11-04T05:02:18.000Z — 28.6 h after observedAt)
+  ok    seq 1 2026-11-04 anchored in 0xa26f927bfd9f… (block 40423392, 2026-11-04T05:02:20.000Z — 4.6 h after observedAt)
+
+decisions — 1 anchored document(s)
+  ok    2026-11-02-qvol-inception anchored 2026-11-04T05:01:44.000Z in 0x0f310595a3d3… (effective 2026-11-02)
+
+VERIFIED — 2 records, 2 anchors, 0 qX20 closes, 1 decisions, 0 failures
+   QVOL 2 records 2026-11-03 → 2026-11-04
+exit 0 (0.2 s)
+
+--- 4a-deploy-qvol-b
+(copy-b) $ node keeper/deploy-mark-vault.mjs --index qvol --manager 0xdf917a558745fba8253bAd08E7Dd12819a899657 --guardian 0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B --live --confirm EXECUTE --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657
+[mark-vault] LIVE from 0xdf917a558745fba8253bAd08E7Dd12819a899657; deploy qvol; rpc http://127.0.0.1:8599 (anvil/v1.8.3)
+[mark-vault] artifact = the code of the reference vault 0x8b0200B7e920a7fB06e94890d5Efb6aB7d2C1378 (qBTC2X, guardian set; immutables and metadata aside); simulated deployment returns the expected runtime (6135 bytes, keccak 0x4d17aa8972b68080…)
+[mark-vault] constructor: usd 0xf70B2b744eE604728D661b7D07460843DBD1be76, name "Quadrix BTC Realized Volatility Vault", symbol qVOL, depositCap 0 (closed), manager 0xdf917a558745fba8253bAd08E7Dd12819a899657 (owner and keeper)
+[mark-vault] then setGuardian(0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B) — guardian check passed: not 0, not the keeper, not the owner (no --timelock given: the timelock part is not checked)
+[mark-vault] deployed qVOL at 0x56234A71e7aDbd33bAC8aaE1FbB594Ba7d67Cff1 tx=0xbbf8e806d77ea860d5b58b8b35689111537b0c5f5769bd368d87b391fa9ba4bf block 40423394 gas 1604434; read back ok: owner = keeper = 0xdf917a558745fba8253bAd08E7Dd12819a899657, navPerShare 1000000, depositCap 0, not paused; guardian 0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B set (tx 0x74289455a7099a4e5d82b0b9a6adc0deb5439a544dcaa94ba0b23309e5e5be15) and read back; keeper/dryrun/leverage-vaults.json written (gate unchanged: {"mode":"step"})
+exit 0 (0.8 s)
+
+--- 4a-cap-above-0
+(copy-b, runner's clock 2026-11-03T00:25:00.000Z, Binance replayed) node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657   [in process: run(argv, {now, fetch})]
+qvol: FORK REHEARSAL — node http://127.0.0.1:8599, signer 0xdf917a558745fba8253bAd08E7Dd12819a899657 (unlocked on that node; KEEPER_PK is not read); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/
+qVOL (qvol) in force: decision 2026-11-02-qvol-inception · first line 2026-11-03 · rulebook f69d579f3c2c… · 0 line(s) in keeper/dryrun/record-qvol.jsonl
+qvol #0 2026-11-03 29.236724503606453 · head 7107eebc4cea8191…
+  #0 2026-11-03 recomputed by scripts/verify-vol.mjs before it was appended — agrees
+  anchored #0 2026-11-03 in 0x11c98a532fa6c0b97bda8662c5226a4cd3df97524d530a0c0c8c3d9962f63d97 (block 40423397)
+qvol: line 2026-11-04 not written: the runner's clock (2026-11-03T00:25:00.000Z) is before 2026-11-04T00:00Z — a day is never written before it has ended
+[stderr] qVOL vault marks FAILED after line #0 was written and anchored: REFUSED: vault 0x56234A71e7aDbd33bAC8aaE1FbB594Ba7d67Cff1 has deposit cap 1000000000000, not 0 — a display vault takes no deposits; no mark sent. Raising the cap is not allowed by the inception decision; a person decides
+exit 1 (0.2 s)
+
+--- 4a-cap-back-at-0
+(copy-b, runner's clock 2026-11-03T00:40:00.000Z, Binance replayed) node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657   [in process: run(argv, {now, fetch})]
+qvol: FORK REHEARSAL — node http://127.0.0.1:8599, signer 0xdf917a558745fba8253bAd08E7Dd12819a899657 (unlocked on that node; KEEPER_PK is not read); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/
+qVOL (qvol) in force: decision 2026-11-02-qvol-inception · first line 2026-11-03 · rulebook f69d579f3c2c… · 1 line(s) in keeper/dryrun/record-qvol.jsonl
+qvol: line 2026-11-04 not written: the runner's clock (2026-11-03T00:40:00.000Z) is before 2026-11-04T00:00Z — a day is never written before it has ended
+qvol: no new line
+  vault 0x56234A71e7aDbd33bAC8aaE1FbB594Ba7d67Cff1: navPerShare 1000000 → target 29236724 (n6 of the value 29.236724503606453) in 16 step(s)
+    step 1/16: navPerShare 1250000 tx=0x869f52b95de1ca3c033e3eb72351261325825bf8596a88ad3972f024e655cb75 block 40423399
+    step 2/16: navPerShare 1562500 tx=0xf206901fa691507ca91364488e98f901a51a2c8741e8650c262a9a4eb01fc62c block 40423400
+    step 3/16: navPerShare 1953125 tx=0x08a268aeaaaa8c0efa69d13f35ffe28fd8844dc23dbe34539297e930adb9a266 block 40423401
+    step 4/16: navPerShare 2441406 tx=0x83b4ff68ed2fa70bdf949f3c136ffe785a9969fc231b9f572f738a88415f4e6f block 40423402
+    step 5/16: navPerShare 3051757 tx=0x29a27700beb4dc4627b9c011987d1f297835f4c7f52841899d8eb5d6653b6105 block 40423403
+    step 6/16: navPerShare 3814696 tx=0x05751a949b661cf94a726464d9e7b84ec561473f8356ec7ba2a5205bca5a48ab block 40423404
+    step 7/16: navPerShare 4768370 tx=0x9fd1a506ec076373a0a367d97a42bbfc5f93daece5b5196291c97c1f78c7ffc5 block 40423405
+    step 8/16: navPerShare 5960462 tx=0x3c285ee77d060e5339017b9ff25a0741d5970bb6cad3170ef0c2b84c336ec022 block 40423406
+    step 9/16: navPerShare 7450577 tx=0xe293ba83eaf933cf29ab983d94783df08c6ef59cfcf86dac79ccc5a09a4e6842 block 40423407
+    step 10/16: navPerShare 9313221 tx=0x00fbfc17d4ab389fee332b5b0b29042ec0028b996d5aa49a47de476d0c583626 block 40423408
+    step 11/16: navPerShare 11641526 tx=0x588b066b2805718e0ba7dee256cc9920e5b2e1b486ff185988f3409fa579ad92 block 40423409
+    step 12/16: navPerShare 14551907 tx=0xab54b03634e3bf02a0116ef2f5065c97219dccc8accc60d0f8e8db395316e04a block 40423410
+    step 13/16: navPerShare 18189883 tx=0xf0fb7382fb60d65926975038d5e6b6190235dcac1d5ac0dd132ef11e3ae0c8a8 block 40423411
+    step 14/16: navPerShare 22737353 tx=0x0ad6d062ba0f7bac49f798205278184ad30a1eb93ab7a612a54f5dac027b50e8 block 40423412
+    step 15/16: navPerShare 28421691 tx=0xa4c6420df2c2ae633b2ba61a8c42fc71f834937f7a4350823ac832480c5c4e7a block 40423413
+    step 16/16: navPerShare 29236724 tx=0x495ebf9d4aecc62d473473da0d189d02272b339fdec5dac84c8c3cb2659cd4eb block 40423414
+exit 0 (1.2 s)
+
+--- 4b-decision-missing
+(copy-c, runner's clock 2026-11-03T00:25:00.000Z, Binance replayed) node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657   [in process: run(argv, {now, fetch})]
+qvol: FORK REHEARSAL — node http://127.0.0.1:8599, signer 0xdf917a558745fba8253bAd08E7Dd12819a899657 (unlocked on that node; KEEPER_PK is not read); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/
+qvol: NOT IN FORCE: decision not anchored or does not pin this rulebook (2026-11-02-qvol-inception is not in trackrecord/decisions.jsonl)
+exit 0 (0.0 s)
+
+--- 4b-decision-not-anchored
+(copy-c, runner's clock 2026-11-03T00:25:00.000Z, Binance replayed) node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657   [in process: run(argv, {now, fetch})]
+qvol: FORK REHEARSAL — node http://127.0.0.1:8599, signer 0xdf917a558745fba8253bAd08E7Dd12819a899657 (unlocked on that node; KEEPER_PK is not read); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/
+qvol: NOT IN FORCE: decision not anchored or does not pin this rulebook (2026-11-02-qvol-inception is not in trackrecord/decisions.jsonl)
+exit 0 (0.0 s)
+
+--- 4b-decision-document-missing
+(copy-c, runner's clock 2026-11-03T00:25:00.000Z, Binance replayed) node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657   [in process: run(argv, {now, fetch})]
+qvol: FORK REHEARSAL — node http://127.0.0.1:8599, signer 0xdf917a558745fba8253bAd08E7Dd12819a899657 (unlocked on that node; KEEPER_PK is not read); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/
+[stderr] qvol: the inception decision 2026-11-02-qvol-inception is anchored, but decisions/2026-11-02-qvol-inception.md missing — the series cannot start. Restore keeper/rulebooks/qvol.json to the bytes the decision pins (or anchor a postponement decision); never edit an anchored decision
+exit 2 (0.0 s)
+
+--- 4c-open-deposits
+(copy-a) $ node keeper/deploy-mark-vault.mjs --index qvol --action open-deposits --cap 1000000000000 --live --confirm EXECUTE --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657
+REFUSED: qvol is a display vault: it takes no deposits by definition (deposit cap 0) — raising the cap needs a new decision, not this tool
+exit 2 (0.2 s)
+
+--- 4d-deploy-qbtc2x
+(copy-d) $ node keeper/deploy-mark-vault.mjs --index qbtc2x --manager 0xdf917a558745fba8253bAd08E7Dd12819a899657 --guardian 0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B --live --confirm EXECUTE --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657
+[mark-vault] LIVE from 0xdf917a558745fba8253bAd08E7Dd12819a899657; deploy qbtc2x; rpc http://127.0.0.1:8599 (anvil/v1.8.3)
+[mark-vault] artifact = the code of the reference vault 0x8b0200B7e920a7fB06e94890d5Efb6aB7d2C1378 (qBTC2X, guardian set; immutables and metadata aside); simulated deployment returns the expected runtime (6135 bytes, keccak 0x4d17aa8972b68080…)
+[mark-vault] constructor: usd 0xf70B2b744eE604728D661b7D07460843DBD1be76, name "Quadrix BTC 2x Vault", symbol qBTC2X, depositCap 0 (closed), manager 0xdf917a558745fba8253bAd08E7Dd12819a899657 (owner and keeper)
+[mark-vault] then setGuardian(0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B) — guardian check passed: not 0, not the keeper, not the owner (no --timelock given: the timelock part is not checked)
+[mark-vault] deployed qBTC2X at 0x98f0c98F29b51E3b52EF96D81D93aAE25DFc7192 tx=0x5bfcbbaad4e42a0351fe7d72f90bfc8739436f3184c40393047e78b4bc9edcaa block 40423417 gas 1559649; read back ok: owner = keeper = 0xdf917a558745fba8253bAd08E7Dd12819a899657, navPerShare 1000000, depositCap 0, not paused; guardian 0x95653a1D2c6aE8c82e958d827Ac40cBaE4aaaf1B set (tx 0xbe2af773c3095e4ba9018a4cb23891b9b05332e8303b6f93e6d57f9a358fa818) and read back; keeper/dryrun/leverage-vaults.json written (gate unchanged: {"mode":"step"})
+exit 0 (0.8 s)
+
+--- 4d-wrong-symbol
+(copy-d, runner's clock 2026-11-03T00:25:00.000Z, Binance replayed) node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 --from 0xdf917a558745fba8253bAd08E7Dd12819a899657   [in process: run(argv, {now, fetch})]
+qvol: FORK REHEARSAL — node http://127.0.0.1:8599, signer 0xdf917a558745fba8253bAd08E7Dd12819a899657 (unlocked on that node; KEEPER_PK is not read); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/
+qVOL (qvol) in force: decision 2026-11-02-qvol-inception · first line 2026-11-03 · rulebook f69d579f3c2c… · 0 line(s) in keeper/dryrun/record-qvol.jsonl
+qvol #0 2026-11-03 29.236724503606453 · head 7107eebc4cea8191…
+  #0 2026-11-03 recomputed by scripts/verify-vol.mjs before it was appended — agrees
+  anchored #0 2026-11-03 in 0x3bd8fa82ae9dc3ddbbf5de7fa2f9ef77dbd3e2ece3d6dcda0a49d1413eadb127 (block 40423419)
+qvol: line 2026-11-04 not written: the runner's clock (2026-11-03T00:25:00.000Z) is before 2026-11-04T00:00Z — a day is never written before it has ended
+[stderr] qVOL vault marks FAILED after line #0 was written and anchored: vault 0x98f0c98F29b51E3b52EF96D81D93aAE25DFc7192 is "qBTC2X", not qVOL — keeper/dryrun/leverage-vaults.json names the wrong vault; no mark sent
+exit 1 (0.4 s)
