@@ -469,8 +469,10 @@ test('H7 blocked: a qeth15 deployment rewrites the registry with every other ent
     const v = JSON.parse(fs.readFileSync(OUT[1], 'utf8'));
     assert.deepEqual(Object.keys(v), Object.keys(SEED));
     assert.equal(v._doc, SEED._doc);
-    for (const k of ['qbtc2x', 'qeth2x']) assert.deepEqual(v[k], { ...SEED[k], address: null, deployTx: null, block: null });
-    assert.deepEqual({ ...v.qeth15, deployTx: null, block: null }, { ...SEED.qeth15, address: NEW });
+    // every other entry of the registry (qvol included), its address emptied on the fork
+    for (const k of Object.keys(SEED).filter((k) => k !== '_doc' && k !== 'qeth15')) assert.deepEqual(v[k], { ...SEED[k], address: null, deployTx: null, block: null }, k);
+    // the committed qeth15 entry names the vault deployed on 2026-10-21: on the fork its deployTx and block are this deployment's
+    assert.deepEqual({ ...v.qeth15, deployTx: null, block: null }, { ...SEED.qeth15, address: NEW, deployTx: null, block: null });
     assert.match(v.qeth15.deployTx, /^0x[0-9a-f]{64}$/);
     assert.equal(typeof v.qeth15.block, 'number');
   } finally {
