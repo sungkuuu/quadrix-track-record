@@ -6,7 +6,7 @@
   "rulebook": {
     "path": "rulebooks/qvol.md",
     "repo": "record",
-    "sha256": "d370e537e0f4db8976c4be06a06226636c457229b1b7f6b53313d0ff719ea3ea"
+    "sha256": "9d67e3421cbd3306b22d05cdf611f669c63d3860a057d41cba1b6b97a5a468a1"
   },
   "keeperJson": {
     "path": "keeper/rulebooks/qvol.json",
@@ -14,20 +14,20 @@
   },
   "provenance": {
     "path": "keeper/rulebooks/qvol.provenance.json",
-    "sha256": "12c0ec6086ef35ace29820ace2e01f78e52674828eafe482c918e8502d744737"
+    "sha256": "e581a1e15dc9fa9e0d53444131ccca0f3159c0ea12a0632cbc500e5eaafb1557"
   },
   "checklistRun": {
     "path": "docs/methodology/checklist-runs/qvol/2026-11-05.json",
-    "sha256": "9c9e8b72288db1355ca7e23252687c3766969c85a6748e73cd61009fff9fe132"
+    "sha256": "613f75becef389ed0ee3fc0c5223b1882acc26611d8b97efac3bb1914db0c611"
   },
-  "siteCommit": "f70e71a9a41328fbab5ae619f7d234c02b6e6c07",
+  "siteCommit": "bc9e772937ca79d1eebaa35ff6c81b84ff2805eb",
   "siteCommitPushed": true,
   "base": "origin/main",
   "counts": {
     "tested": 0,
     "partial": 0,
-    "definition": 10,
-    "definitionNumeric": 6,
+    "definition": 11,
+    "definitionNumeric": 7,
     "price": 0,
     "absent": 0,
     "exposureLimit": 0,
@@ -52,18 +52,13 @@
     "P09",
     "P12",
     "P13",
-    "P14"
+    "P14",
+    "P15"
   ],
   "exceptionsAmongChanged": 0,
   "exposureAmongChanged": 0,
   "exceptions": [],
   "pendingSteps": [
-    {
-      "id": "D11",
-      "after": "gate",
-      "closeBy": "관문 보고 기록:rulebooks/qvol.gate.json의 result가 pass",
-      "record": "docs/methodology/checklist-runs/qvol/2026-11-05.json"
-    },
     {
       "id": "D13",
       "after": "anchor",
@@ -85,7 +80,7 @@
     {
       "id": "D17",
       "after": "deploy",
-      "closeBy": "배포 tx · 배포 뒤 읽기(R64) · 사이트 반영(배포 규율) 뒤 프로덕션 재확인 · 첫 마크와 그 줄의 대조(결정문 「Order」) — 뒤 날짜 기록(follow-up)",
+      "closeBy": "배포 tx · 배포 뒤 읽기(R64) · 사이트 반영(배포 규율) 뒤 프로덕션 재확인 · 첫 마크와 그 줄의 대조(결정문 「Order」) — 뒤 날짜 기록(follow-up) · 페이지 블록의 스테이징 커밋이 사이트 main의 조상이다(D12)",
       "record": "docs/methodology/checklist-runs/qvol/2026-11-05.json"
     },
     {
@@ -104,9 +99,6 @@
   "judgments": [],
   "untestedAmongChanged": 0,
   "checksSkipped": [],
-  "result": "fail",
-  "violationsByCheck": {
-    "C7": 1,
-    "C10": 11
-  }
+  "result": "pass",
+  "violationsByCheck": {}
 }
