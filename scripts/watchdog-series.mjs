@@ -36,9 +36,18 @@
  *
  * `simulate` trips one case on purpose so the alert path can be tested:
  * series-missing | series-stale | series-anchor.
+ *
+ * Fresh and anchored says that lines exist, not that they are right. For the
+ * qVOL realized line, recomputeSeries also runs the public verifier on the
+ * record (red team R47 F5): `node scripts/verify.mjs --dir <dir> --series qvol
+ * --recompute-only` — hashes and chain, every value recomputed by
+ * scripts/verify-vol.mjs, the first line bound to its decision; no network.
+ * Its failure is a problem line. A series not started or pending passes there.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 // qvol before the leverage levels: the leverage keeper's own table (keeper/leverage-index.mjs INDEXES) is the last three entries
 export const SERIES = ['qrev', 'qdefi', 'barbell', 'triens', 'qai', 'qvol', 'qbtc2x', 'qeth2x', 'qeth15'];
@@ -111,5 +120,36 @@ export function checkSeries({ dir, now, simulate = null, series = SERIES }) {
     summary.push(`${key} ${records.length} lines → ${last.date}${ended ? ' (ended: model liquidation)' : ''}`);
   }
   if (simulate !== null && !tripped) problems.push(`simulate ${simulate}: no series in a state that case applies to — nothing tripped, which is itself a failure of the test`);
+  return { problems, summary };
+}
+
+/** The series whose record the watchdog also recomputes with scripts/verify.mjs --recompute-only (red team R47 F5). */
+export const RECOMPUTE = ['qvol'];
+const VERIFY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'verify.mjs');
+
+/**
+ * Runs `node scripts/verify.mjs --dir <dir> --series <key> --recompute-only` for each series in `series`
+ * and turns a failure into one problem line that names the first failures.
+ * @param {{dir: string, series?: string[], verifyScript?: string}} o
+ * @returns {{problems: string[], summary: string[]}}
+ */
+export function recomputeSeries({ dir, series = RECOMPUTE, verifyScript = VERIFY }) {
+  const problems = [];
+  const summary = [];
+  for (const key of series) {
+    const r = spawnSync(process.execPath, [verifyScript, '--dir', dir, '--series', key, '--recompute-only'], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '' }, timeout: 300_000 });
+    const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+    if (r.status === 0) {
+      // the verifier's own summary of the series: "QVOL 3 records 2099-02-02 → 2099-02-04", "QVOL not started", …
+      const lines = out.split('\n');
+      const state = lines.slice(lines.findIndex((l) => l.startsWith('VERIFIED')) + 1).map((l) => l.trim()).filter(Boolean).join('; ');
+      summary.push(`${key} verifies (verify.mjs --recompute-only: ${state || 'VERIFIED'})`);
+      continue;
+    }
+    const fails = out.split('\n').filter((l) => /^\s*FAIL\s/.test(l)).map((l) => l.trim().replace(/^FAIL\s+/, ''));
+    const why = fails.length ? `${fails.slice(0, 3).join(' | ')}${fails.length > 3 ? ` (and ${fails.length - 3} more)` : ''}` : (r.error?.message ?? out.trim().split('\n').slice(-2).join(' | '));
+    problems.push(`${key}: the record does not verify — scripts/verify.mjs --recompute-only --series ${key} exited ${r.status ?? r.signal}: ${why}`);
+    summary.push(`${key} does not verify`);
+  }
   return { problems, summary };
 }
