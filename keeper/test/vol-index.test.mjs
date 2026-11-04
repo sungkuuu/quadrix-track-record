@@ -31,7 +31,7 @@ import { VAULT_ABI } from '../leverage-index.mjs';
 import { NAMES, DISPLAY_ONLY } from '../deploy-mark-vault.mjs';
 import { fakeNode } from './leverage-helpers.mjs';
 import { quotesSha256 } from '../vol-implied.mjs';
-import { realizedFromWindow } from '../vol-realized.mjs';
+import { realizedFromWindow, sha256 as shaOf, canonicalMinuteText } from '../vol-realized.mjs';
 import { handTable, syntheticTable, syntheticDays, writeOffline, writeSnapshot, fakeDeribit, fakeBinance, timeless, tmpDir, readJsonl, cli, KEEPER, REPO, addDays, rulebookPath, impliedOnRoot } from './vol-helpers.mjs';
 
 const IMP = 'record-volbtc-implied.jsonl';
@@ -1480,11 +1480,12 @@ function copyRoot(x) {
 }
 const writeJsonl = (file, lines) => fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
 
-// F1's recompute of an unanchored line (the first line on its own, a later one --tail after
-// the line before it) checks a subset of what the whole-record recompute of F4 (T-IF20)
-// checks, and F4 runs first: the lines below are refused by F4 before step 2 is reached.
-// F1's recompute stays as the gate right before each anchor.
-test('in force T-IF17 (F1): a line without an anchor is anchored only after scripts/verify-vol.mjs recomputes it — a hand-appended line it rejects (a date that does not follow, a second line for a day, a changed value, a broken hash) is refused (exit 2) and nothing is sent; an unanchored line before an anchored one, or an anchor entry that names another hash, is refused too; an honest unanchored line is anchored (control)', async () => {
+// F1: a line without an anchor is anchored only after (1) the whole-record recompute of this
+// run (F4, T-IF20: a per-line recompute before the anchor could reject nothing that check
+// passed, so the keeper has none) and (2) a fetch of the bars it records. The forged line
+// below is fully self-consistent — built by the keeper itself from false bars — so only (2)
+// can refuse it.
+test('in force T-IF17 (F1): a line without an anchor is anchored only after the whole-record recompute and a fetch of the bars it records — a hand-appended line that scripts/verify-vol.mjs rejects (a date that does not follow, a second line for a day, a changed value, a broken hash) is refused (exit 2, nothing sent); a fully self-consistent line built from false bars is refused by the fetch (exit 1, nothing sent); an unanchored line before an anchored one, or an anchor entry that names another hash, is refused (exit 2); an honest unanchored line is anchored (control)', async () => {
   const x = inForceRoot();
   const { key, address } = keyed();
   const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
@@ -1509,12 +1510,29 @@ test('in force T-IF17 (F1): a line without an anchor is anchored only after scri
     const before = listAll(y.root);
     const r = await inForce(y.root, '2099-02-04T00:25:00Z', { key, node });
     assert.equal(r.code, 2, `${label}: exit ${r.code} ${r.err}`);
-    assert.match(r.err, /scripts\/verify-vol\.mjs rejects/, label);
+    assert.match(r.err, /the record does not verify: scripts\/verify-vol\.mjs rejects it/, label);
     assert.match(r.err, /nothing sent/, label);
     assert.match(r.err, why, label);
     assert.equal(node.txs.length, sent, `${label}: a transaction was sent`);
     assert.deepEqual(listAll(y.root), before, `${label}: a file changed`);
   }
+  // a fully self-consistent line from false bars: the keeper itself builds it on a copy from bars whose
+  // 2099-02-03 close is 1% higher (hash chain, window and arithmetic all correct, verify-vol passes)
+  const falseBars = alterBar(BARS, '2099-02-03', 1439, (m) => { const c = Math.round(m.c * 1.01 * 100) / 100; return { ...m, c, h: Math.max(m.h, c) }; });
+  const f = copyRoot(x);
+  assert.equal((await inForce(f.root, '2099-02-04T00:25:00Z', { argv: [], bars: falseBars })).code, 0);
+  const forged = readJsonl(f.rec)[2];
+  assert.notEqual(forged.value, L2.value);
+  const z = copyRoot(x);
+  fs.appendFileSync(z.rec, JSON.stringify(forged) + '\n');
+  assert.equal(verify(path.join(z.root, 'trackrecord'), '--line', 'realized', '--rulebook', z.rbFile).status, 0, 'verify-vol accepts the forged line');
+  const beforeZ = listAll(z.root);
+  const rz = await inForce(z.root, '2099-02-04T00:25:00Z', { key, node });
+  assert.equal(rz.code, 1, rz.err);
+  assert.match(rz.err, /SOURCE CHANGED — line #2 2099-02-04 was built from the bars of 2099-02-03 .* — #2 has no anchor and is not anchored: nothing sent/);
+  assert.match(rz.out, /trackrecord\/record-qvol\.jsonl: 3 line\(s\) recomputed as a whole by scripts\/verify-vol\.mjs — agrees/);
+  assert.equal(node.txs.length, sent, 'a transaction was sent');
+  assert.deepEqual(listAll(z.root), beforeZ, 'a file changed');
   // an unanchored line before an anchored one: refused, nothing sent
   const g = copyRoot(x);
   writeJsonl(g.anc, readJsonl(g.anc).filter((a) => a.seq !== 0));
@@ -1534,7 +1552,7 @@ test('in force T-IF17 (F1): a line without an anchor is anchored only after scri
   const rc = await inForce(x.root, '2099-02-04T00:30:00Z', { key, node });
   assert.equal(rc.code, 0, rc.err);
   assert.match(rc.out, /#2 2099-02-04 has no anchor — anchoring it first/);
-  assert.match(rc.out, /#2 2099-02-04 recomputed by scripts\/verify-vol\.mjs before its anchor — agrees/);
+  assert.match(rc.out, /#2 2099-02-04: the bars it records read again from Binance \(2099-02-03\) — the same/);
   assert.deepEqual(readJsonl(x.anc).map((a) => a.seq), [0, 1, 2]);
   assert.equal(node.txs.length, sent + 1);
   assert.deepEqual(node.anchorsOf().at(-1), `qxpi-qvol:${readJsonl(x.rec)[2].hash}`);
@@ -1911,17 +1929,27 @@ test('in force T-IF23 (F8): each run that can anchor reads the last anchor again
 
 test('in force T-IF24 (F9): the keeper waits for a receipt at most RECEIPT_TIMEOUT_MS (5 minutes; a few hundred ms here) — an anchor whose receipt never comes: exit 1 within that limit, the line stays on disk without an anchor entry, nothing marked, and the next run anchors it first (a second transaction with the same calldata, harmless); a setNav step whose receipt never comes: exit 1 after the line\'s anchor, and the next run goes on from the vault\'s value', async () => {
   assert.equal(RECEIPT_TIMEOUT_MS, 300_000);
+  const LIMIT = 1500;
   const x = inForceRoot({ vaults: qvolVaults() });
   const { key, address } = keyed();
   const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
   const ownTx = (req) => node.txs.some((t) => t.hash.toLowerCase() === String(req.params?.[0]).toLowerCase());
   const noReceipt = (pick) => ({ answer: (req) => (req.method === 'eth_getTransactionReceipt' && ownTx(req) && pick(req) ? null : undefined) });
+  // the same run with receipts, for the time a run takes without the wait
+  const c = inForceRoot({ vaults: qvolVaults() });
+  const nc = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const tc = Date.now();
+  assert.equal((await inForce(c.root, `${D1}T00:25:00Z`, { key, node: nc, extra: { receiptTimeoutMs: LIMIT } })).code, 0);
+  const base = Date.now() - tc;
   const t0 = Date.now();
-  const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, node, chain: noReceipt(() => true), extra: { receiptTimeoutMs: 300 } });
+  const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, node, chain: noReceipt(() => true), extra: { receiptTimeoutMs: LIMIT } });
   const took = Date.now() - t0;
   assert.equal(r.code, 1, r.err);
-  assert.match(r.err, new RegExp(`qvol: line #0 ${D1} is written but its anchor failed: no receipt for the anchor of #0 0x[0-9a-f]{64} within 0\\.3 s — no mark; the next run anchors it first \\(if that transaction is mined later, the line has two anchor transactions with the same calldata: harmless, the anchors file names the later one\\)`));
-  assert.ok(took < 20_000, `took ${took} ms`);
+  assert.match(r.err, new RegExp(`qvol: line #0 ${D1} is written but its anchor failed: no receipt for the anchor of #0 0x[0-9a-f]{64} within ${LIMIT / 1000} s — no mark; the next run anchors it first \\(if that transaction is mined later, the line has two anchor transactions with the same calldata: harmless, the anchors file names the later one\\)`));
+  // the wait is the limit: no shorter, and no longer than the limit plus a run without it, with slack
+  assert.ok(took >= LIMIT, `took ${took} ms, less than the limit ${LIMIT} ms`);
+  assert.ok(took <= base + 3 * LIMIT, `took ${took} ms: more than a run without the wait (${base} ms) plus three times the limit`);
+  assert.equal(node.anchorsOf().length, 1, 'the anchor was sent once');
   assert.equal(readJsonl(x.rec).length, 1);
   assert.equal(fs.existsSync(x.anc), false);
   assert.equal(fs.existsSync(x.marks), false);
@@ -1938,9 +1966,10 @@ test('in force T-IF24 (F9): the keeper waits for a receipt at most RECEIPT_TIMEO
   const ny = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
   const setNav = (req) => getAddress(ny.txs.find((t) => t.hash.toLowerCase() === String(req.params[0]).toLowerCase()).to) === QVAULT;
   const ownY = (req) => ny.txs.some((t) => t.hash.toLowerCase() === String(req.params?.[0]).toLowerCase());
-  const ry = await inForce(y.root, `${D1}T00:25:00Z`, { key, transport: quick(ny, null, { root: y.root, from: address, answer: (req) => (req.method === 'eth_getTransactionReceipt' && ownY(req) && setNav(req) ? null : undefined) }), extra: { receiptTimeoutMs: 300 } });
+  const ry = await inForce(y.root, `${D1}T00:25:00Z`, { key, transport: quick(ny, null, { root: y.root, from: address, answer: (req) => (req.method === 'eth_getTransactionReceipt' && ownY(req) && setNav(req) ? null : undefined) }), extra: { receiptTimeoutMs: LIMIT } });
   assert.equal(ry.code, 1, ry.err);
-  assert.match(ry.err, /qVOL vault marks FAILED after line #0 was written and anchored: no receipt for setNav step 1\/\d+ 0x[0-9a-f]{64} within 0\.3 s/);
+  assert.match(ry.err, new RegExp(`qVOL vault marks FAILED after line #0 was written and anchored: no receipt for setNav step 1/\\d+ 0x[0-9a-f]{64} within ${LIMIT / 1000} s`));
+  assert.equal(ny.txs.filter((t) => t.to === QVAULT).length, 1, 'one setNav sent, not repeated');
   assert.equal(readJsonl(y.anc).length, 1);
   assert.equal(fs.existsSync(y.marks), false, 'no mark line without its receipt');
   const navAfter = ny.state.nav; // the step was mined
@@ -2046,4 +2075,109 @@ test('in force T-IF27 idempotency: a mark that fails part-way (setNav step 3 rev
   assert.deepEqual(ok, plan, 'the successful steps are the uninterrupted plan, none sent twice');
   assert.deepEqual(readJsonl(x.marks).map((m) => BigInt(m.nav)), plan);
   assert.equal(readJsonl(x.anc).length, 1, 'no second anchor');
+});
+
+test('in force T-IF28 (F12 resume): a daily-close entry lets the run go on only when both of its closes are the ones the run reads — an entry for the same day with another daily close, or another 1-minute close, still stops the run (exit 1, nothing written); the exact pair goes on (control)', async () => {
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const x = inForceRoot();
+  assert.equal((await inForce(x.root, `${D1}T00:25:00Z`, { key, node })).code, 0);
+  const c1 = BARS[D1].at(-1).c;
+  const daily = (d, c) => (d === D1 ? c + 0.01 : undefined);
+  const entry = (minuteClose, dailyClose) => [{ id: 'qvol-daily-2099-02-02', series: 'qvol', day: D1, check: 'daily-close', minuteClose, dailyClose, note: 'TEST ONLY', confirmedAt: '2099-02-03' }];
+  for (const [label, e] of [['another daily close', entry(String(c1), String(c1 + 0.02))], ['another 1-minute close', entry(String(c1 + 0.03), String(c1 + 0.01))], ['no daily candle claimed', entry(String(c1), null)]]) {
+    const y = copyRoot(x);
+    fs.writeFileSync(CHECKS(y), JSON.stringify(e));
+    const n = node.txs.length;
+    const r = await inForce(y.root, '2099-02-03T00:25:00Z', { key, node, daily });
+    assert.equal(r.code, 1, `${label}: ${r.err}`);
+    assert.match(r.err, new RegExp(`DAILY CLOSE DIFFERS — the 1-minute bars close ${D1} at ${c1}, Binance's daily candle closes it at ${String(c1 + 0.01)}; nothing written for line 2099-02-03`), label);
+    assert.equal(readJsonl(y.rec).length, 1, label);
+    assert.equal(node.txs.length, n, label);
+  }
+  const y = copyRoot(x);
+  fs.writeFileSync(CHECKS(y), JSON.stringify(entry(String(c1), String(c1 + 0.01))));
+  const ok = await inForce(y.root, '2099-02-03T00:25:00Z', { key, node, daily });
+  assert.equal(ok.code, 0, ok.err);
+  assert.equal(readJsonl(y.rec).length, 2);
+});
+
+test('in force T-IF29 (F2 resume): a refetch entry never passes a line without an anchor — a run without the key that continues from an unanchored line whose day Binance now serves differently stops (exit 1, nothing written) although the file holds the exact entry; the same entry passes the anchored line (control)', async () => {
+  const changed = alterBar(BARS, E, 600, nudge);
+  const served = shaOf(canonicalMinuteText(changed[E]));
+  const u = inForceRoot();
+  assert.equal((await inForce(u.root, `${D1}T00:25:00Z`, { argv: [] })).code, 0);
+  const [L0] = readJsonl(u.rec);
+  const e = [{ id: 'qvol-revised-2099-02-01', series: 'qvol', day: E, check: 'refetch', recorded: L0.source.sha256, served, note: 'TEST ONLY', confirmedAt: '2099-02-03' }];
+  fs.writeFileSync(CHECKS(u), JSON.stringify(e));
+  const before = listAll(u.root);
+  const r = await inForce(u.root, '2099-02-03T00:25:00Z', { argv: [], bars: changed });
+  assert.equal(r.code, 1, r.err);
+  assert.match(r.err, new RegExp(`SOURCE CHANGED — line #0 ${D1} was built from the bars of ${E} .* canonical text sha256 ${served} — nothing written, nothing anchored, no mark\\. The line has no anchor`));
+  assert.doesNotMatch(r.out, /confirmed by/);
+  assert.deepEqual(listAll(u.root), before);
+  // control: the same entry, the line anchored (with the key)
+  const x = inForceRoot();
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  assert.equal((await inForce(x.root, `${D1}T00:25:00Z`, { key, node })).code, 0);
+  fs.writeFileSync(CHECKS(x), JSON.stringify(e));
+  const ok = await inForce(x.root, '2099-02-03T00:25:00Z', { argv: [], bars: changed });
+  assert.equal(ok.code, 0, ok.err);
+  assert.match(ok.out, /confirmed by qvol-revised-2099-02-01/);
+});
+
+test('in force T-IF30 (F2, first line): an unanchored first line is anchored only after every one of its window days is fetched again — a hand-appended first line whose older window close is forged (value computed from it, every recorded sha256 the real one) is refused (exit 1, nothing sent); the honest first line is anchored (control)', async () => {
+  const w = inForceRoot();
+  assert.equal((await inForce(w.root, `${D1}T00:25:00Z`, { argv: [] })).code, 0);
+  const [L0] = readJsonl(w.rec);
+  const win = L0.window.map((e, k) => (k === 10 ? [e[0], e[1] * 1.5] : e));
+  const made = realizedFromWindow(win, null, { windowDays: RB_REPO.windowDays, yearDays: RB_REPO.yearDays });
+  const forged = rehash({ ...L0, value: made.value, variance: made.variance, window: win });
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const u = inForceRoot();
+  writeJsonl(u.rec, [forged]);
+  assert.equal(verify(path.join(u.root, 'trackrecord'), '--line', 'realized', '--rulebook', u.rbFile).status, 0, 'verify-vol accepts the forged first line');
+  const before = listAll(u.root);
+  const r = await inForce(u.root, `${D1}T00:40:00Z`, { key, node });
+  assert.equal(r.code, 1, r.err);
+  assert.match(r.err, new RegExp(`SOURCE CHANGED — line #0 ${D1} was built from the bars of ${win[10][0]} .* — #0 has no anchor and is not anchored: nothing sent`));
+  assert.equal(node.txs.length, 0);
+  assert.deepEqual(listAll(u.root), before);
+  // control: the honest first line, unanchored, is anchored after all 31 days are read again
+  const ok = await inForce(w.root, `${D1}T00:40:00Z`, { key, node });
+  assert.equal(ok.code, 0, ok.err);
+  assert.match(ok.out, new RegExp(`#0 ${D1}: the bars it records read again from Binance \\(31 days\\) — the same`));
+  assert.deepEqual(node.anchorsOf(), [`qxpi-qvol:${L0.hash}`]);
+});
+
+test('in force T-IF31 (red team M3): the keeper computes each transaction\'s hash from the bytes it signed — a node that answers eth_sendRawTransaction with another hash, or a receipt that names another transaction, is a failed anchor (exit 1, the line on disk without an anchor entry, nothing marked); the next run with an honest node anchors it (control)', async () => {
+  const { key, address } = keyed();
+  const OTHER = `0x${'ab'.repeat(32)}`;
+  const lying = (node, root, { send = false, receipt = false }) => {
+    const base = quick(node, null, { root, from: address });
+    return custom({
+      async request(req) {
+        const v = await base({ retryCount: 0 }).request(req);
+        if (send && req.method === 'eth_sendRawTransaction') return OTHER;
+        if (receipt && req.method === 'eth_getTransactionReceipt' && v && node.txs.some((t) => t.hash === v.transactionHash)) return { ...v, transactionHash: OTHER };
+        return v;
+      },
+    }, { retryCount: 0 });
+  };
+  for (const [label, how, why] of [['another hash for the sent transaction', { send: true }, new RegExp(`the node answered the transaction hash ${OTHER}, but the signed transaction hashes to 0x[0-9a-f]{64}`)], ['a receipt naming another transaction', { receipt: true }, new RegExp(`the receipt for the anchor of #0 0x[0-9a-f]{64} names the transaction ${OTHER}`)]]) {
+    const x = inForceRoot({ vaults: qvolVaults() });
+    const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+    const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, transport: lying(node, x.root, how) });
+    assert.equal(r.code, 1, `${label}: ${r.err}`);
+    assert.match(r.err, new RegExp(`line #0 ${D1} is written but its anchor failed: `), label);
+    assert.match(r.err, why, label);
+    assert.equal(readJsonl(x.rec).length, 1, label);
+    assert.equal(fs.existsSync(x.anc), false, label);
+    assert.equal(node.txs.filter((t) => t.to === QVAULT).length, 0, label);
+    const ok = await inForce(x.root, `${D1}T00:40:00Z`, { key, node });
+    assert.equal(ok.code, 0, `${label} control: ${ok.err}`);
+    assert.equal(readJsonl(x.anc).at(-1).txHash, node.txs.filter((t) => t.to === t.from).at(-1).hash, label);
+  }
 });
