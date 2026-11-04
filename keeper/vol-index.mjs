@@ -56,12 +56,11 @@
  *      second anchor transaction with the same calldata is harmless).
  *      A line an earlier run wrote but did not anchor is anchored first, never
  *      on trust: every anchor entry must name a line of the record by seq,
- *      date and hash, only the last lines may be unanchored, and each is
- *      recomputed by scripts/verify-vol.mjs (the first line on its own, a
- *      later one after the line before it) before its anchor is sent — any
- *      of these failing is refused (exit 2), nothing sent — and the bars it
- *      records are read again from Binance (the first line: every window
- *      day): other bars, exit 1, nothing sent;
+ *      date and hash, and only the last lines may be unanchored (else
+ *      exit 2, nothing sent); each line was recomputed by the whole-record
+ *      check of this run, and the bars it records are read again from
+ *      Binance (the first line: every window day): other bars, exit 1,
+ *      nothing sent;
  *   3. before the first new line of a run, the bars of the last line's day
  *      are read again (one more fetch): other bars than the line records stop
  *      the run (exit 1, nothing written, the message names the day and both
@@ -82,6 +81,8 @@
  *      trackrecord/record-qvol.jsonl → anchored: a zero-value self-send whose
  *      calldata is `qxpi-qvol:` + the line's hash, signed here with KEEPER_PK
  *      and sent raw, as the other daily series (trackrecord/anchors-qvol.jsonl).
+ *      Its hash is computed from the signed bytes; the node's answer and the
+ *      receipt must name that hash (else exit 1, no anchor entry).
  *      Line D is never written before D 00:00 UTC on the runner's clock, and
  *      a source that still calls the day open a full day after that is a
  *      failure (exit 1). A day that earlier runs missed is written by a later
@@ -927,7 +928,7 @@ async function makeSigner(deps) {
   const transport = deps.transport ?? ((rpc) => viem.http(rpc));
   const account = accounts.privateKeyToAccount(pk);
   const pc = viem.createPublicClient({ chain, transport: transport(GIWA_RPC), pollingInterval: deps.pollingInterval ?? 2000 });
-  return { pc, wallet: viem.createWalletClient({ account, chain, transport: transport(GIWA_RPC) }), address: account.address };
+  return { pc, wallet: viem.createWalletClient({ account, chain, transport: transport(GIWA_RPC) }), address: account.address, local: true };
 }
 
 /**
@@ -998,6 +999,25 @@ async function selfSendCheck(signer, hash, calldata, deps) {
   return { problem, missing: false, block: t.rc.blockNumber };
 }
 
+/**
+ * Sends one transaction and returns its hash. Signed here (KEEPER_PK): the
+ * hash is computed from the signed bytes (keccak256 of the serialized
+ * transaction) and the node's answer to eth_sendRawTransaction must be that
+ * hash — a node that answers another hash is a failure (exit 1). A fork
+ * rehearsal's node signs, so its answer is taken as the hash; in both cases
+ * the receipt must name the same hash (receiptOf).
+ */
+async function sendTx(signer, req) {
+  const { viem } = await chainLib();
+  if (!signer.local) return signer.wallet.sendTransaction(req);
+  const prepared = await signer.wallet.prepareTransactionRequest(req);
+  const raw = await signer.wallet.signTransaction(prepared);
+  const mine = viem.keccak256(raw);
+  const got = await signer.wallet.sendRawTransaction({ serializedTransaction: raw });
+  if (String(got).toLowerCase() !== mine.toLowerCase()) throw new Exit(1, `the node answered the transaction hash ${got}, but the signed transaction hashes to ${mine}`);
+  return mine;
+}
+
 async function sendNonceSafe(fn, wait) {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -1016,7 +1036,9 @@ async function sendNonceSafe(fn, wait) {
 async function receiptOf(pc, hash, what, deps) {
   const ms = deps.receiptTimeoutMs ?? RECEIPT_TIMEOUT_MS;
   try {
-    return await pc.waitForTransactionReceipt({ hash, timeout: ms });
+    const rc = await pc.waitForTransactionReceipt({ hash, timeout: ms });
+    if (String(rc.transactionHash).toLowerCase() !== String(hash).toLowerCase()) throw new Exit(1, `the receipt for ${what} ${hash} names the transaction ${rc.transactionHash}`);
+    return rc;
   } catch (e) {
     if (e?.name === 'WaitForTransactionReceiptTimeoutError') throw new Exit(1, `no receipt for ${what} ${hash} within ${ms / 1000} s`);
     throw e;
@@ -1027,7 +1049,7 @@ async function receiptOf(pc, hash, what, deps) {
 async function anchorLine(signer, series, line, anchorsPath, deps) {
   const { viem } = await chainLib();
   const hash = await sendNonceSafe(
-    () => signer.wallet.sendTransaction({ to: signer.address, value: 0n, data: viem.toHex(`qxpi-${series}:` + line.hash), gas: ANCHOR_GAS }),
+    () => sendTx(signer, { to: signer.address, value: 0n, data: viem.toHex(`qxpi-${series}:` + line.hash), gas: ANCHOR_GAS }),
     deps.wait
   );
   const rc = await receiptOf(signer.pc, hash, `the anchor of #${line.seq}`, deps);
@@ -1069,7 +1091,7 @@ export function markUnits(x) {
 /** Marks the display vault to the line's value: navPerShare = indexLevel = n6, in steps inside the contract's 25% bound — only a vault with deposit cap 0. */
 async function markDisplayVault({ signer, vault, ticker, gate, line, marksPath, registry, deps }) {
   const { viem, readback, abi } = await chainLib();
-  const { pc, wallet, address } = signer;
+  const { pc, address } = signer;
   const target = markUnits(line.value);
   const indexLevel = target;
   if (target === 0n) throw new Exit(1, `the value ${line.value} of #${line.seq} ${line.date} is below 0.000001: n6 = 0, which the vault cannot show (the contract refuses a share price of 0) — no mark sent`);
@@ -1112,7 +1134,7 @@ async function markDisplayVault({ signer, vault, ticker, gate, line, marksPath, 
     const next = steps[k];
     const data = viem.encodeFunctionData({ abi, functionName: 'setNav', args: [next, indexLevel] });
     await simulate(data, `setNav step ${k + 1}/${steps.length}`); // a revert stops here, before anything is sent
-    const tx = await sendNonceSafe(() => wallet.sendTransaction({ to: vault, data, gas: SETNAV_GAS }), deps.wait);
+    const tx = await sendNonceSafe(() => sendTx(signer, { to: vault, data, gas: SETNAV_GAS }), deps.wait);
     const rc = await receiptOf(pc, tx, `setNav step ${k + 1}/${steps.length}`, deps);
     if (rc.status !== 'success') throw new Exit(1, `setNav step ${k + 1}/${steps.length} reverted (${tx})`);
     floor = rc.blockNumber;
@@ -1264,10 +1286,10 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
   };
 
   // 2. a line written by an earlier run but not anchored is anchored first — never on trust:
-  //    only the last lines of the record can be unanchored; each is recomputed by
-  //    scripts/verify-vol.mjs (the first line on its own, a later one after the line before
-  //    it), and the bars it records are read again from Binance (the first line: every day
-  //    of its window), before its anchor is sent
+  //    only the last lines of the record can be unanchored; each was recomputed by the
+  //    whole-record check above (a per-line recompute here could reject nothing that check
+  //    passed), and the bars it records are read again from Binance (the first line: every
+  //    day of its window), before its anchor is sent
   const anchors = readLines(P.anchors);
   let firstUnanchored = anchorCoverage(L.series, records, anchors, rel(P.anchors));
   // F8: the last anchor is read again — still on chain (a reorg can drop it: that line is then
@@ -1303,14 +1325,7 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
     for (let k = firstUnanchored; k < records.length; k++) {
       const line = records[k];
       deps.log(`  #${line.seq} ${line.date} has no anchor${dropped.has(line.seq) ? ' on chain' : ''} — anchoring it first`);
-      const rc = recompute(deps, L.series, records.slice(0, k), line, null, rbPath);
-      if (!rc.ok) {
-        throw refuse(
-          `${L.series}: line #${line.seq} ${line.date} has no anchor, and scripts/verify-vol.mjs rejects it (${k ? `after #${records[k - 1].seq}` : 'on its own'}) — it is not anchored: nothing sent, nothing appended, no mark. ` +
-            `A line the keeper did not write and check is never anchored with its key; a person removes it (and every line after it) by a commit, and the next run writes those days again\n${rc.out}`
-        );
-      }
-      deps.log(`  #${line.seq} ${line.date} recomputed by scripts/verify-vol.mjs before its anchor — agrees`);
+      // its recompute: the whole-record check above (F4) ran this run and covers every line
       const ch = await fromSource('reading again the bars of', line.source.day, nextDate, () => sourceChange(line, src, k === 0));
       if (ch) {
         throw new Exit(1,
