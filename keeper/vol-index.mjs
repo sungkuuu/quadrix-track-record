@@ -88,7 +88,9 @@
  *      run from the same closed bars and carries "late": true;
  *   4. the display vault (keeper/leverage-vaults.json, entry qvol; deposit
  *      cap 0) is marked to the last line after that line is anchored, never
- *      before, and only when its symbol() is the rulebook's ticker, its
+ *      before, and only when the entry's deployTx is the signer's own
+ *      contract creation of that address (in the entry's block), its
+ *      symbol() is the rulebook's ticker, its
  *      keeper() is the signer and its depositCap() is 0: the share price goes to
  *      n6 = floor(value x 1,000,000) — the record value, unrounded, cut to the
  *      contract's unit of 1e-6 — in setNav steps inside the contract's bound
@@ -1028,6 +1030,26 @@ async function anchorLine(signer, series, line, anchorsPath, deps) {
 }
 
 /**
+ * Is the registry entry's deployTx the keeper's own creation of `vault`? A
+ * contract creation (no `to`) sent by the signer, successful, whose receipt
+ * names `vault` as the contract it created, in the block the entry gives
+ * (when it gives one). {problem: why not | null, block}.
+ */
+async function deploymentCheck(signer, v, vault, deps) {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(String(v.deployTx))) return { problem: `its deployTx is ${JSON.stringify(v.deployTx ?? null)}, not a transaction hash` };
+  const { viem } = await chainLib();
+  const t = await readTx(signer, v.deployTx, deps);
+  const me = viem.getAddress(signer.address);
+  if (!t) return { problem: `its deployTx ${v.deployTx} is not on chain` };
+  if (t.rc.status !== 'success') return { problem: `its deployTx ${v.deployTx} did not succeed` };
+  if (t.tx.to != null) return { problem: `its deployTx ${v.deployTx} is not a contract creation (it is sent to ${t.tx.to})` };
+  if (viem.getAddress(t.tx.from) !== me) return { problem: `its deployTx ${v.deployTx} was sent by ${t.tx.from}, not by the keeper ${me}` };
+  if (!t.rc.contractAddress || viem.getAddress(t.rc.contractAddress) !== vault) return { problem: `its deployTx ${v.deployTx} created ${t.rc.contractAddress ?? 'no contract'}, not ${vault}` };
+  if (v.block != null && t.rc.blockNumber !== BigInt(v.block)) return { problem: `its deployTx ${v.deployTx} is in block ${t.rc.blockNumber}, not in block ${v.block} as the entry says` };
+  return { problem: null, block: t.rc.blockNumber };
+}
+
+/**
  * The display vault's share price for a value x, in the contract's unit of
  * 1e-6: n6 = floor(x x 1,000,000) — the unrounded record value cut (a
  * truncation that rounds down), with no decimal rounding.
@@ -1364,7 +1386,12 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
     const chainId = await signer.pc.getChainId();
     if (chainId !== v.chainId) throw new Exit(1, `RPC is chain ${chainId}, the vault entry says ${v.chainId}`);
     const { viem } = await chainLib();
-    await markDisplayVault({ signer, vault: viem.getAddress(v.address), ticker: L.ticker, gate: v.gate, line: last, marksPath: P.marks, registry: rel(P.vaults), deps });
+    const vault = viem.getAddress(v.address);
+    // F10: the entry must name the vault the keeper itself deployed (keeper/deploy-mark-vault.mjs writes it from that receipt)
+    const dep = await deploymentCheck(signer, v, vault, deps);
+    if (dep.problem) throw new Exit(1, `REFUSED: ${rel(P.vaults)} ${L.series} names ${vault}, but ${dep.problem} — the entry does not name the keeper's own display vault; no mark sent. A person corrects the entry from the deployment log beside it (mark-vaults.jsonl)`);
+    deps.log(`  vault ${vault}: created by the signer in ${v.deployTx} (block ${dep.block}), as the registry says`);
+    await markDisplayVault({ signer, vault, ticker: L.ticker, gate: v.gate, line: last, marksPath: P.marks, registry: rel(P.vaults), deps });
   } catch (e) {
     const msg = e instanceof Exit ? e.message : (e?.shortMessage ?? e?.message ?? String(e)).split('\n')[0];
     deps.err(`${L.ticker} vault marks FAILED after line #${last.seq} was written and anchored: ${msg}`);

@@ -627,7 +627,9 @@ function inForceRoot({ effective = E, first = D1, pin = true, vaults = null, led
   fs.writeFileSync(path.join(root, 'trackrecord', 'decisions.jsonl'), ledger ? JSON.stringify(entry) + '\n' : '');
   return { root, rbFile: path.join(root, 'keeper', 'rulebooks', 'qvol.json'), entry, rec: path.join(root, 'trackrecord', REA), anc: path.join(root, 'trackrecord', ANC), marks: path.join(root, 'keeper', 'marks-qvol.jsonl') };
 }
-const qvolVaults = (gate = { mode: 'step' }, address = QVAULT) => ({ qvol: { chainId: 91342, address, gate, deployTx: null, block: null } });
+/** The display vault's stand-in deployment: a contract creation in block 60 (chainExtras answers it as the signer's). */
+const DEPLOY_TX = `0x${'e'.repeat(64)}`;
+const qvolVaults = (gate = { mode: 'step' }, address = QVAULT) => ({ qvol: { chainId: 91342, address, gate, deployTx: address ? DEPLOY_TX : null, block: address ? 60 : null } });
 
 const DEPOSIT_CAP = toFunctionSelector('function depositCap()');
 const hexN = (n) => `0x${BigInt(n).toString(16)}`;
@@ -651,6 +653,9 @@ function chainExtras(root, from, { fork = false } = {}) {
   for (const e of readJsonl(path.join(root, 'trackrecord', 'decisions.jsonl'))) {
     if (/^0x[0-9a-fA-F]{64}$/.test(e.txHash ?? '')) m.set(e.txHash.toLowerCase(), { from, to: from, input: toHex(`qxdec:${e.sha256}`), block: 50 });
   }
+  const reg = path.join(root, 'keeper', ...(fork ? ['dryrun'] : []), 'leverage-vaults.json');
+  const v = fs.existsSync(reg) ? JSON.parse(fs.readFileSync(reg, 'utf8')).qvol : null;
+  if (v?.address && /^0x[0-9a-fA-F]{64}$/.test(v.deployTx ?? '')) m.set(v.deployTx.toLowerCase(), { from, to: null, input: '0x6080604052', block: 60, contractAddress: getAddress(v.address) });
   return m;
 }
 /**
@@ -1912,4 +1917,43 @@ test('in force T-IF24 (F9): the keeper waits for a receipt at most RECEIPT_TIMEO
   const navs = ny.txs.filter((t) => t.to === QVAULT).map((t) => decodeFunctionData({ abi: VAULT_ABI, data: t.data }).args[0]);
   assert.equal(new Set(navs).size, navs.length, 'no setNav step sent twice');
   assert.deepEqual(navs.slice(1), markSteps(navAfter, markUnits(Y0.value)));
+});
+
+test('in force T-IF25 (F10): before any mark the registry entry\'s deployTx must be the keeper\'s own contract creation of the entry\'s address — an impostor entry (a vault with the right symbol, keeper and cap) whose deployTx is missing, not on chain, another key\'s, not a creation, the creation of another contract, or in another block gets no mark (exit 1; the line written and anchored, no setNav); the keeper\'s own deployment is marked (control)', async () => {
+  const { key, address } = keyed();
+  const other = keyed().address;
+  const dep = DEPLOY_TX.toLowerCase();
+  const txOf = (over) => (req) => (req.method === 'eth_getTransactionByHash' && String(req.params[0]).toLowerCase() === dep ? rpcTx({ hash: DEPLOY_TX, from: address, to: null, input: '0x6080604052', block: 60, ...over }) : undefined);
+  const rcOf = (over) => (req) =>
+    req.method === 'eth_getTransactionReceipt' && String(req.params[0]).toLowerCase() === dep
+      ? { transactionHash: DEPLOY_TX, blockNumber: '0x3c', blockHash: `0x${'3c'.padStart(64, '0')}`, transactionIndex: '0x0', status: '0x1', gasUsed: '0x5208', cumulativeGasUsed: '0x5208', effectiveGasPrice: '0x1', logs: [], logsBloom: `0x${'0'.repeat(512)}`, type: '0x2', contractAddress: QVAULT, from: address, to: null, ...over }
+      : undefined;
+  const reg = (over) => ({ qvol: { ...qvolVaults().qvol, ...over } });
+  const cases = [
+    ['no deployTx', reg({ deployTx: null }), {}, /its deployTx is null, not a transaction hash/],
+    ['a deployTx not on chain', reg({}), { forget: new Set([dep]) }, new RegExp(`its deployTx ${DEPLOY_TX} is not on chain`)],
+    ['another key\'s deployment', reg({}), { answer: txOf({ from: other }) }, new RegExp(`its deployTx ${DEPLOY_TX} was sent by ${other}, not by the keeper ${address}`)],
+    ['not a contract creation', reg({}), { answer: txOf({ to: other }) }, new RegExp(`its deployTx ${DEPLOY_TX} is not a contract creation \\(it is sent to ${other}\\)`)],
+    ['the creation of another contract', reg({}), { answer: rcOf({ contractAddress: other }) }, new RegExp(`its deployTx ${DEPLOY_TX} created ${other}, not ${QVAULT}`)],
+    ['another block than the entry says', reg({ block: 61 }), {}, new RegExp(`its deployTx ${DEPLOY_TX} is in block 60, not in block 61 as the entry says`)],
+  ];
+  for (const [label, vaults, chain, why] of cases) {
+    const x = inForceRoot({ vaults });
+    const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' }); // the right symbol, keeper and cap
+    const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, node, chain });
+    assert.equal(r.code, 1, `${label}: ${r.err}`);
+    assert.match(r.err, new RegExp(`qVOL vault marks FAILED after line #0 was written and anchored: REFUSED: keeper/leverage-vaults\\.json qvol names ${QVAULT}, but`), label);
+    assert.match(r.err, why, label);
+    assert.match(r.err, /the entry does not name the keeper's own display vault; no mark sent/, label);
+    assert.deepEqual([readJsonl(x.rec).length, readJsonl(x.anc).length, fs.existsSync(x.marks)], [1, 1, false], label);
+    assert.equal(node.txs.filter((t) => t.to === QVAULT).length, 0, `${label}: a setNav was sent`);
+    assert.equal(node.state.nav, 1_000_000n, label);
+  }
+  // control: the keeper's own deployment
+  const x = inForceRoot({ vaults: qvolVaults() });
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const ok = await inForce(x.root, `${D1}T00:25:00Z`, { key, node });
+  assert.equal(ok.code, 0, ok.err);
+  assert.match(ok.out, new RegExp(`vault ${QVAULT}: created by the signer in ${DEPLOY_TX} \\(block 60\\), as the registry says`));
+  assert.equal(node.state.nav, markUnits(readJsonl(x.rec)[0].value));
 });
