@@ -7,6 +7,14 @@
  * an append to an existing record. The record bytes and every printed line
  * must be the same in each case.
  *
+ * The rulebook JSON (keeper/rulebooks/qvol.json): every line carries its
+ * sha256, and the inception commit changes four of its keys (status, asOf,
+ * inception, pendingOwner) that the dry run does not use. Both roots
+ * therefore hold the registered rulebook bytes, and the script checks
+ * separately that this tree's rulebook differs from the registered one in
+ * those four keys only. Every other file the dry run reads must be
+ * byte-identical in the two roots.
+ *
  *   node docs/research/qvol/evidence/dryrun-identity.mjs [<registered commit>]   # default b8769aa
  *
  * Needs this repository's git history (git show <commit>:<file>). Synthetic
@@ -26,12 +34,19 @@ const H = await import(pathToFileURL(path.join(REPO, 'keeper', 'test', 'vol-help
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 /** What a realized dry run reads: the CLI, the compute modules, the rulebooks, the gap file, the verifier it runs. */
 const FILES = ['keeper/vol-index.mjs', 'keeper/vol-realized.mjs', 'keeper/vol-sources.mjs', 'keeper/vol-implied.mjs', 'keeper/vol-index-gaps.json', 'keeper/rulebooks/qvol.json', 'keeper/rulebooks/volbtc-implied.json', 'scripts/verify-vol.mjs'];
+const RULEBOOK = 'keeper/rulebooks/qvol.json';
+const INCEPTION_KEYS = ['status', 'asOf', 'inception', 'pendingOwner'];
+const regRb = JSON.parse(execFileSync('git', ['-C', REPO, 'show', `${REG}:${RULEBOOK}`]).toString('utf8'));
+const treeRb = JSON.parse(fs.readFileSync(path.join(REPO, RULEBOOK), 'utf8'));
+const rbKeys = [...new Set([...Object.keys(regRb), ...Object.keys(treeRb)])].filter((k) => JSON.stringify(regRb[k]) !== JSON.stringify(treeRb[k]));
+const rbOk = rbKeys.every((k) => INCEPTION_KEYS.includes(k));
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'qvol-identity-'));
 function root(tag, fromCommit) {
   const r = path.join(base, tag);
   // this tree's CLI also imports keeper/leverage-step.mjs (the mark steps of the line in force)
   for (const f of [...FILES, ...(fromCommit ? [] : ['keeper/leverage-step.mjs'])]) {
-    const bytes = fromCommit ? execFileSync('git', ['-C', REPO, 'show', `${REG}:${f}`]) : fs.readFileSync(path.join(REPO, f));
+    const registered = fromCommit || f === RULEBOOK;
+    const bytes = registered ? execFileSync('git', ['-C', REPO, 'show', `${REG}:${f}`]) : fs.readFileSync(path.join(REPO, f));
     fs.mkdirSync(path.dirname(path.join(r, f)), { recursive: true });
     fs.writeFileSync(path.join(r, f), bytes);
   }
@@ -87,7 +102,9 @@ all &&= await both('4-append-existing', (out) => ['--line', 'realized', '--dry-r
 });
 console.log(`keeper/vol-index.mjs registered (${REG}) sha256 ${sha(fs.readFileSync(path.join(A, 'keeper', 'vol-index.mjs')))}`);
 console.log(`keeper/vol-index.mjs this tree          sha256 ${sha(fs.readFileSync(path.join(B, 'keeper', 'vol-index.mjs')))}`);
-console.log(`the other ${FILES.length - 1} files the dry run reads: ${sameOthers ? 'byte-identical in the two roots' : 'DIFFERENT'}`);
-console.log(all && sameOthers ? 'DRY RUN UNCHANGED — byte-identical records and printed lines in all four cases' : 'DRY RUN CHANGED');
+console.log(`the other ${FILES.length - 1} files the dry run reads: ${sameOthers ? 'byte-identical in the two roots (the rulebook JSON: the registered bytes in both)' : 'DIFFERENT'}`);
+console.log(`${RULEBOOK} in this tree differs from the registered one in: ${rbKeys.length ? rbKeys.join(', ') : 'nothing'} — ${rbOk ? 'only keys the dry run does not use' : 'A KEY THE DRY RUN USES'}`);
+const ok = all && sameOthers && rbOk;
+console.log(ok ? 'DRY RUN UNCHANGED — byte-identical records and printed lines in all four cases' : 'DRY RUN CHANGED');
 fs.rmSync(base, { recursive: true, force: true });
-process.exitCode = all && sameOthers ? 0 : 1;
+process.exitCode = ok ? 0 : 1;
