@@ -1,6 +1,8 @@
 /**
  * scripts/watchdog-series.mjs — the freshness alarm for the paper and leverage
- * series (run sheet option 18), with a fixed clock and throwaway folders.
+ * series (run sheet option 18), with a fixed clock and throwaway folders; and
+ * the qVOL recompute it runs through scripts/verify.mjs (red team R47 F5), on a
+ * record the keeper writes from SYNTHETIC bars (keeper/test/qvol-inforce.mjs).
  *
  *   node --test keeper/test/watchdog-series.test.mjs
  */
@@ -10,7 +12,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkSeries, SERIES, SIMULATE, LIMIT_H, LIMIT_MISSING_H } from '../../scripts/watchdog-series.mjs';
+import { checkSeries, recomputeSeries, RECOMPUTE, SERIES, SIMULATE, LIMIT_H, LIMIT_MISSING_H } from '../../scripts/watchdog-series.mjs';
+import { honestRecord, copyRoot, writeJsonl, rehash } from './qvol-inforce.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const TX = (n) => '0x' + n.toString(16).padStart(64, '0');
@@ -152,4 +155,32 @@ test('qVOL: its decision (<date>-qvol-inception) is effective the day before the
   assert.match(checkSeries({ dir, now: at('2026-11-15T17:00:00Z'), series: ['qvol'] }).problems[0], /^qvol: stale — latest line is 2026-11-13 \(seq 2\)/);
   dir = folder({ decisions: [dec], series: { qvol: { records: recs, anchors: anchorsFor(recs).slice(0, 2) } } });
   assert.deepEqual(checkSeries({ dir, now: at('2026-11-13T12:00:00Z'), series: ['qvol'] }).problems, ['qvol: line seq 2 (2026-11-13) has no anchor txHash']);
+});
+
+test('qVOL recompute (red team R47 F5): the watchdog runs scripts/verify.mjs --recompute-only --series qvol — an honest record is quiet; a corrupted old line, which the freshness and anchor checks do not see, is one problem line naming the failure; only qvol is recomputed, and this repository (no qVOL record yet) is quiet', async () => {
+  assert.deepEqual(RECOMPUTE, ['qvol']);
+  let r = recomputeSeries({ dir: path.join(REPO, 'trackrecord') });
+  assert.deepEqual(r.problems, []);
+  assert.deepEqual(r.summary, ['qvol verifies (verify.mjs --recompute-only: QVOL not started)']);
+  // an honest record: three lines, anchored on the fake node
+  const x = await honestRecord(3);
+  const now = at('2099-02-04T12:00:00Z');
+  assert.deepEqual(checkSeries({ dir: x.tr, now, series: ['qvol'] }).problems, []);
+  r = recomputeSeries({ dir: x.tr });
+  assert.deepEqual(r.problems, []);
+  assert.deepEqual(r.summary, ['qvol verifies (verify.mjs --recompute-only: QVOL 3 records 2099-02-02 → 2099-02-04)']);
+  // the first line's value changed: in place, and changed then re-hashed so that its own hash holds
+  for (const [label, edit, why] of [
+    ['edited in place', (ls) => [{ ...ls[0], value: ls[0].value + 1 }, ...ls.slice(1)], /: #0 2099-02-02: stored hash [0-9a-f]{12}… != computed [0-9a-f]{12}…/],
+    ['edited and re-hashed', (ls) => [rehash({ ...ls[0], value: ls[0].value + 1 }), ...ls.slice(1)], /: #1 2099-02-03: prevHash does not match record #0 \(chain break\)/],
+  ]) {
+    const y = copyRoot(x);
+    writeJsonl(y.rec, edit(x.lines));
+    assert.deepEqual(checkSeries({ dir: y.tr, now, series: ['qvol'] }).problems, [], `${label}: fresh and anchored`);
+    const v = recomputeSeries({ dir: y.tr });
+    assert.equal(v.problems.length, 1, `${label}: ${JSON.stringify(v.problems)}`);
+    assert.match(v.problems[0], /^qvol: the record does not verify — scripts\/verify\.mjs --recompute-only --series qvol exited 1: /, label);
+    assert.match(v.problems[0], why, label);
+    assert.deepEqual(v.summary, ['qvol does not verify']);
+  }
 });

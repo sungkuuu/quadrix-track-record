@@ -260,11 +260,15 @@ test('rehearsal C4: a fork rehearsal starts from the real registry with every ad
   assert.deepEqual(readVaults(path.join(dir, 'missing.json'), seed, false), real);
 });
 
-test('qETH1.5X — name "Quadrix ETH 1.5x Vault", symbol = the rulebook ticker; the registry entry exists with no address; a dry run deploys it after setGuardian; open-deposits and pause accept the index', async () => {
+test('qETH1.5X — name "Quadrix ETH 1.5x Vault", symbol = the rulebook ticker; the registry entry exists, and a fork\'s copy of it has no address; a dry run on the fork deploys it after setGuardian; open-deposits and pause accept the index', async () => {
   const rb = JSON.parse(fs.readFileSync(path.join(KEEPER_DIR, 'rulebooks', 'qeth15.json'), 'utf8'));
   assert.deepEqual(NAMES.qeth15, ['Quadrix ETH 1.5x Vault', rb.ticker]);
   assert.equal(rb.ticker, 'qETH1.5X');
-  assert.deepEqual({ ...SEED.qeth15, gate: undefined }, { chainId: 91342, address: null, gate: undefined, deployTx: null, block: null });
+  // the committed entry names the vault deployed on 2026-10-21; a fork starts from it with the address emptied (rehearsal C4)
+  const { readVaults } = await import('../deploy-mark-vault.mjs');
+  assert.equal(SEED.qeth15.chainId, 91342);
+  const forked = readVaults(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lev-qeth15-')), 'missing.json'), path.join(KEEPER_DIR, 'leverage-vaults.json'), true);
+  assert.deepEqual({ ...forked.qeth15, gate: undefined }, { chainId: 91342, address: null, gate: undefined, deployTx: null, block: null });
   reset();
   const s = await server({ index: 'qeth15' });
   try {
@@ -282,7 +286,7 @@ test('qETH1.5X — name "Quadrix ETH 1.5x Vault", symbol = the rulebook ticker; 
     }
     r = await runTool(['--index', 'qeth3x', '--manager', FROM, '--guardian', GUARD, '--rpc', s.url]);
     assert.equal(r.code, 2);
-    assert.match(r.out, /--index must be one of qbtc2x, qeth2x, qeth15/);
+    assert.match(r.out, /--index must be one of qbtc2x, qeth2x, qeth15, qvol \(got qeth3x\)/);
   } finally {
     s.srv.close();
   }

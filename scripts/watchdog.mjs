@@ -13,14 +13,17 @@
  *      fresh and anchored (scripts/watchdog-series.mjs: a series past its
  *      inception with no file 16h after its first line's day began, a last
  *      line more than 40h old unless it ended in a model liquidation, a line
- *      without an anchor).
+ *      without an anchor),
+ *   6. the qVOL realized line verifies: scripts/verify.mjs --recompute-only
+ *      --series qvol (hashes, chain, every value recomputed, the decision
+ *      binding; no network) — a fresh, anchored line can still be wrong.
  *
  * Exit 1 with a report on stdout when anything trips; the workflow turns that
  * into an issue. `--simulate <check>` trips one check on purpose so the alert
  * path itself can be tested — an untested alarm is not an alarm.
  */
 import fs from 'node:fs';
-import { checkSeries, SIMULATE as SERIES_SIMULATE } from './watchdog-series.mjs';
+import { checkSeries, recomputeSeries, SIMULATE as SERIES_SIMULATE } from './watchdog-series.mjs';
 
 const RPC = 'https://sepolia-rpc.giwa.io';
 const simulate = process.argv.includes('--simulate') ? process.argv[process.argv.indexOf('--simulate') + 1] : null;
@@ -57,6 +60,15 @@ try {
   seriesSummary = s.summary;
 } catch (e) {
   problems.push(`could not check the paper, leverage and qVOL series: ${e.message}`);
+}
+
+// 6. the qVOL realized line recomputed by the public verifier (red team R47 F5)
+try {
+  const v = recomputeSeries({ dir: 'trackrecord' });
+  problems.push(...v.problems);
+  seriesSummary.push(...v.summary);
+} catch (e) {
+  problems.push(`could not run scripts/verify.mjs on the qVOL record: ${e.message}`);
 }
 
 // 4. gas on the anchoring account (read from the last anchor tx — nothing hardcoded)

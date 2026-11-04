@@ -68,12 +68,15 @@
  * every line states and names that first day and decision; no line is a
  * dry-run ("shadow") line; inception appears on the first line only; no line
  * was written before its own day began, and with an RPC no anchor block is
- * older than its line's day.
+ * older than its line's day and every anchor is a self-send from the address
+ * that sent the anchor of the inception decision (one key anchors the decision
+ * and the lines: an anchor sent by any other address fails, naming both).
  *
  * What VERIFIED does not cover: that the bars are the ones Binance serves
  * (--refetch-bars compares them; a difference is REVISED, a failure only with
- * --strict-source); who sent an anchor; the vault marks; that the accepting
- * entry exists in keeper/leverage-gaps.json (the repository's history shows it).
+ * --strict-source); who sent an anchor, except for qVOL (checked with an RPC);
+ * the vault marks; that the accepting entry exists in keeper/leverage-gaps.json
+ * or keeper/vol-index-gaps.json (the repository's history shows it).
  *
  * Options:
  *   --base <url>     fetch <base>/trackrecord/… (the site's mirror)
@@ -87,10 +90,23 @@
  *                    (no anchor, qX20 or decision-anchor RPC; decision documents
  *                    are still hashed). The leverage keeper runs this before it
  *                    appends a line.
- *   --refetch-bars   leverage series: fetch every line's day again from Binance
- *                    and compare the 1-minute text's sha256 and the 15-minute
- *                    bars; a difference prints REVISED (not a failure unless
- *                    --strict-source — a line's own bars are the record).
+ *   --refetch-bars   fetch every day a line names again from Binance
+ *                    (data-api.binance.vision, never a host a line names).
+ *                    Leverage series: compare the 1-minute text's sha256 and
+ *                    the 15-minute bars. qVOL: each line's source.day, and on
+ *                    the first line its 31 sources days (and the day it
+ *                    carries a close from, if any); the day is paged as the
+ *                    keeper pages it and its 1-minute text built by the
+ *                    keeper's own function (keeper/vol-sources.mjs,
+ *                    keeper/vol-realized.mjs — imported, not repeated: run
+ *                    from a clone of the repository), and the text's sha256
+ *                    and the day's close are compared with the line. A
+ *                    difference prints REVISED (not a failure unless
+ *                    --strict-source — a line's own bars or closes are the
+ *                    record). A qVOL line whose sha256 Binance still serves
+ *                    but whose close or row count is not those bars' fails
+ *                    always: the line contradicts the bars it names.
+ *   --strict-source  with --refetch-bars: a REVISED day is a failure.
  *   --allow-rehearsal accept leverage lines marked "rehearsal" and qVOL lines marked
  *                    "shadow" (keeper/dryrun/ output). Without it such a line fails.
  *
@@ -214,7 +230,7 @@ const SERIES_FILES = {
   qeth15: { label: 'QETH1.5X', records: 'record-qeth15.jsonl', anchors: 'anchors-qeth15.jsonl', anchorPrefix: 'qxpi-qeth15:', checkDecisions: false, leverage: { index: 'qeth15', ticker: 'qETH1.5X', symbol: 'ETHUSDT', target: 1.5 } },
   // The qVOL realized line (keeper/vol-index.mjs): a measurement, one line per UTC day. Same chain and anchor
   // shape; its recompute is scripts/verify-vol.mjs (qVOL section below).
-  qvol: { label: 'QVOL', records: 'record-qvol.jsonl', anchors: 'anchors-qvol.jsonl', anchorPrefix: 'qxpi-qvol:', checkDecisions: false, vol: { series: 'qvol', ticker: 'qVOL' } },
+  qvol: { label: 'QVOL', records: 'record-qvol.jsonl', anchors: 'anchors-qvol.jsonl', anchorPrefix: 'qxpi-qvol:', checkDecisions: false, vol: { series: 'qvol', ticker: 'qVOL', symbol: 'BTCUSDT' } },
 };
 const ALL = [...Object.keys(SERIES_FILES), 'qx20'];
 if (SERIES !== 'all' && !ALL.includes(SERIES)) {
@@ -322,6 +338,9 @@ async function verifySeries(key) {
   }
 
   console.log(`\n[${f.label}] anchors — ${anchors.length} on-chain commitment(s) via ${RPC}`);
+  // qVOL: one key anchors the inception decision and every line (red team R47 F3) — the sender of the
+  // decision's anchor transaction is that key, and a line anchored by any other key fails.
+  const signer = f.vol && anchors.length ? await volSigner(f, records) : null;
   for (const a of anchors) {
     const rec = records.find((r) => r.seq === a.seq);
     if (!rec) {
@@ -353,6 +372,20 @@ async function verifySeries(key) {
       fail(`anchor seq ${a.seq}: calldata does not carry ${f.anchorPrefix}${a.headHash.slice(0, 12)}…`);
       continue;
     }
+    let by = '';
+    if (f.vol) {
+      const from = String(tx.from ?? '').toLowerCase();
+      const to = String(tx.to ?? '').toLowerCase();
+      if (!ADDRESS.test(from) || to !== from) {
+        fail(`anchor seq ${a.seq} ${a.date} (${a.txHash.slice(0, 14)}…): sent by ${tx.from ?? 'no sender'} to ${tx.to ?? 'no recipient'} — a ${f.vol.ticker} anchor is a self-send from ${signer.address ?? signer.label}`);
+        continue;
+      }
+      if (signer.address && from !== signer.address) {
+        fail(`anchor seq ${a.seq} ${a.date} (${a.txHash.slice(0, 14)}…): sent by ${from}, not by ${signer.address}, ${signer.label}`);
+        continue;
+      }
+      by = `, self-send from ${from}`;
+    }
     // Leverage and qVOL lines: the anchor's block time is when the line demonstrably existed. It cannot be older than the
     // line's own day, and how much later than observedAt it came is printed (a line rewritten as "on time" shows
     // here — red team F03 D; final review F-1 for the day bound).
@@ -377,7 +410,7 @@ async function verifySeries(key) {
       const afterH = (blockMs - observed) / 3_600_000;
       when = `, ${new Date(blockMs).toISOString()}${afterH >= 1 ? ` — ${afterH.toFixed(1)} h after observedAt` : blockMs < observed ? ` — ${Math.ceil((observed - blockMs) / 1000)} s before observedAt (clock difference)` : ''}`;
     }
-    ok(`seq ${a.seq} ${a.date} anchored in ${a.txHash.slice(0, 14)}… (block ${parseInt(receipt.blockNumber, 16)}${when})`);
+    ok(`seq ${a.seq} ${a.date} anchored in ${a.txHash.slice(0, 14)}… (block ${parseInt(receipt.blockNumber, 16)}${when}${by})`);
   }
   // Every record must have exactly one anchor — a record without one is a
   // claim nobody can check the date of.
@@ -694,8 +727,120 @@ async function verifyLeverage(f, records) {
 // The values are recomputed by scripts/verify-vol.mjs, which states the definition in its own code (it
 // imports nothing from keeper/ and nothing from this file). It runs as a child process on a copy of the
 // record, with the rulebook JSON as --rulebook (every line's rule must be that file's: its sha256 and
-// values). This file adds what binds the record to its decision.
+// values). This file adds what binds the record to its decision, the anchors' sender (volSigner) and, with
+// --refetch-bars, the comparison with the exchange (refetchVol — the one part that imports keeper code: the
+// paging of a day and the 1-minute text whose sha256 a line records, so that the bytes compared are the keeper's).
 const VERIFY_VOL = path.join(path.dirname(fileURLToPath(import.meta.url)), 'verify-vol.mjs');
+const ADDRESS = /^0x[0-9a-f]{40}$/;
+
+/**
+ * The address that sent the anchor of the qVOL line's inception decision (the decision named by the first line,
+ * its txHash in decisions.jsonl): {address, label}. address is null after a FAIL (no decision, no transaction, or
+ * an answer that names no sender).
+ */
+async function volSigner(f, records) {
+  const id = records[0]?.inception?.decision;
+  const d = decisions.find((x) => x.id === id);
+  if (!d) {
+    fail(`${f.label}: the anchors' sender cannot be checked — the first line's decision ${id} is not in decisions.jsonl`);
+    return { address: null, label: `the sender of decision ${id}'s anchor (unknown)` };
+  }
+  const label = `the sender of decision ${d.id}'s anchor ${String(d.txHash).slice(0, 14)}…`;
+  try {
+    const tx = await rpc('eth_getTransactionByHash', [d.txHash]);
+    const from = String(tx?.from ?? '').toLowerCase();
+    if (!tx) fail(`${f.label}: decision ${d.id}: anchor tx ${d.txHash} not found on chain — the anchors' sender cannot be checked`);
+    else if (!ADDRESS.test(from)) fail(`${f.label}: decision ${d.id}: the answer for ${d.txHash} names no sender — the anchors' sender cannot be checked`);
+    else return { address: from, label };
+  } catch (e) {
+    fail(`${f.label}: decision ${d.id}: rpc unavailable — ${e.message}`);
+  }
+  return { address: null, label: `${label} (unknown)` };
+}
+
+/**
+ * --refetch-bars for qVOL (red team R47 F2). Recomputing a line from its own closes cannot see closes that never
+ * came from the exchange; asking the exchange again can. Every day a line names is fetched again from
+ * data-api.binance.vision — each line's source.day; on the first line its 31 sources days and, when it has one,
+ * the day it carries a close from — paged and kept as the keeper pages a day (binanceDayOnce,
+ * keeper/vol-sources.mjs), and its 1-minute text is built by the function whose sha256 a line records
+ * (canonicalMinuteText, keeper/vol-realized.mjs; its close by dayClose there). Both are imported, not repeated.
+ * Per day:
+ *   the line's sha256, rows and close        → unchanged;
+ *   the line's sha256, other rows or close   → FAIL: the line contradicts the bars it names;
+ *   another sha256                           → REVISED (Binance now serves other bars), a FAIL with --strict-source;
+ *   no answer, or bars outside the day       → FAIL.
+ */
+async function refetchVol(f, records, bad) {
+  const V = f.vol;
+  let K;
+  try {
+    const [realized, sources] = await Promise.all([import('../keeper/vol-realized.mjs'), import('../keeper/vol-sources.mjs')]);
+    K = { parseKlines: realized.parseKlines, canonicalMinuteText: realized.canonicalMinuteText, dayClose: realized.dayClose, binanceDayOnce: sources.binanceDayOnce };
+  } catch (e) {
+    bad(records[0], `--refetch-bars: keeper/vol-realized.mjs and keeper/vol-sources.mjs are needed beside scripts/ (run this from a clone of the repository) — ${e.message}`);
+    return;
+  }
+  const get = async (pathq) => {
+    const r = await fetch(`https://${lev.HOST}${pathq}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status} from ${lev.HOST}`);
+    return r.json();
+  };
+  const binance = {
+    async klines(symbol, startMs, endMs, limit) {
+      const q = new URLSearchParams({ symbol, interval: '1m', startTime: String(startMs), limit: String(limit) });
+      if (endMs != null) q.set('endTime', String(endMs));
+      return K.parseKlines(await get(`/api/v3/klines?${q}`));
+    },
+  };
+  console.log(`  --refetch-bars: every day the lines name, again from ${lev.HOST} (${V.symbol} 1-minute bars)`);
+  let serverTime;
+  try {
+    const t = Number((await get('/api/v3/time'))?.serverTime);
+    if (!Number.isFinite(t)) throw new Error('/api/v3/time answered no serverTime');
+    serverTime = t >= 1e15 ? Math.floor(t / 1000) : t;
+  } catch (e) {
+    bad(records[0], `--refetch-bars: ${e.message}`);
+    return;
+  }
+  const days = new Map(); // a day is fetched once, however many lines name it
+  const dayOf = (day) => {
+    if (!days.has(day))
+      days.set(day, K.binanceDayOnce(binance, V.symbol, day, serverTime).then((m) => ({ sha: sha256(K.canonicalMinuteText(m)), rows: m.length, close: K.dayClose(m).close })));
+    return days.get(day);
+  };
+  let unchanged = 0;
+  const check = async (rec, where, day, want) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day))) return bad(rec, `--refetch-bars: ${where} names no day (${JSON.stringify(day)})`);
+    let got;
+    try {
+      got = await dayOf(day);
+    } catch (e) {
+      return bad(rec, `--refetch-bars ${where} ${day}: ${e.message}`);
+    }
+    if (got.sha === want.sha) {
+      if (got.rows === want.rows && got.close === want.close) unchanged++;
+      else bad(rec, `${where} ${day}: Binance serves the bars whose sha256 the line records (${want.sha}) — ${got.rows} row(s), close ${got.close} — but the line says ${want.rows} row(s), close ${want.close}: the line contradicts the bars it names`);
+      return;
+    }
+    totals.revised = (totals.revised ?? 0) + 1;
+    console.log(`  REVISED ${V.series} #${rec.seq} ${rec.date}: ${where} ${day} — Binance now serves ${got.rows} row(s), close ${got.close}, sha256 ${got.sha}; the line records ${want.rows} row(s), close ${want.close}, sha256 ${want.sha} — the line's closes stand`);
+    if (STRICT_SOURCE) bad(rec, `${where} ${day} revised (--strict-source): Binance now serves sha256 ${got.sha}, the line records ${want.sha}`);
+  };
+  for (const rec of records) {
+    const win = Array.isArray(rec.window) ? rec.window : [];
+    const src = rec.source ?? {};
+    const last = { sha: src.sha256, rows: src.rows, close: win.at(-1)?.[1] ?? null };
+    if (rec === records[0] && Array.isArray(rec.sources)) {
+      // sources[k] = [day, rows, sha256(, acceptance id)] of window[k]; the last one is source.day
+      for (const [k, s] of rec.sources.entries()) await check(rec, `sources[${k}]`, s?.[0], { sha: s?.[2], rows: s?.[1], close: win.find((w) => Array.isArray(w) && w[0] === s?.[0])?.[1] ?? null });
+      const c = rec.carriedFrom; // [day, close, rows, sha256(, acceptance id)] on the first line
+      if (Array.isArray(c) && c.length >= 4) await check(rec, 'carriedFrom', c[0], { sha: c[3], rows: c[2], close: c[1] });
+      if (!rec.sources.some((s) => s?.[0] === src.day)) await check(rec, 'source.day', src.day, last);
+    } else await check(rec, 'source.day', src.day, last);
+  }
+  console.log(`  re-fetched ${unchanged} day(s) unchanged`);
+}
 
 async function verifyVol(f, records) {
   const V = f.vol;
@@ -739,6 +884,7 @@ async function verifyVol(f, records) {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   }
+  if (REFETCH_BARS) await refetchVol(f, records, bad);
   if (g.shadow !== undefined) return; // a dry run has no decision
   // the first line and its decision
   const rule = g.rule ?? {};
