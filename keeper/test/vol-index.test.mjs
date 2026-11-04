@@ -20,7 +20,7 @@ import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
-import { custom, decodeFunctionData, getAddress, hexToString, parseTransaction, toFunctionSelector, toHex } from 'viem';
+import { custom, decodeFunctionData, getAddress, hexToString, isAddress, parseTransaction, toFunctionSelector, toHex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { run, parseArgs, rulebookProblem, markUnits, isLocalRpc, GIWA_RPC, RECEIPT_TIMEOUT_MS } from '../vol-index.mjs';
 import { markSteps } from '../leverage-step.mjs';
@@ -42,6 +42,23 @@ const ON = impliedOnRoot();
 const ON_RB = path.join(ON, 'keeper', 'rulebooks', 'volbtc-implied.json');
 const icli = (argv, deps = {}) => cli(run, argv, { root: ON, ...deps });
 const verify = (dir, ...extra) => spawnSync(process.execPath, [VERIFY, '--dir', dir, ...extra], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+/**
+ * A scratch root in the state before the inception decision, whatever state
+ * the repository is in: the repository's realized rulebook with inception
+ * null, an empty decision ledger, no record. (Tests of that state must not
+ * read the repository's own rulebook, ledger or registry: those change when
+ * the decision is anchored.)
+ */
+function notInForceRoot() {
+  const root = tmpDir('vol-notinforce');
+  const rb = JSON.parse(fs.readFileSync(rulebookPath('realized'), 'utf8'));
+  rb.inception = { date: null, decision: null };
+  fs.mkdirSync(path.join(root, 'keeper', 'rulebooks'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'keeper', 'rulebooks', 'qvol.json'), JSON.stringify(rb, null, 2) + '\n');
+  fs.mkdirSync(path.join(root, 'trackrecord'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'trackrecord', 'decisions.jsonl'), '');
+  return root;
+}
 
 const good = () => [
   [60, ...q(0.4), ...q(1 / 128)],
@@ -134,7 +151,7 @@ test('T13 hash chain and key order', async () => {
 
 // ---------------------------------------------------------------------- T14
 test('T14 without --dry-run and inception null: NOT IN FORCE, exit 0, no file, no request', async () => {
-  for (const [line, root] of [['realized', REPO], ['implied', ON]]) {
+  for (const [line, root] of [['realized', notInForceRoot()], ['implied', ON]]) {
     const out = path.join(tmpDir('vol-t14'), 'never');
     let calls = 0;
     const r = await cli(run, ['--line', line, '--out', out], { root, fetch: async () => (calls++, new Response('[]')) });
@@ -234,10 +251,15 @@ test('rulebook shape: what the code does not implement is refused (exit 2)', asy
   assert.match(mutate(rb, 'realized', (c) => delete c.pendingOwner), /pendingOwner must be a list/);
   assert.match(mutate(rb, 'realized', (c) => c.pendingOwner.push({ path: 'window', what: 'x' })), /"window" is not a key/);
   assert.match(mutate(rb, 'realized', (c) => c.pendingOwner.push({ path: 'source.symbol' })), /\{path, what\}/);
-  assert.match(mutate(rb, 'realized', (c) => (c.inception = { date: '2099-01-01', decision: 'x' })), /cannot have values pending the owner/);
-  // what waits for the owner is marked in the realized rulebook, and every mark names a key
+  assert.match(mutate(rb, 'realized', (c) => {
+    c.pendingOwner = [{ path: 'windowDays', what: 'x' }];
+    c.inception = { date: '2099-01-01', decision: 'x' };
+  }), /cannot have values pending the owner/);
+  // what waits for the owner: before the inception decision these keys of the realized rulebook are
+  // marked pendingOwner (every mark names a key); with an inception date nothing can be (checked above)
   const marked = rb.pendingOwner.map((e) => e.path);
-  for (const p of ['source', 'windowDays', 'sampling', 'mean', 'display.decimals']) assert.ok(marked.includes(p), `${p} not marked pendingOwner`);
+  if (rb.inception.date === null) for (const p of ['source', 'windowDays', 'sampling', 'mean', 'display.decimals']) assert.ok(marked.includes(p), `${p} not marked pendingOwner`);
+  else assert.deepEqual(marked, [], 'a rulebook with an inception date has nothing pending the owner');
   // the realized line's name (qVOL) and series id (qvol) are decided: not pending
   for (const p of ['name', 'series']) assert.ok(!marked.includes(p), `${p} still marked pendingOwner`);
   const markedImplied = ib.pendingOwner.map((e) => e.path);
@@ -771,11 +793,11 @@ const keyed = () => {
 };
 
 test('in force T-IF1: NOT IN FORCE while inception is null, while the decision is not in the ledger, and before inception.date 00:00 UTC — exit 0, nothing written, no request to Binance or the chain, the key not read', async () => {
-  // the repository's rulebook (inception null), as the daily step runs it before the anchor
+  // the repository's rulebook with inception null (a scratch copy: the state the daily step runs in before the anchor)
   const { key, address } = keyed();
   const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
   let calls = 0;
-  const r0 = await cli(run, ['--line', 'realized', '--anchor'], { env: { KEEPER_PK: key }, fetch: async () => (calls++, new Response('[]')), transport: () => node.transport });
+  const r0 = await cli(run, ['--line', 'realized', '--anchor'], { root: notInForceRoot(), env: { KEEPER_PK: key }, fetch: async () => (calls++, new Response('[]')), transport: () => node.transport });
   assert.equal(r0.code, 0, r0.err);
   assert.match(r0.out, /qvol: NOT IN FORCE \(keeper\/rulebooks\/qvol\.json inception is null\) — nothing read, nothing written/);
   assert.equal(calls, 0);
@@ -1075,8 +1097,18 @@ test('in force T-IF10 DISPLAY_ONLY: keeper/deploy-mark-vault.mjs refuses open-de
   assert.deepEqual(NAMES.qvol, ['Quadrix BTC Realized Volatility Vault', rb.ticker]);
   assert.equal(rb.ticker, 'qVOL');
   assert.ok(DISPLAY_ONLY.has('qvol'));
+  // the repository's registry entry: chain 91342, mark method step; before the deployment no address, deployTx or block,
+  // after it all three (the address, the 32-byte deployment transaction, its block)
   const reg = JSON.parse(fs.readFileSync(path.join(KEEPER, 'leverage-vaults.json'), 'utf8'));
-  assert.deepEqual(reg.qvol, { chainId: 91342, address: null, gate: { mode: 'step' }, deployTx: null, block: null });
+  assert.deepEqual(Object.keys(reg.qvol).sort(), ['address', 'block', 'chainId', 'deployTx', 'gate']);
+  assert.equal(reg.qvol.chainId, 91342);
+  assert.deepEqual(reg.qvol.gate, { mode: 'step' });
+  if (reg.qvol.address === null) assert.deepEqual([reg.qvol.deployTx, reg.qvol.block], [null, null]);
+  else {
+    assert.ok(isAddress(reg.qvol.address), reg.qvol.address);
+    assert.match(reg.qvol.deployTx, /^0x[0-9a-fA-F]{64}$/);
+    assert.ok(Number.isSafeInteger(reg.qvol.block) && reg.qvol.block > 0, String(reg.qvol.block));
+  }
   // an RPC that counts every request
   let requests = 0;
   const srv = http.createServer((req, res) => {
@@ -1134,8 +1166,8 @@ const VERIFY_ALL = path.join(REPO, 'scripts', 'verify.mjs');
 const verifyAll = (dir, ...extra) => runChild([VERIFY_ALL, '--dir', dir, '--series', 'qvol', ...extra]);
 
 test('in force T-IF13 scripts/verify.mjs --series qvol: not started, pending, then the published record VERIFIED — recomputed by scripts/verify-vol.mjs (run as a child, not repeated), bound to its decision effective the day before the first line, and with an RPC every anchor checked; a changed value, a dry-run line, another effective date or another rulebook fails', async () => {
-  // this repository: no record and no decision
-  let v = await verifyAll(path.join(REPO, 'trackrecord'), '--recompute-only');
+  // before the inception decision (a scratch root: the rulebook with inception null, an empty ledger): no record and no decision
+  let v = await verifyAll(path.join(notInForceRoot(), 'trackrecord'), '--recompute-only');
   assert.equal(v.code, 0, v.out + v.err);
   assert.match(v.out, /\[QVOL\] not started — no record-qvol\.jsonl and no inception decision/);
   // anchored decision, no line yet: pending until the end of the first line's day
@@ -1306,8 +1338,8 @@ test('in force T-IF14 fork rehearsal flags: --rpc and --from only together, a lo
   assert.equal(ri.code, 2);
   assert.match(ri.err, /--rpc is for --line realized/);
   assert.equal(calls, 0);
-  // the repository's rulebook (inception null): the rehearsal of a line not in force is NOT IN FORCE too, nothing read
-  const rr = await cli(run, ['--line', 'realized', '--anchor', '--rpc', FORK_RPC, '--from', from], { env: {}, fetch: async () => (calls++, new Response('[]')), transport: () => { throw new Error('no node expected'); } });
+  // the rulebook with inception null (a scratch copy): the rehearsal of a line not in force is NOT IN FORCE too, nothing read
+  const rr = await cli(run, ['--line', 'realized', '--anchor', '--rpc', FORK_RPC, '--from', from], { root: notInForceRoot(), env: {}, fetch: async () => (calls++, new Response('[]')), transport: () => { throw new Error('no node expected'); } });
   assert.equal(rr.code, 0, rr.err);
   assert.match(rr.out, /qvol: NOT IN FORCE \(keeper\/rulebooks\/qvol\.json inception is null\)/);
   assert.equal(calls, 0);
