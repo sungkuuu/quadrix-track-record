@@ -1,0 +1,436 @@
+TAP version 13
+# Subtest: C1 closed form: closes moving +-x every day, x = ln 1.01 → 100 x sqrt(365) x x within a relative 1e-9 (no rounding)
+ok 1 - C1 closed form: closes moving +-x every day, x = ln 1.01 → 100 x sqrt(365) x x within a relative 1e-9 (no rounding)
+  ---
+  duration_ms: 411.13683
+  type: 'test'
+  ...
+# Subtest: C7 chain: hash and prevHash recomputed on every line agree; a changed byte is found
+ok 2 - C7 chain: hash and prevHash recomputed on every line agree; a changed byte is found
+  ---
+  duration_ms: 540.293923
+  type: 'test'
+  ...
+# Subtest: C9 (a) a day with 1,439 bars: the run stops (exit 1); no line for it and none after
+ok 3 - C9 (a) a day with 1,439 bars: the run stops (exit 1); no line for it and none after
+  ---
+  duration_ms: 362.114331
+  type: 'test'
+  ...
+# Subtest: C9 (b) the acceptance list holds the same sha256: the run goes on; a different sha256 still stops
+ok 4 - C9 (b) the acceptance list holds the same sha256: the run goes on; a different sha256 still stops
+  ---
+  duration_ms: 776.706039
+  type: 'test'
+  ...
+# Subtest: C9 (c) a whole day without a bar: null in the window, its return 0, returns 29, denominator still 30
+ok 5 - C9 (c) a whole day without a bar: null in the window, its return 0, returns 29, denominator still 30
+  ---
+  duration_ms: 432.173153
+  type: 'test'
+  ...
+# Subtest: C9 (d) the first close of the window missing: carriedFrom holds the nearest earlier close
+ok 6 - C9 (d) the first close of the window missing: carriedFrom holds the nearest earlier close
+  ---
+  duration_ms: 269.754245
+  type: 'test'
+  ...
+# Subtest: C10 canonical text: the same value in other digits ("64000.00000000" and "64000") gives the same sha256
+ok 7 - C10 canonical text: the same value in other digits ("64000.00000000" and "64000") gives the same sha256
+  ---
+  duration_ms: 461.877942
+  type: 'test'
+  ...
+# Subtest: C11 value range: every value >= 0, a flat price gives 0
+ok 8 - C11 value range: every value >= 0, a flat price gives 0
+  ---
+  duration_ms: 788.715814
+  type: 'test'
+  ...
+# Subtest: C12 variance formula: (365/30) x sum r^2 recomputed from each window, bit for bit
+ok 9 - C12 variance formula: (365/30) x sum r^2 recomputed from each window, bit for bit
+  ---
+  duration_ms: 725.741759
+  type: 'test'
+  ...
+# Subtest: C13 window join: line D window[0..29] = line D-1 window[1..30]
+ok 10 - C13 window join: line D window[0..29] = line D-1 window[1..30]
+  ---
+  duration_ms: 513.251672
+  type: 'test'
+  ...
+# Subtest: W1 the rule has no bar length: rulebook without barMinutes, lines without rule.barMinutes, lastBar = the latest 1-minute bar
+ok 11 - W1 the rule has no bar length: rulebook without barMinutes, lines without rule.barMinutes, lastBar = the latest 1-minute bar
+  ---
+  duration_ms: 241.249378
+  type: 'test'
+  ...
+# Subtest: C7 C11 C12 C13 on a real record — only with VOL_CHECK_DIR
+ok 12 - C7 C11 C12 C13 on a real record — only with VOL_CHECK_DIR # SKIP VOL_CHECK_DIR not set
+  ---
+  duration_ms: 0.136859
+  type: 'test'
+  ...
+# Subtest: known answer, chain A: hand-computed sigma^2 = 1627589/5018112
+ok 13 - known answer, chain A: hand-computed sigma^2 = 1627589/5018112
+  ---
+  duration_ms: 3.809054
+  type: 'test'
+  ...
+# Subtest: known answer, chain B: forward from K/(1-(c-p)) and the (F/K0 - 1)^2 term; sigma^2 = 53748395/150700176
+ok 14 - known answer, chain B: forward from K/(1-(c-p)) and the (F/K0 - 1)^2 term; sigma^2 = 53748395/150700176
+  ---
+  duration_ms: 0.407605
+  type: 'test'
+  ...
+# Subtest: termVariance core takes dollar values at expiry (either adapter): same as the BTC path times F
+ok 15 - termVariance core takes dollar values at expiry (either adapter): same as the BTC path times F
+  ---
+  duration_ms: 0.164739
+  type: 'test'
+  ...
+# Subtest: known answer, interpolation: M1 = 21,600, M2 = 64,800, s1 = 0.16, s2 = 0.36 → V30 = 0.25 s1 + 0.75 s2 = 0.31 → 55.68
+ok 16 - known answer, interpolation: M1 = 21,600, M2 = 64,800, s1 = 0.16, s2 = 0.36 → V30 = 0.25 s1 + 0.75 s2 = 0.31 → 55.68
+  ---
+  duration_ms: 0.253625
+  type: 'test'
+  ...
+# Subtest: T8 interpolation step against the Cboe sample calculation (five published numbers) → 13.93
+ok 17 - T8 interpolation step against the Cboe sample calculation (five published numbers) → 13.93
+  ---
+  duration_ms: 0.266188
+  type: 'test'
+  ...
+# Subtest: T8b one-term variance from the Cboe appendix table (dollar adapter) — only with VOL_FIXTURE_DIR
+ok 18 - T8b one-term variance from the Cboe appendix table (dollar adapter) — only with VOL_FIXTURE_DIR # SKIP the Cboe appendix table is not in a public fixture; set VOL_FIXTURE_DIR to a private copy (cboe-sample-table.json)
+  ---
+  duration_ms: 0.233442
+  type: 'test'
+  ...
+# Subtest: T9 synthetic flat-vol Black-76 table recovers sigma0 = 0.3 within 0.05 points, forward within 1e-9
+ok 19 - T9 synthetic flat-vol Black-76 table recovers sigma0 = 0.3 within 0.05 points, forward within 1e-9
+  ---
+  duration_ms: 133.260495
+  type: 'test'
+  ...
+# Subtest: T9 synthetic flat-vol Black-76 table recovers sigma0 = 0.6 within 0.05 points, forward within 1e-9
+ok 20 - T9 synthetic flat-vol Black-76 table recovers sigma0 = 0.6 within 0.05 points, forward within 1e-9
+  ---
+  duration_ms: 130.19096
+  type: 'test'
+  ...
+# Subtest: T9 synthetic flat-vol Black-76 table recovers sigma0 = 1.2 within 0.05 points, forward within 1e-9
+ok 21 - T9 synthetic flat-vol Black-76 table recovers sigma0 = 1.2 within 0.05 points, forward within 1e-9
+  ---
+  duration_ms: 106.431156
+  type: 'test'
+  ...
+# Subtest: interpolation: equal term variances give the same 30-day variance; M1 = 43,200 gives the near term alone
+ok 22 - interpolation: equal term variances give the same 30-day variance; M1 = 43,200 gives the near term alone
+  ---
+  duration_ms: 0.451197
+  type: 'test'
+  ...
+# Subtest: T10-1 one invalid put is skipped; the walk goes on
+ok 23 - T10-1 one invalid put is skipped; the walk goes on
+  ---
+  duration_ms: 0.44598
+  type: 'test'
+  ...
+# Subtest: T10-2 two invalid in a row end the walk: valid strikes beyond are not used
+ok 24 - T10-2 two invalid in a row end the walk: valid strikes beyond are not used
+  ---
+  duration_ms: 0.330815
+  type: 'test'
+  ...
+# Subtest: T10-3 K0 quote invalid → k0-quote-invalid
+ok 25 - T10-3 K0 quote invalid → k0-quote-invalid
+  ---
+  duration_ms: 0.345398
+  type: 'test'
+  ...
+# Subtest: no forward: 1 - (c* - p*) = 0 or < 0 → k0-quote-invalid, atm kept, no forward field
+ok 26 - no forward: 1 - (c* - p*) = 0 or < 0 → k0-quote-invalid, atm kept, no forward field
+  ---
+  duration_ms: 0.195903
+  type: 'test'
+  ...
+# Subtest: T10-4 every OTM put excluded → no-otm-puts
+ok 27 - T10-4 every OTM put excluded → no-otm-puts
+  ---
+  duration_ms: 0.171497
+  type: 'test'
+  ...
+# Subtest: T10-5 ATM tie → the lower strike
+ok 28 - T10-5 ATM tie → the lower strike
+  ---
+  duration_ms: 0.1546
+  type: 'test'
+  ...
+# Subtest: T10-6 bid >= ask is invalid
+ok 29 - T10-6 bid >= ask is invalid
+  ---
+  duration_ms: 0.183945
+  type: 'test'
+  ...
+# Subtest: T11 expiry choice: exactly 43,200 minutes is near; nothing beyond 30 days → no-bracket
+ok 30 - T11 expiry choice: exactly 43,200 minutes is near; nothing beyond 30 days → no-bracket
+  ---
+  duration_ms: 0.339679
+  type: 'test'
+  ...
+# Subtest: T21 minute flooring on integer microseconds: 1 µs short of a whole minute floors one lower; M = 0 is no candidate
+ok 31 - T21 minute flooring on integer microseconds: 1 µs short of a whole minute floors one lower; M = 0 is no candidate
+  ---
+  duration_ms: 0.115401
+  type: 'test'
+  ...
+# Subtest: T22 ladder: a strike with only a call is not on the ladder (not counted in the walk); no strike <= F → k0-quote-invalid
+ok 32 - T22 ladder: a strike with only a call is not on the ladder (not counted in the walk); no strike <= F → k0-quote-invalid
+  ---
+  duration_ms: 0.295378
+  type: 'test'
+  ...
+# Subtest: joinQuotes: instruments only in one call are dropped; a changed shape is a FormatError
+ok 33 - joinQuotes: instruments only in one call are dropped; a changed shape is a FormatError
+  ---
+  duration_ms: 0.857887
+  type: 'test'
+  ...
+# Subtest: T20 saved snapshot of 2026-10-05 (throwaway input) — only with VOL_FIXTURE_DIR
+ok 34 - T20 saved snapshot of 2026-10-05 (throwaway input) — only with VOL_FIXTURE_DIR # SKIP VOL_FIXTURE_DIR not set (the snapshot is not a public fixture)
+  ---
+  duration_ms: 0.147272
+  type: 'test'
+  ...
+# Subtest: T12 cannot compute: no-bracket → the line is written with value null and that reason
+ok 35 - T12 cannot compute: no-bracket → the line is written with value null and that reason
+  ---
+  duration_ms: 69.940136
+  type: 'test'
+  ...
+# Subtest: T12 cannot compute: no-atm-pair → the line is written with value null and that reason
+ok 36 - T12 cannot compute: no-atm-pair → the line is written with value null and that reason
+  ---
+  duration_ms: 50.168191
+  type: 'test'
+  ...
+# Subtest: T12 cannot compute: k0-quote-invalid → the line is written with value null and that reason
+ok 37 - T12 cannot compute: k0-quote-invalid → the line is written with value null and that reason
+  ---
+  duration_ms: 45.904188
+  type: 'test'
+  ...
+# Subtest: T12 cannot compute: no-otm-puts → the line is written with value null and that reason
+ok 38 - T12 cannot compute: no-otm-puts → the line is written with value null and that reason
+  ---
+  duration_ms: 78.365934
+  type: 'test'
+  ...
+# Subtest: T12 cannot compute: no-otm-calls → the line is written with value null and that reason
+ok 39 - T12 cannot compute: no-otm-calls → the line is written with value null and that reason
+  ---
+  duration_ms: 44.567095
+  type: 'test'
+  ...
+# Subtest: T12 cannot compute: non-positive-variance → the line is written with value null and that reason
+ok 40 - T12 cannot compute: non-positive-variance → the line is written with value null and that reason
+  ---
+  duration_ms: 68.045897
+  type: 'test'
+  ...
+# Subtest: T13 hash chain and key order
+ok 41 - T13 hash chain and key order
+  ---
+  duration_ms: 417.612694
+  type: 'test'
+  ...
+# Subtest: T14 without --dry-run and inception null: NOT IN FORCE, exit 0, no file, no request
+ok 42 - T14 without --dry-run and inception null: NOT IN FORCE, exit 0, no file, no request
+  ---
+  duration_ms: 0.899131
+  type: 'test'
+  ...
+# Subtest: the switch: the implied line is off in the repository — every mode prints INACTIVE, exit 0, no request, nothing written
+ok 43 - the switch: the implied line is off in the repository — every mode prints INACTIVE, exit 0, no request, nothing written
+  ---
+  duration_ms: 307.845735
+  type: 'test'
+  ...
+# Subtest: configuration refusals exit 2 before anything is read from the network
+ok 44 - configuration refusals exit 2 before anything is read from the network
+  ---
+  duration_ms: 1.572069
+  type: 'test'
+  ...
+# Subtest: rulebook shape: what the code does not implement is refused (exit 2)
+ok 45 - rulebook shape: what the code does not implement is refused (exit 2)
+  ---
+  duration_ms: 2.266893
+  type: 'test'
+  ...
+# Subtest: T15 no key: the new files read no signing key and import no wallet client
+ok 46 - T15 no key: the new files read no signing key and import no wallet client
+  ---
+  duration_ms: 2.10679
+  type: 'test'
+  ...
+# Subtest: T17 Deribit error or missing field → exit 1, no line; one-sided instruments are dropped
+ok 47 - T17 Deribit error or missing field → exit 1, no line; one-sided instruments are dropped
+  ---
+  duration_ms: 106.517929
+  type: 'test'
+  ...
+# Subtest: T18 --collect-only: two gz files, sha256 of raw and gz, one manifest line, no value, no record
+ok 48 - T18 --collect-only: two gz files, sha256 of raw and gz, one manifest line, no value, no record
+  ---
+  duration_ms: 61.74054
+  type: 'test'
+  ...
+# Subtest: determinism: the same saved snapshot twice, at different times → lines byte-identical apart from observedAt and hash
+ok 49 - determinism: the same saved snapshot twice, at different times → lines byte-identical apart from observedAt and hash
+  ---
+  duration_ms: 836.417122
+  type: 'test'
+  ...
+# Subtest: T19 scripts/verify-vol.mjs (separate code) agrees with the module on every field; a changed field fails it
+ok 50 - T19 scripts/verify-vol.mjs (separate code) agrees with the module on every field; a changed field fails it
+  ---
+  duration_ms: 1784.434051
+  type: 'test'
+  ...
+# Subtest: expiry choice is re-made from snapshot.expiries: a wrong near term or empty terms with a bracket fail the verifier, hashed lines included
+ok 51 - expiry choice is re-made from snapshot.expiries: a wrong near term or empty terms with a bracket fail the verifier, hashed lines included
+  ---
+  duration_ms: 392.71898
+  type: 'test'
+  ...
+# Subtest: forward: 1 - (c* - p*) <= 0 gives no forward → a line with k0-quote-invalid (was an exit 1 when the difference was exactly 1)
+ok 52 - forward: 1 - (c* - p*) <= 0 gives no forward → a line with k0-quote-invalid (was an exit 1 when the difference was exactly 1)
+  ---
+  duration_ms: 250.54418
+  type: 'test'
+  ...
+# Subtest: --rulebook: the rule of every line is checked against its line's rulebook JSON (sha256 and values)
+ok 53 - --rulebook: the rule of every line is checked against its line's rulebook JSON (sha256 and values)
+  ---
+  duration_ms: 615.37437
+  type: 'test'
+  ...
+# Subtest: --tail: the record’s last line is context, the new line is checked against it; a changed new line fails
+ok 54 - --tail: the record’s last line is context, the new line is checked against it; a changed new line fails
+  ---
+  duration_ms: 581.21044
+  type: 'test'
+  ...
+# Subtest: fetch time-out: each attempt gets an abort signal; a time-out is retried, then the call fails
+ok 55 - fetch time-out: each attempt gets an abort signal; a time-out is retried, then the call fails
+  ---
+  duration_ms: 123.903806
+  type: 'test'
+  ...
+# Subtest: T1 closed form: returns of +-ln(1.01) every day give 100 x sqrt(365) x ln(1.01)
+ok 56 - T1 closed form: returns of +-ln(1.01) every day give 100 x sqrt(365) x ln(1.01)
+  ---
+  duration_ms: 1.196771
+  type: 'test'
+  ...
+# Subtest: T1b known answer on a hand-written window: (365/30) x sum r^2, mean not subtracted
+ok 57 - T1b known answer on a hand-written window: (365/30) x sum r^2, mean not subtracted
+  ---
+  duration_ms: 0.243769
+  type: 'test'
+  ...
+# Subtest: T2 day close: the close of the 1-minute bar that opened latest that day (W1)
+ok 58 - T2 day close: the close of the 1-minute bar that opened latest that day (W1)
+  ---
+  duration_ms: 3.852517
+  type: 'test'
+  ...
+# Subtest: T3 canonical text: the same value written with other digits gives the same sha256
+ok 59 - T3 canonical text: the same value written with other digits gives the same sha256
+  ---
+  duration_ms: 0.883862
+  type: 'test'
+  ...
+# Subtest: null-day rule: a day with no bar counts as the previous close; the next return spans both days
+ok 60 - null-day rule: a day with no bar counts as the previous close; the next return spans both days
+  ---
+  duration_ms: 0.599212
+  type: 'test'
+  ...
+# Subtest: T4a completeness: a day with 1,439 bars stops the run (exit 1), no line for it and none after
+ok 61 - T4a completeness: a day with 1,439 bars stops the run (exit 1), no line for it and none after
+  ---
+  duration_ms: 432.800701
+  type: 'test'
+  ...
+# Subtest: T4b accepted gap: a matching sha256 writes the line with gaps; a mismatch stops
+ok 62 - T4b accepted gap: a matching sha256 writes the line with gaps; a mismatch stops
+  ---
+  duration_ms: 566.614626
+  type: 'test'
+  ...
+# Subtest: T4c accepted day with 23:45-23:59 missing: the close is the latest 1-minute bar before the gap
+ok 63 - T4c accepted day with 23:45-23:59 missing: the close is the latest 1-minute bar before the gap
+  ---
+  duration_ms: 316.027492
+  type: 'test'
+  ...
+# Subtest: T4d accepted whole-day gap inside the window: null in the window, returns 29, the next return spans two days
+ok 64 - T4d accepted whole-day gap inside the window: null in the window, returns 29, the next return spans two days
+  ---
+  duration_ms: 401.967513
+  type: 'test'
+  ...
+# Subtest: T4e first close missing (accepted empty day at D-31): carriedFrom from the nearest earlier close, then carried on
+ok 65 - T4e first close missing (accepted empty day at D-31): carriedFrom from the nearest earlier close, then carried on
+  ---
+  duration_ms: 358.060362
+  type: 'test'
+  ...
+# Subtest: T4e-2 two empty days at the window start: later lines carry [date, close] only; an accepted partial carried day adds its acceptance id
+ok 66 - T4e-2 two empty days at the window start: later lines carry [date, close] only; an accepted partial carried day adds its acceptance id
+  ---
+  duration_ms: 363.233469
+  type: 'test'
+  ...
+# Subtest: acceptance entry: the missing list is compared field by field (key order does not matter)
+ok 67 - acceptance entry: the missing list is compared field by field (key order does not matter)
+  ---
+  duration_ms: 516.325014
+  type: 'test'
+  ...
+# Subtest: T5 finality: the next day’s first bar missing or not yet closed → no line, exit 0
+ok 68 - T5 finality: the next day’s first bar missing or not yet closed → no line, exit 0
+  ---
+  duration_ms: 78.193663
+  type: 'test'
+  ...
+# Subtest: T6 catch-up and determinism: two ended days → two lines in order, only the first late; a late run writes the same lines; a second run writes none
+ok 69 - T6 catch-up and determinism: two ended days → two lines in order, only the first late; a late run writes the same lines; a second run writes none
+  ---
+  duration_ms: 1071.928247
+  type: 'test'
+  ...
+# Subtest: T7 two fetches of the same day differ → exit 1, nothing written
+ok 70 - T7 two fetches of the same day differ → exit 1, nothing written
+  ---
+  duration_ms: 148.941054
+  type: 'test'
+  ...
+# Subtest: REST path: 1-minute bars twice per day in two pages; window and sources cover D-31 … D-1
+ok 71 - REST path: 1-minute bars twice per day in two pages; window and sources cover D-31 … D-1
+  ---
+  duration_ms: 501.669979
+  type: 'test'
+  ...
+1..71
+# tests 71
+# suites 0
+# pass 68
+# fail 0
+# cancelled 0
+# skipped 3
+# todo 0
+# duration_ms 5985.573323

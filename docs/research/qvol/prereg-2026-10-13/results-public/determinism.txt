@@ -1,0 +1,5 @@
+V4 determinism — A file range, run 1 vs each further run; fields: K + seq + sources (JSON.stringify bytes)
+run 1: results-2026-11-03/file-section/a-run4/record-qvol.jsonl lines-in-scope=3299 first=2017-09-18
+run 2: results-2026-11-03/file-section/a-run5/record-qvol.jsonl lines-in-scope=3299 first=2017-09-18
+A file range run 2: mismatches 0
+runs 2 (minimum 2), lines compared 3299, mismatches 0 -> pass

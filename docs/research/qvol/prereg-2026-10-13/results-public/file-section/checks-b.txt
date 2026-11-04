@@ -1,0 +1,9 @@
+== python3 -I impl-b/selftest.py (C1, C9) ==
+selftest OK
+exit=0 wall=47s
+
+== C11 on b-run1/record.jsonl: lines with value < 0 ==
+lines 3299 violations 0
+
+== cmp b-run1 b-run2 ==
+cmp_exit=0

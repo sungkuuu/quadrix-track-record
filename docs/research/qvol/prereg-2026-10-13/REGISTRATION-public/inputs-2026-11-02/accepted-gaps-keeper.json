@@ -1,0 +1,537 @@
+[
+ {
+  "id": "c64a55dbd1c24058656668cc6efedc88721c092d4b05a30b39a6bb75f9b2b648",
+  "series": "qvol",
+  "day": "2017-08-17",
+  "sha256": "c64a55dbd1c24058656668cc6efedc88721c092d4b05a30b39a6bb75f9b2b648",
+  "missing": [
+   {
+    "from": "00:00",
+    "to": "03:59",
+    "minutes": 240
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "05dc0def3ddeaa53fc24beb79626cd76ddbae2e8eb7d008d9ea5b062dd18f260",
+  "series": "qvol",
+  "day": "2017-09-06",
+  "sha256": "05dc0def3ddeaa53fc24beb79626cd76ddbae2e8eb7d008d9ea5b062dd18f260",
+  "missing": [
+   {
+    "from": "16:01",
+    "to": "22:59",
+    "minutes": 419
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "170dbbe188ab432f2e7288767b0ceed04c0a74c7c5b7881caa7819771ffbf3fa",
+  "series": "qvol",
+  "day": "2017-12-04",
+  "sha256": "170dbbe188ab432f2e7288767b0ceed04c0a74c7c5b7881caa7819771ffbf3fa",
+  "missing": [
+   {
+    "from": "06:01",
+    "to": "06:48",
+    "minutes": 48
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "e0b13f7aed59dad2d1bb3b8c6e1faaf9835ca55486b7048a400b9fca2e88098d",
+  "series": "qvol",
+  "day": "2017-12-18",
+  "sha256": "e0b13f7aed59dad2d1bb3b8c6e1faaf9835ca55486b7048a400b9fca2e88098d",
+  "missing": [
+   {
+    "from": "10:01",
+    "to": "10:13",
+    "minutes": 13
+   },
+   {
+    "from": "12:30",
+    "to": "13:33",
+    "minutes": 64
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "0348164f1da5a77a52ce4650c7c3d73ebe0bb0065b82e4bff1913f832914c9fc",
+  "series": "qvol",
+  "day": "2018-01-04",
+  "sha256": "0348164f1da5a77a52ce4650c7c3d73ebe0bb0065b82e4bff1913f832914c9fc",
+  "missing": [
+   {
+    "from": "03:01",
+    "to": "05:05",
+    "minutes": 125
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "84adaad2b4930f4cfcc5a2ad9591bdf7e47d7d576891d0d4cbc227f0bc2402eb",
+  "series": "qvol",
+  "day": "2018-02-08",
+  "sha256": "84adaad2b4930f4cfcc5a2ad9591bdf7e47d7d576891d0d4cbc227f0bc2402eb",
+  "missing": [
+   {
+    "from": "00:29",
+    "to": "23:59",
+    "minutes": 1411
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "1895657aa683685d5cd335fd5a8c2dfc890ff0f39371be0a1aa41f70e24e7ae2",
+  "series": "qvol",
+  "day": "2018-02-09",
+  "sha256": "1895657aa683685d5cd335fd5a8c2dfc890ff0f39371be0a1aa41f70e24e7ae2",
+  "missing": [
+   {
+    "from": "00:00",
+    "to": "09:59",
+    "minutes": 600
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "0286ee0f96c352528c6edc9109b0592b06d530142b2adeedfbb5a0d45ccb5831",
+  "series": "qvol",
+  "day": "2018-02-10",
+  "sha256": "0286ee0f96c352528c6edc9109b0592b06d530142b2adeedfbb5a0d45ccb5831",
+  "missing": [
+   {
+    "from": "06:00",
+    "to": "06:14",
+    "minutes": 15
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "5057e5efd05db74d5f0f996f27cc0c6cfdd9f33ea2f4702be1d0326ce85031a5",
+  "series": "qvol",
+  "day": "2018-02-11",
+  "sha256": "5057e5efd05db74d5f0f996f27cc0c6cfdd9f33ea2f4702be1d0326ce85031a5",
+  "missing": [
+   {
+    "from": "04:01",
+    "to": "04:34",
+    "minutes": 34
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "c23093fb332af9bb28c05b30c03084aa5dff6f42fd944a59a328c885f72ea1b7",
+  "series": "qvol",
+  "day": "2018-06-26",
+  "sha256": "c23093fb332af9bb28c05b30c03084aa5dff6f42fd944a59a328c885f72ea1b7",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "11:59",
+    "minutes": 600
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "1f3ce102e5a0ce538f1bb45d4786a7f2aaeac7850024b214930c812d6fb1307f",
+  "series": "qvol",
+  "day": "2018-06-27",
+  "sha256": "1f3ce102e5a0ce538f1bb45d4786a7f2aaeac7850024b214930c812d6fb1307f",
+  "missing": [
+   {
+    "from": "13:00",
+    "to": "14:44",
+    "minutes": 105
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "419d05c35fe4572ca9334fdf4c726597f47638d8684a8d68d97ae2a05aba06b2",
+  "series": "qvol",
+  "day": "2018-07-04",
+  "sha256": "419d05c35fe4572ca9334fdf4c726597f47638d8684a8d68d97ae2a05aba06b2",
+  "missing": [
+   {
+    "from": "00:23",
+    "to": "07:59",
+    "minutes": 457
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "e31ac5d285c5669ff2a9af158b3b7fbd474c9a1cc58328fdb8b9550db85c279e",
+  "series": "qvol",
+  "day": "2018-10-19",
+  "sha256": "e31ac5d285c5669ff2a9af158b3b7fbd474c9a1cc58328fdb8b9550db85c279e",
+  "missing": [
+   {
+    "from": "06:00",
+    "to": "09:29",
+    "minutes": 210
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "9de2ed2cd9f9e6f1c4fde8387d9200b43b537999e0468c8df93461cd3e691028",
+  "series": "qvol",
+  "day": "2018-11-14",
+  "sha256": "9de2ed2cd9f9e6f1c4fde8387d9200b43b537999e0468c8df93461cd3e691028",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "08:59",
+    "minutes": 420
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "4bbab5c923382c343f2fbc923763ce54ff9cc1fe2835c4fb1b2db353498dcd5a",
+  "series": "qvol",
+  "day": "2019-03-12",
+  "sha256": "4bbab5c923382c343f2fbc923763ce54ff9cc1fe2835c4fb1b2db353498dcd5a",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "07:59",
+    "minutes": 360
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "ed9a46cad89f9dd81fb936253616d80bfe76ea70f85036e61b8994dfbd25e65c",
+  "series": "qvol",
+  "day": "2019-05-15",
+  "sha256": "ed9a46cad89f9dd81fb936253616d80bfe76ea70f85036e61b8994dfbd25e65c",
+  "missing": [
+   {
+    "from": "03:00",
+    "to": "12:59",
+    "minutes": 600
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "eeb0b543d0329b4f0b746566962c41318826738295271554f119b0aa4b70344d",
+  "series": "qvol",
+  "day": "2019-06-07",
+  "sha256": "eeb0b543d0329b4f0b746566962c41318826738295271554f119b0aa4b70344d",
+  "missing": [
+   {
+    "from": "21:14",
+    "to": "22:14",
+    "minutes": 61
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "7e7f30643ea40460b417bfe8e706f37bdf0f9b1f0229ccbdca8e6e576cd638ad",
+  "series": "qvol",
+  "day": "2019-08-15",
+  "sha256": "7e7f30643ea40460b417bfe8e706f37bdf0f9b1f0229ccbdca8e6e576cd638ad",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "09:59",
+    "minutes": 480
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "2052ca228830e45a4e34c754ab2f0f5c98db6e791a4ac73767218fe3aba2abbc",
+  "series": "qvol",
+  "day": "2019-11-13",
+  "sha256": "2052ca228830e45a4e34c754ab2f0f5c98db6e791a4ac73767218fe3aba2abbc",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "04:19",
+    "minutes": 140
+   },
+   {
+    "from": "05:30",
+    "to": "05:32",
+    "minutes": 3
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "48acc4879ddb9070ba12343501e72caa2cccb85a9d05947e23393b2040e914b8",
+  "series": "qvol",
+  "day": "2019-11-25",
+  "sha256": "48acc4879ddb9070ba12343501e72caa2cccb85a9d05947e23393b2040e914b8",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "03:59",
+    "minutes": 120
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "2d9e7884f160131453d8a0fc7b4999376dfdb19a41b28eb37ceac6ca4d27dfba",
+  "series": "qvol",
+  "day": "2020-02-09",
+  "sha256": "2d9e7884f160131453d8a0fc7b4999376dfdb19a41b28eb37ceac6ca4d27dfba",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "02:59",
+    "minutes": 60
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "2c41b5d15ac78a3d77c9ee9678ccc741577d763fdd0e421221797e8f0d1fc911",
+  "series": "qvol",
+  "day": "2020-02-19",
+  "sha256": "2c41b5d15ac78a3d77c9ee9678ccc741577d763fdd0e421221797e8f0d1fc911",
+  "missing": [
+   {
+    "from": "11:36",
+    "to": "17:29",
+    "minutes": 354
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "6ae426ee1043f30bfdf7247286c689f4f8822f8c8ce366b662ece8f73baa65e4",
+  "series": "qvol",
+  "day": "2020-03-04",
+  "sha256": "6ae426ee1043f30bfdf7247286c689f4f8822f8c8ce366b662ece8f73baa65e4",
+  "missing": [
+   {
+    "from": "09:22",
+    "to": "11:29",
+    "minutes": 128
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "b352fbb90c9df943055c797770c929b4599d8331c3eb4a36473d5f132b8286ee",
+  "series": "qvol",
+  "day": "2020-04-25",
+  "sha256": "b352fbb90c9df943055c797770c929b4599d8331c3eb4a36473d5f132b8286ee",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "04:29",
+    "minutes": 150
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "1212deaa577f7cbb9240b83fa4cb3b0038931d8c1037654a220452db7384eee8",
+  "series": "qvol",
+  "day": "2020-06-28",
+  "sha256": "1212deaa577f7cbb9240b83fa4cb3b0038931d8c1037654a220452db7384eee8",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "05:29",
+    "minutes": 210
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "3f887df2d5208970e259ba9785ebaa3c719ec34e794e0f23261f2081a1c489ae",
+  "series": "qvol",
+  "day": "2020-11-30",
+  "sha256": "3f887df2d5208970e259ba9785ebaa3c719ec34e794e0f23261f2081a1c489ae",
+  "missing": [
+   {
+    "from": "06:00",
+    "to": "06:59",
+    "minutes": 60
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "ab9107f29dfa1f02656179df880795379fe5c0a79f79a63bbf7e249023addf10",
+  "series": "qvol",
+  "day": "2020-12-21",
+  "sha256": "ab9107f29dfa1f02656179df880795379fe5c0a79f79a63bbf7e249023addf10",
+  "missing": [
+   {
+    "from": "13:48",
+    "to": "17:59",
+    "minutes": 252
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "a6848b8e6a1cc0acd40bcce859d6a5f0cafb6df1806aa25fb97c9a9444547196",
+  "series": "qvol",
+  "day": "2020-12-25",
+  "sha256": "a6848b8e6a1cc0acd40bcce859d6a5f0cafb6df1806aa25fb97c9a9444547196",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "02:59",
+    "minutes": 60
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "25929f48325c3f039f575224842acb14e507f00176d4a4318556ae5d22ac946f",
+  "series": "qvol",
+  "day": "2021-02-11",
+  "sha256": "25929f48325c3f039f575224842acb14e507f00176d4a4318556ae5d22ac946f",
+  "missing": [
+   {
+    "from": "03:41",
+    "to": "04:59",
+    "minutes": 79
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "3e1f89fe6ac45eef6c646984dcec66949e91403f2d119000f83a9c71c1535d13",
+  "series": "qvol",
+  "day": "2021-03-06",
+  "sha256": "3e1f89fe6ac45eef6c646984dcec66949e91403f2d119000f83a9c71c1535d13",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "03:29",
+    "minutes": 90
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "89da621028709749018469d5101ca7909d3b77d6b7bba73279974061485fef84",
+  "series": "qvol",
+  "day": "2021-04-20",
+  "sha256": "89da621028709749018469d5101ca7909d3b77d6b7bba73279974061485fef84",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "04:29",
+    "minutes": 150
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "63b1de0e1c6441bd1643cc0d7299b8e9cc324f9b2fce578961ee44f118d59130",
+  "series": "qvol",
+  "day": "2021-04-25",
+  "sha256": "63b1de0e1c6441bd1643cc0d7299b8e9cc324f9b2fce578961ee44f118d59130",
+  "missing": [
+   {
+    "from": "04:01",
+    "to": "08:44",
+    "minutes": 284
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "ce0132c038aace8d2cfdd6b65f283b8e03b40f020ae233926ff1f9d5e5b2dc1d",
+  "series": "qvol",
+  "day": "2021-08-13",
+  "sha256": "ce0132c038aace8d2cfdd6b65f283b8e03b40f020ae233926ff1f9d5e5b2dc1d",
+  "missing": [
+   {
+    "from": "02:00",
+    "to": "06:29",
+    "minutes": 270
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "f1783c8cfe7dc5b6072b8dbfa8a092818f61392899917f5cdd74890fd31a6f43",
+  "series": "qvol",
+  "day": "2021-09-29",
+  "sha256": "f1783c8cfe7dc5b6072b8dbfa8a092818f61392899917f5cdd74890fd31a6f43",
+  "missing": [
+   {
+    "from": "07:00",
+    "to": "08:59",
+    "minutes": 120
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ },
+ {
+  "id": "206762004dd7cb736a8ed5a420fbffe6299009185deccf6fd27ea99004dda35a",
+  "series": "qvol",
+  "day": "2023-03-24",
+  "sha256": "206762004dd7cb736a8ed5a420fbffe6299009185deccf6fd27ea99004dda35a",
+  "missing": [
+   {
+    "from": "12:40",
+    "to": "13:59",
+    "minutes": 80
+   }
+  ],
+  "note": "derived from inputs-2026-11-02/accepted-gaps.json (same day, same sha256, same missing minutes); id = the day sha256 so that A and B write the same gapAccepted",
+  "confirmedAt": "2026-11-03"
+ }
+]
