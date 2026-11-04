@@ -39,7 +39,7 @@ document against the hash committed on chain. qX20 is not a hash chain: each
 daily close is checked against the keeper's own `setNav` transaction instead.
 Exit code 0 means every check passed. `--series <name>` restricts it to one
 (`dry`, `live`, `qrev`, `qdefi`, `qai`, `barbell`, `triens`, `qbtc2x`, `qeth2x`,
-`qeth15`, `qx20`).
+`qeth15`, `qvol`, `qx20`).
 
 For the leverage series it also recomputes every line from its own bars and
 binds the rule each line states to `keeper/rulebooks/<index>.json` (the file
@@ -47,6 +47,16 @@ whose sha256 the inception decision contains). What it does not check: that the
 bars are the ones Binance serves (`--refetch-bars` re-fetches them and prints
 `REVISED` for a difference; `--strict-source` makes that a failure), who sent an
 anchor, and the testnet vault marks.
+
+For the qVOL realized line (`qvol`; "not started" until its inception decision
+is anchored) it recomputes every line with `scripts/verify-vol.mjs`, a second
+implementation of the definition that it runs as a separate process — keep
+that file next to `verify.mjs` — and binds the first line to its inception
+decision, which is effective the day before the first line:
+
+```bash
+node scripts/verify.mjs --dir ./trackrecord --series qvol
+```
 
 To check the copy served by the site instead of this one:
 

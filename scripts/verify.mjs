@@ -29,8 +29,9 @@
  * genesis 2026-09-01), the five paper-index series (record-{qrev,qdefi,qai,
  * barbell,triens}.jsonl, anchor prefix `qxpi-<index>:`), the leverage
  * series (record-{qbtc2x,qeth2x,qeth15}.jsonl, same prefix form; reported as
- * "not started" while neither file nor an inception decision exists), and qX20's
- * daily closes (qx20-daily.jsonl). qX20 is not hash-chained: each close names the
+ * "not started" while neither file nor an inception decision exists), the qVOL
+ * realized line (record-qvol.jsonl, prefix `qxpi-qvol:`, the same "not
+ * started" rule), and qX20's daily closes (qx20-daily.jsonl). qX20 is not hash-chained: each close names the
  * keeper's setNav transaction, and the check is that the transaction exists,
  * succeeded, went to a qX20 vault, carries the stated level, and sits in the
  * stated block at the stated time. It does not prove the close was the day's
@@ -52,6 +53,23 @@
  * model-liquidation line must name the entry in which a person accepted it
  * (`liquidationAccepted`).
  *
+ * The qVOL realized line (keeper/vol-index.mjs --line realized) is also
+ * RECOMPUTED: every line's value and variance from the 31 closes in its window,
+ * and the window, sources and dates against the line before it, by
+ * scripts/verify-vol.mjs — a second implementation of the definition that
+ * imports nothing from keeper/. It runs here as a child process on a copy of
+ * the record, with the rulebook JSON (keeper/rulebooks/qvol.json, mirrored as
+ * rulebook-qvol.json) as --rulebook, so this file does not repeat that
+ * arithmetic: keep scripts/verify-vol.mjs next to this file. Checked here: the
+ * first line names the anchored inception decision `<date>-qvol-inception`
+ * whose text contains the rulebook JSON's sha256 and which is effective on
+ * the day BEFORE the first line (the decision is anchored on its effective day;
+ * the first line is dated the next UTC day); that JSON hashes to the sha256
+ * every line states and names that first day and decision; no line is a
+ * dry-run ("shadow") line; inception appears on the first line only; no line
+ * was written before its own day began, and with an RPC no anchor block is
+ * older than its line's day.
+ *
  * What VERIFIED does not cover: that the bars are the ones Binance serves
  * (--refetch-bars compares them; a difference is REVISED, a failure only with
  * --strict-source); who sent an anchor; the vault marks; that the accepting
@@ -61,7 +79,7 @@
  *   --base <url>     fetch <base>/trackrecord/… (the site's mirror)
  *   --dir <path>     read the files from a local directory
  *   --series <name>  dry | live | qrev | qdefi | qai | barbell | triens | qbtc2x |
- *                    qeth2x | qeth15 | qx20 | all (default: all). The paper indexes are
+ *                    qeth2x | qeth15 | qvol | qx20 | all (default: all). The paper indexes are
  *                    keeper/paper-index.mjs's rules-only levels: same hash-chain
  *                    shape, anchor prefix `qxpi-<index>:`, no `decisions` field.
  *   --rpc <url>      JSON-RPC endpoint (default: https://sepolia-rpc.giwa.io)
@@ -73,8 +91,8 @@
  *                    and compare the 1-minute text's sha256 and the 15-minute
  *                    bars; a difference prints REVISED (not a failure unless
  *                    --strict-source — a line's own bars are the record).
- *   --allow-rehearsal accept leverage lines marked "rehearsal" (keeper/dryrun/
- *                    output, throwaway rule values). Without it such a line fails.
+ *   --allow-rehearsal accept leverage lines marked "rehearsal" and qVOL lines marked
+ *                    "shadow" (keeper/dryrun/ output). Without it such a line fails.
  *
  * The point of this file is that you can read all of it. If you don't trust
  * the copy served by the site, verify the same data with your own code —
@@ -82,7 +100,10 @@
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -162,6 +183,9 @@ let decisions = [];
 /** The latest inception decision of a leverage index (a postponement is a later one — red team F07b). */
 const latestInception = (index) =>
   decisions.filter((d) => new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${index}-paper-inception$`).test(d.id)).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).at(-1) ?? null;
+/** The latest inception decision of the qVOL realized line: `<date>-qvol-inception`, effective the day before its first line. */
+const latestVolInception = (series) =>
+  decisions.filter((d) => new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${series}-inception$`).test(d.id)).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).at(-1) ?? null;
 try {
   decisions = await loadLines('decisions.jsonl');
 } catch {
@@ -188,6 +212,9 @@ const SERIES_FILES = {
   qbtc2x: { label: 'QBTC2X', records: 'record-qbtc2x.jsonl', anchors: 'anchors-qbtc2x.jsonl', anchorPrefix: 'qxpi-qbtc2x:', checkDecisions: false, leverage: { index: 'qbtc2x', ticker: 'qBTC2X', symbol: 'BTCUSDT', target: 2 } },
   qeth2x: { label: 'QETH2X', records: 'record-qeth2x.jsonl', anchors: 'anchors-qeth2x.jsonl', anchorPrefix: 'qxpi-qeth2x:', checkDecisions: false, leverage: { index: 'qeth2x', ticker: 'qETH2X', symbol: 'ETHUSDT', target: 2 } },
   qeth15: { label: 'QETH1.5X', records: 'record-qeth15.jsonl', anchors: 'anchors-qeth15.jsonl', anchorPrefix: 'qxpi-qeth15:', checkDecisions: false, leverage: { index: 'qeth15', ticker: 'qETH1.5X', symbol: 'ETHUSDT', target: 1.5 } },
+  // The qVOL realized line (keeper/vol-index.mjs): a measurement, one line per UTC day. Same chain and anchor
+  // shape; its recompute is scripts/verify-vol.mjs (qVOL section below).
+  qvol: { label: 'QVOL', records: 'record-qvol.jsonl', anchors: 'anchors-qvol.jsonl', anchorPrefix: 'qxpi-qvol:', checkDecisions: false, vol: { series: 'qvol', ticker: 'qVOL' } },
 };
 const ALL = [...Object.keys(SERIES_FILES), 'qx20'];
 if (SERIES !== 'all' && !ALL.includes(SERIES)) {
@@ -199,10 +226,12 @@ const totals = { records: 0, anchors: 0, series: [] };
 async function verifySeries(key) {
   const f = SERIES_FILES[key];
   let records, anchors;
-  if (f.leverage) {
-    // A leverage series exists from its inception decision on. Before that,
+  if (f.leverage || f.vol) {
+    // A leverage series (and the qVOL line) exists from its inception decision on. Before that,
     // neither file exists and nothing is wrong ("not started").
-    const inception = latestInception(f.leverage.index);
+    const inception = f.leverage ? latestInception(f.leverage.index) : latestVolInception(f.vol.series);
+    // the qVOL decision is effective the day before its first line; a leverage decision on its genesis day
+    const firstDay = inception ? lev.nextDate(inception.effectiveFrom, f.vol ? 1 : 0) : null;
     records = await loadLines(f.records).catch(() => null);
     anchors = await loadLines(f.anchors).catch(() => null);
     // an empty record file is no series either (red team F03 E)
@@ -213,10 +242,10 @@ async function verifySeries(key) {
       // written by the first keeper run after that date's 00:00 UTC. Until the
       // end of the effective day the missing file is "pending", not a failure.
       const today = new Date().toISOString().slice(0, 10);
-      if (inception && today <= inception.effectiveFrom) {
-        console.log(`\n[${f.label}] pending — inception decision ${inception.id} is effective from ${inception.effectiveFrom}; the genesis line is written by the first keeper run after ${inception.effectiveFrom}T00:00Z (a failure if ${f.records} is still missing after that UTC day)`);
-        totals.series.push(`${f.label} pending (inception ${inception.effectiveFrom})`);
-      } else if (inception) fail(`${f.label}: inception decision ${inception.id} (effective ${inception.effectiveFrom}) is anchored but ${f.records} is missing`);
+      if (inception && today <= firstDay) {
+        console.log(`\n[${f.label}] pending — inception decision ${inception.id} is effective from ${inception.effectiveFrom}; the ${f.vol ? 'first' : 'genesis'} line is written by the first keeper run after ${firstDay}T00:00Z (a failure if ${f.records} is still missing after that UTC day)`);
+        totals.series.push(`${f.label} pending (inception ${inception.effectiveFrom}${f.vol ? `, first line ${firstDay}` : ''})`);
+      } else if (inception) fail(`${f.label}: inception decision ${inception.id} (effective ${inception.effectiveFrom}${f.vol ? `, first line ${firstDay}` : ''}) is anchored but ${f.records} is missing`);
       else {
         console.log(`\n[${f.label}] not started — no ${f.records} and no inception decision`);
         totals.series.push(`${f.label} not started`);
@@ -286,6 +315,7 @@ async function verifySeries(key) {
   }
 
   if (f.leverage) await verifyLeverage(f, records);
+  if (f.vol) await verifyVol(f, records);
   if (RECOMPUTE_ONLY) {
     console.log(`\n[${f.label}] anchors not checked (--recompute-only)`);
     return;
@@ -323,11 +353,11 @@ async function verifySeries(key) {
       fail(`anchor seq ${a.seq}: calldata does not carry ${f.anchorPrefix}${a.headHash.slice(0, 12)}…`);
       continue;
     }
-    // Leverage lines: the anchor's block time is when the line demonstrably existed. It cannot be older than the
+    // Leverage and qVOL lines: the anchor's block time is when the line demonstrably existed. It cannot be older than the
     // line's own day, and how much later than observedAt it came is printed (a line rewritten as "on time" shows
     // here — red team F03 D; final review F-1 for the day bound).
     let when = '';
-    if (f.leverage) {
+    if (f.leverage || f.vol) {
       let block = null;
       try {
         block = await rpc('eth_getBlockByNumber', [receipt.blockNumber, false]);
@@ -658,6 +688,84 @@ async function verifyLeverage(f, records) {
     if (failures === before) ok(`#${rec.seq} ${D} level ${rec.level}${rec.late ? ' (late)' : ''}${k > 0 ? ` — recomputed: ${rec.slots.length} check(s), ${rec.dayStats.triggers} trigger(s)` : ' — genesis'}${rec.liquidated ? ', MODEL LIQUIDATION (series ends)' : ''}`);
   }
   if (REFETCH_BARS) console.log(`  re-fetched ${refetchOk} day(s) unchanged`);
+}
+
+// ---------------------------------------------------------------------- qVOL
+// The values are recomputed by scripts/verify-vol.mjs, which states the definition in its own code (it
+// imports nothing from keeper/ and nothing from this file). It runs as a child process on a copy of the
+// record, with the rulebook JSON as --rulebook (every line's rule must be that file's: its sha256 and
+// values). This file adds what binds the record to its decision.
+const VERIFY_VOL = path.join(path.dirname(fileURLToPath(import.meta.url)), 'verify-vol.mjs');
+
+async function verifyVol(f, records) {
+  const V = f.vol;
+  console.log(`\n[${f.label}] recompute — ${records.length} line(s) by ${path.basename(VERIFY_VOL)} (the window's closes, the rule)`);
+  if (!records.length) return;
+  const g = records[0];
+  const bad = (rec, msg) => fail(`${f.label} #${rec.seq} ${rec.date}: ${msg}`);
+  for (const rec of records) {
+    if (rec.shadow !== undefined && !ALLOW_REHEARSAL) bad(rec, 'a dry-run line ("shadow": true) — not a published series line (pass --allow-rehearsal for keeper/dryrun/ output)');
+    if (rec.seq !== g.seq && rec.inception !== undefined) bad(rec, 'inception on a line after the first');
+    if (!(Date.parse(rec.observedAt) >= lev.day0(rec.date))) bad(rec, `observedAt ${rec.observedAt} is before ${rec.date}T00:00Z — a line is never written before its day began`);
+  }
+  // the rulebook JSON: the site's mirror (rulebook-qvol.json), or the repository's keeper/rulebooks/qvol.json
+  let rbBytes = null;
+  try { rbBytes = await loadBytes(`rulebook-${V.series}.json`); } catch { rbBytes = null; }
+  if (!rbBytes && !BASE) {
+    const local = path.join(DIR, '..', 'keeper', 'rulebooks', `${V.series}.json`);
+    if (fs.existsSync(local)) rbBytes = fs.readFileSync(local);
+  }
+  // the recompute (scripts/verify-vol.mjs, separate code)
+  if (!fs.existsSync(VERIFY_VOL)) bad(g, `${VERIFY_VOL} is missing — the qVOL recompute is that script; keep it next to this file`);
+  else {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'verify-qvol-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'record-qvol.jsonl'), records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+      const argv = [VERIFY_VOL, '--dir', tmp, '--line', 'realized', '--recompute-only'];
+      if (rbBytes) {
+        fs.writeFileSync(path.join(tmp, `rulebook-${V.series}.json`), rbBytes);
+        argv.push('--rulebook', path.join(tmp, `rulebook-${V.series}.json`));
+      }
+      const r = spawnSync(process.execPath, argv, { encoding: 'utf8', env: { PATH: process.env.PATH ?? '' } });
+      const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+      let rep = null;
+      try { rep = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)); } catch { rep = null; }
+      if (r.status !== 0) {
+        const lines = out.split('\n').filter((l) => l.startsWith('FAIL ')).slice(0, 20);
+        for (const l of lines) bad(g, `verify-vol.mjs: ${l.slice(5)}`);
+        if (!lines.length) bad(g, `verify-vol.mjs exited ${r.status}: ${out.trim().split('\n').slice(-3).join(' | ')}`);
+      } else ok(`${rep?.report?.realized?.lines ?? records.length} line(s) recomputed by verify-vol.mjs — value and variance within a relative 1e-9 (largest ${rep?.maxRelativeDiff ?? '?'}), windows, sources and dates continue${rbBytes ? '; every rule is the rulebook JSON\'s' : ''}`);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+  if (g.shadow !== undefined) return; // a dry run has no decision
+  // the first line and its decision
+  const rule = g.rule ?? {};
+  const inc = g.inception ?? {};
+  if (g.seq !== 0 || g.prevHash !== null) bad(g, 'the first line is not seq 0 with prevHash null');
+  if (!new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${V.series}-inception$`).test(String(inc.decision))) bad(g, `inception.decision ${inc.decision} is not a <date>-${V.series}-inception decision`);
+  if (!rbBytes) bad(g, `rulebook JSON unavailable (rulebook-${V.series}.json${BASE ? '' : ` or ../keeper/rulebooks/${V.series}.json`}) — the lines' rule cannot be bound to it`);
+  else if (sha256(rbBytes) !== rule.rulebookSha256) bad(g, `rule.rulebookSha256 ${String(rule.rulebookSha256).slice(0, 12)}… is not the rulebook JSON's ${sha256(rbBytes).slice(0, 12)}… (a rulebook changed after inception needs its own decision)`);
+  else {
+    let rb = null;
+    try { rb = JSON.parse(rbBytes.toString('utf8')); } catch (e) { bad(g, `rulebook JSON unreadable (${e.message})`); }
+    if (rb) {
+      if (rb.ticker !== V.ticker || rb.series !== V.series || rb.inception?.date !== g.date || rb.inception?.decision !== inc.decision) bad(g, `rulebook JSON names ${rb.ticker} ${rb.series}, inception ${rb.inception?.date} ${rb.inception?.decision} — not this series' first line ${g.date} and decision ${inc.decision}`);
+      if (!Array.isArray(rb.pendingOwner) || rb.pendingOwner.length) bad(g, 'rulebook JSON is a draft — pendingOwner is not an empty list; a published line cannot rest on it');
+    }
+  }
+  const d = decisions.find((x) => x.id === inc.decision);
+  if (!d) bad(g, `inception decision ${inc.decision} is not in decisions.jsonl`);
+  else {
+    checkedDecisionIds.add(d.id);
+    if (inc.decisionSha256 !== d.sha256) bad(g, `inception.decisionSha256 differs from the ledger's ${d.sha256.slice(0, 12)}…`);
+    // the decision is effective on the day it is anchored; the first line is dated the next UTC day
+    if (lev.nextDate(d.effectiveFrom) !== g.date) bad(g, `inception decision is effective from ${d.effectiveFrom}, so the first line is dated ${lev.nextDate(d.effectiveFrom)}, not ${g.date}`);
+    let text = '';
+    try { text = (await loadBytes(d.file)).toString('utf8'); } catch (e) { bad(g, `decision document unreadable (${e.message})`); }
+    if (text && !text.includes(rule.rulebookSha256)) bad(g, `decision ${d.id} does not contain the rulebook sha256 ${rule.rulebookSha256}`);
+  }
 }
 
 // qX20: the keeper's setNav(uint256 navPerShare, uint256 indexLevel) marks,
