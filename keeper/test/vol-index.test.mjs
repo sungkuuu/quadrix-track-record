@@ -28,6 +28,7 @@ import { VAULT_ABI } from '../leverage-index.mjs';
 import { NAMES, DISPLAY_ONLY } from '../deploy-mark-vault.mjs';
 import { fakeNode } from './leverage-helpers.mjs';
 import { quotesSha256 } from '../vol-implied.mjs';
+import { realizedFromWindow } from '../vol-realized.mjs';
 import { handTable, syntheticTable, syntheticDays, writeOffline, writeSnapshot, fakeDeribit, fakeBinance, timeless, tmpDir, readJsonl, cli, KEEPER, REPO, addDays, rulebookPath, impliedOnRoot } from './vol-helpers.mjs';
 
 const IMP = 'record-volbtc-implied.jsonl';
@@ -650,16 +651,53 @@ const quick = (node, refuse = null, { cap = 0n } = {}) =>
     { retryCount: 0 }
   );
 
+/**
+ * The fake Binance of vol-helpers answers every klines call with 1-minute rows
+ * (it does not read `interval`). Daily candles (interval=1d) are answered
+ * here from the same bars, as Binance's are: a closed day's candle opens at
+ * 00:00 UTC and closes at the day's last 1-minute close. `daily(day, close)`
+ * may change a candle's close (undefined: unchanged; null: no candle).
+ */
+function withDaily(bin, days, serverTime, { daily = null } = {}) {
+  const fetch = async (url, init) => {
+    const u = new URL(url);
+    if (u.pathname !== '/api/v3/klines' || u.searchParams.get('interval') !== '1d') return bin.fetch(url, init);
+    bin.calls.push(u.pathname + u.search);
+    const rows = dailyKlines(days, { daily, from: Number(u.searchParams.get('startTime')), to: Number(u.searchParams.get('endTime')), serverTime });
+    return new Response(JSON.stringify(rows.slice(0, Number(u.searchParams.get('limit')))), { status: 200 });
+  };
+  return { fetch, calls: bin.calls };
+}
+/** Daily candles (klines rows, as Binance's REST API answers interval=1d) of the closed days of `days` that open in [from, to]. */
+function dailyKlines(days, { daily = null, from = -Infinity, to = Infinity, serverTime = Infinity } = {}) {
+  const rows = [];
+  for (const d of Object.keys(days).sort()) {
+    const open = Date.parse(`${d}T00:00:00Z`);
+    const mins = days[d];
+    if (open < from || open > to || !mins.length || open + 86_400_000 - 1 >= serverTime) continue;
+    let c = mins.at(-1).c;
+    if (daily) {
+      const x = daily(d, c);
+      if (x === null) continue;
+      if (x !== undefined) c = x;
+    }
+    const hi = Math.max(c, ...mins.map((m) => m.h));
+    const lo = Math.min(c, ...mins.map((m) => m.l));
+    rows.push([open, mins[0].o.toFixed(8), hi.toFixed(8), lo.toFixed(8), c.toFixed(8), '1440.00000000', open + 86_400_000 - 1, '1.0', 1440, '0.5', '0.5', '0']);
+  }
+  return rows;
+}
+
 /** One in-force run at `iso` (the runner's clock; the fake Binance's server time is 5 minutes later). */
-async function inForce(root, iso, { key = null, node = null, transport = null, argv = ['--anchor'], extra = {} } = {}) {
+async function inForce(root, iso, { key = null, node = null, transport = null, argv = ['--anchor'], extra = {}, bars = BARS, tamper = null, daily = null } = {}) {
   const now = Date.parse(iso);
-  const bin = fakeBinance(BARS, now + 300_000);
+  const bin = withDaily(fakeBinance(bars, now + 300_000, tamper ? { tamper } : {}), bars, now + 300_000, { daily });
   const r = await cli(run, ['--line', 'realized', ...argv], {
     root, now: () => now, fetch: bin.fetch, env: key ? { KEEPER_PK: key } : {},
     transport: transport ? () => transport : node ? () => quick(node) : () => { throw new Error('no chain call expected'); },
     pollingInterval: 5, readTiming: { waitMs: 50, stepMs: 1 }, ...extra,
   });
-  return { ...r, binanceCalls: bin.calls.length };
+  return { ...r, binanceCalls: bin.calls.length, calls: bin.calls };
 }
 const listAll = (dir) => {
   const out = [];
@@ -1401,4 +1439,191 @@ test('in force T-IF17 (F1): a line without an anchor is anchored only after scri
   assert.deepEqual(readJsonl(x.anc).map((a) => a.seq), [0, 1, 2]);
   assert.equal(node.txs.length, sent + 1);
   assert.deepEqual(node.anchorsOf().at(-1), `qxpi-qvol:${readJsonl(x.rec)[2].hash}`);
+});
+
+/** The bars with minute k of `day` changed by f (a new object; BARS is not touched). */
+const alterBar = (days, day, k, f) => ({ ...days, [day]: days[day].map((m, i) => (i === k ? f(m) : m)) });
+/** +0.01 on the close of a minute (its high follows), so the day's canonical text changes and the bar stays consistent. */
+const nudge = (m) => ({ ...m, c: Math.round((m.c + 0.01) * 100) / 100, h: Math.max(m.h, Math.round((m.c + 0.01) * 100) / 100) });
+const RB_REPO = JSON.parse(fs.readFileSync(rulebookPath('realized'), 'utf8'));
+const CHECKS = (x) => path.join(x.root, 'keeper', 'vol-index-source-checks.json');
+const entryIn = (text, check) => JSON.parse(new RegExp(`(\\{"series":"qvol","day":"[^"]+","check":"${check}"[^}]*\\})`).exec(text)[1]);
+
+test('in force T-IF18 (F2): before the series continues from its last line, the bars of that line\'s day are read again from Binance (one more fetch) — other bars than the line records stop the run (exit 1; nothing written, anchored or marked; the message names the day and both sha256) and the same bars let it continue (control); an anchored line whose day the source changed later goes on once a person confirms that change; a line without an anchor is never anchored on bars the source does not serve (a self-consistent line appended by hand: PoC 4 a2); a dry run that continues a record reads that day again too', async () => {
+  const x = inForceRoot();
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  assert.equal((await inForce(x.root, `${D1}T00:25:00Z`, { key, node })).code, 0);
+  const [L0] = readJsonl(x.rec);
+  assert.equal(L0.source.day, E);
+  const firstPage = (calls, day) => calls.filter((c) => c.includes('interval=1m') && c.includes(`startTime=${Date.parse(`${day}T00:00:00Z`)}&`)).length;
+  // control: the same bars — the line's day is fetched once more, then line #1 is written and anchored
+  const c = copyRoot(x);
+  const sent0 = node.txs.length;
+  const ok = await inForce(c.root, '2099-02-03T00:25:00Z', { key, node });
+  assert.equal(ok.code, 0, ok.err);
+  assert.match(ok.out, new RegExp(`#0 ${D1}: the bars of ${E} read again from Binance — the same as the line records`));
+  assert.equal(firstPage(ok.calls, E), 1, 'the recorded day is fetched once more');
+  assert.equal(readJsonl(c.rec).length, 2);
+  assert.equal(node.txs.length, sent0 + 1);
+  // the source now serves other bars for 2099-02-01 (one close +0.01 at 10:00; the day close is the same)
+  const changed = alterBar(BARS, E, 600, nudge);
+  const y = copyRoot(x);
+  const before = listAll(y.root);
+  const r = await inForce(y.root, '2099-02-03T00:25:00Z', { key, node, bars: changed });
+  assert.equal(r.code, 1, r.err);
+  assert.match(r.err, new RegExp(`qvol: SOURCE CHANGED — line #0 ${D1} was built from the bars of ${E} \\(1440 rows, close ${String(L0.window[30][1]).replace('.', '\\.')} \\(bar 23:59\\), canonical text sha256 ${L0.source.sha256}\\), but the source now serves 1440 rows, close ${String(L0.window[30][1]).replace('.', '\\.')} \\(bar 23:59\\), canonical text sha256 (?!${L0.source.sha256})[0-9a-f]{64} — nothing written, nothing anchored, no mark\\. The line is anchored: a person checks the day at the source`));
+  const entry = entryIn(r.err, 'refetch');
+  assert.deepEqual([entry.day, entry.recorded], [E, L0.source.sha256]);
+  assert.deepEqual(listAll(y.root), before, 'a file changed');
+  assert.equal(node.txs.length, sent0 + 1, 'a transaction was sent');
+  // an entry that names other bars does not let it go on; a malformed file is refused (exit 2)
+  fs.writeFileSync(CHECKS(y), JSON.stringify([{ id: 'qvol-revised-2099-02-01', ...entry, served: 'f'.repeat(64), note: 'TEST ONLY', confirmedAt: '2099-02-03' }]));
+  assert.equal((await inForce(y.root, '2099-02-03T00:25:00Z', { key, node, bars: changed })).code, 1);
+  fs.writeFileSync(CHECKS(y), JSON.stringify([{ id: 'x', series: 'qvol', day: E, check: 'refetch', recorded: entry.recorded }]));
+  const bad = await inForce(y.root, '2099-02-03T00:25:00Z', { key, node, bars: changed });
+  assert.equal(bad.code, 2);
+  assert.match(bad.err, /source check file .* needs id, series "qvol", day, and check "refetch" with recorded and served/);
+  // the printed entry, confirmed: the next run goes on; the line stays as written
+  fs.writeFileSync(CHECKS(y), JSON.stringify([{ id: 'qvol-revised-2099-02-01', ...entry, note: 'TEST ONLY — a stand-in confirmation', confirmedAt: '2099-02-03' }], null, 2) + '\n');
+  const go = await inForce(y.root, '2099-02-03T00:25:00Z', { key, node, bars: changed });
+  assert.equal(go.code, 0, go.err);
+  assert.match(go.out, new RegExp(`#0 ${D1}: the bars of ${E} changed after the line was written \\(sha256 ${L0.source.sha256} → ${entry.served}\\) — confirmed by qvol-revised-2099-02-01 in keeper/vol-index-source-checks\\.json; the line stays as written`));
+  const ly = readJsonl(y.rec);
+  assert.equal(ly.length, 2);
+  assert.deepEqual(ly[0], L0);
+  // a line without an anchor (written without the key) whose day the source no longer serves: never anchored, the entry notwithstanding
+  const u = inForceRoot();
+  assert.equal((await inForce(u.root, `${D1}T00:25:00Z`, { argv: [] })).code, 0);
+  fs.writeFileSync(CHECKS(u), fs.readFileSync(CHECKS(y)));
+  const n1 = node.txs.length;
+  const ru = await inForce(u.root, `${D1}T00:40:00Z`, { key, node, bars: changed });
+  assert.equal(ru.code, 1, ru.err);
+  assert.match(ru.err, new RegExp(`SOURCE CHANGED — line #0 ${D1} was built from the bars of ${E} .* — #0 has no anchor and is not anchored: nothing sent, nothing appended, no mark\\. If the source never served those bars, the line did not come from it`));
+  assert.equal(node.txs.length, n1);
+  assert.equal(fs.existsSync(path.join(u.root, 'trackrecord', ANC)), false);
+  // PoC 4 a2: a self-consistent line appended by hand — a made-up 2099-02-02 close, the value computed from it,
+  // a made-up source sha256 (or the real one) — passes scripts/verify-vol.mjs, but its day is not what Binance serves
+  const w = copyRoot(x);
+  assert.equal((await inForce(w.root, '2099-02-03T00:25:00Z', { argv: [] })).code, 0);
+  const L1 = readJsonl(w.rec)[1];
+  const win = L1.window.map((e, k) => (k === 30 ? [e[0], e[1] * 1.5] : e));
+  const made = realizedFromWindow(win, null, { windowDays: RB_REPO.windowDays, yearDays: RB_REPO.yearDays });
+  for (const [label, src] of [['a made-up sha256', { ...L1.source, sha256: 'ab'.repeat(32) }], ['the real sha256', L1.source]]) {
+    const f = copyRoot(x);
+    const forged = rehash({ ...L1, value: made.value, variance: made.variance, window: win, source: src });
+    fs.appendFileSync(f.rec, JSON.stringify(forged) + '\n');
+    const v = verify(path.join(f.root, 'trackrecord'), '--line', 'realized', '--rulebook', f.rbFile);
+    assert.equal(v.status, 0, `${label}: verify-vol accepts the forged line (${v.stdout})`);
+    const n = node.txs.length;
+    const rf = await inForce(f.root, '2099-02-04T00:25:00Z', { key, node });
+    assert.equal(rf.code, 1, `${label}: ${rf.err}`);
+    assert.match(rf.err, /SOURCE CHANGED — line #1 2099-02-03 was built from the bars of 2099-02-02 .* — #1 has no anchor and is not anchored: nothing sent/, label);
+    assert.equal(node.txs.length, n, `${label}: a transaction was sent`);
+    assert.equal(readJsonl(f.rec).length, 2, label);
+  }
+  // a dry run that continues a record: the last line's day is read again (offline: its file; REST: one more fetch)
+  const dir = tmpDir('vol-if18-dry');
+  writeOffline(path.join(dir, 'bars'), BARS);
+  const dry = (out, extra = [], deps = {}) => cli(run, ['--line', 'realized', '--dry-run', '--out', out, ...extra], { root: x.root, now: () => Date.parse('2099-02-10T00:25:00Z'), ...deps });
+  const out = path.join(dir, 'out');
+  assert.equal((await dry(out, ['--offline', path.join(dir, 'bars'), '--replay', `${D1}..2099-02-03`])).code, 0);
+  const last = readJsonl(path.join(out, REA)).at(-1);
+  writeOffline(path.join(dir, 'bars'), alterBar(BARS, last.source.day, 600, nudge));
+  const rd = await dry(out, ['--offline', path.join(dir, 'bars'), '--replay', `${D1}..2099-02-05`]);
+  assert.equal(rd.code, 1);
+  assert.match(rd.err, new RegExp(`SOURCE CHANGED — line #1 2099-02-03 was built from the bars of ${last.source.day} .* — nothing written: the dry run does not continue from a line whose day the source no longer confirms`));
+  assert.equal(readJsonl(path.join(out, REA)).length, 2);
+  const rest = await dry(out, [], { fetch: fakeBinance(alterBar(BARS, last.source.day, 600, nudge), Date.parse('2099-02-06T00:30:00Z')).fetch });
+  assert.equal(rest.code, 1);
+  assert.match(rest.err, /SOURCE CHANGED/);
+  writeOffline(path.join(dir, 'bars'), BARS);
+  const rgo = await dry(out, ['--offline', path.join(dir, 'bars'), '--replay', `${D1}..2099-02-05`]);
+  assert.equal(rgo.code, 0, rgo.err);
+  assert.equal(readJsonl(path.join(out, REA)).length, 4);
+});
+
+test('in force T-IF19 (F12): before line D is written, Binance\'s daily candle of D-1 (on the first line: of every window day, in one request) must close where the 1-minute bars close the day — another close or no candle stops the run (exit 1; nothing written, anchored or marked; the message names both closes) and the same close lets it write (control); a person who finds the 1-minute bars right confirms the difference and the next run writes the line from them; a dry run checks it only with --daily <file>', async () => {
+  const dms = (d) => Date.parse(`${d}T00:00:00Z`);
+  const c0 = BARS[E].at(-1).c; // the close of 2099-02-01, the first line's newest window day
+  const req1 = `/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=${dms('2099-01-02')}&endTime=${dms(D1) - 1}&limit=31`;
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const cases = [
+    ['the candle of 2099-02-01 closes 1 higher', (d, c) => (d === E ? c + 1 : undefined), new RegExp(`qvol: DAILY CLOSE DIFFERS — the 1-minute bars close ${E} at ${c0}, Binance's daily candle closes it at ${c0 + 1}; nothing written for line ${D1}, nothing anchored, no mark\\. A person compares the two at the source`)],
+    ['an older window day (2099-01-15) differs', (d, c) => (d === '2099-01-15' ? c - 1 : undefined), /DAILY CLOSE DIFFERS — the 1-minute bars close 2099-01-15 at .*, Binance's daily candle closes it at /],
+    ['no daily candle of 2099-02-01', (d) => (d === E ? null : undefined), new RegExp(`DAILY CLOSE DIFFERS — the 1-minute bars close ${E} at ${c0}, Binance's daily candle has no closed daily candle of that day`)],
+  ];
+  for (const [label, daily, why] of cases) {
+    const x = inForceRoot();
+    const before = listAll(x.root);
+    const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, node, daily });
+    assert.equal(r.code, 1, `${label}: ${r.err}`);
+    assert.match(r.err, why, label);
+    assert.deepEqual(r.calls.filter((c) => c.includes('interval=1d')), [req1], label);
+    assert.deepEqual(listAll(x.root), before, `${label}: a file changed`);
+    assert.equal(node.txs.length, 0, `${label}: a transaction was sent`);
+  }
+  // control: the same closes — the first line is written and anchored
+  const x = inForceRoot();
+  const ok = await inForce(x.root, `${D1}T00:25:00Z`, { key, node });
+  assert.equal(ok.code, 0, ok.err);
+  assert.match(ok.out, new RegExp(`#0 ${D1}: Binance's daily candles of the 31 window days close where the 1-minute bars close them`));
+  assert.equal(readJsonl(x.rec).length, 1);
+  // a later line: one candle, the day D-1 only
+  const c1 = BARS[D1].at(-1).c;
+  const y = copyRoot(x);
+  const sent = node.txs.length;
+  const r = await inForce(y.root, '2099-02-03T00:25:00Z', { key, node, daily: (d, c) => (d === D1 ? c + 0.01 : undefined) });
+  assert.equal(r.code, 1, r.err);
+  assert.match(r.err, new RegExp(`DAILY CLOSE DIFFERS — the 1-minute bars close ${D1} at ${c1}, Binance's daily candle closes it at ${String(c1 + 0.01)}; nothing written for line 2099-02-03`));
+  assert.deepEqual(r.calls.filter((c) => c.includes('interval=1d')), [`/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=${dms(D1)}&endTime=${dms('2099-02-03') - 1}&limit=1`]);
+  assert.equal(readJsonl(y.rec).length, 1);
+  assert.equal(node.txs.length, sent);
+  // the printed entry, confirmed: the next run writes the line from the 1-minute bars
+  const entry = entryIn(r.err, 'daily-close');
+  assert.deepEqual(entry, { series: 'qvol', day: D1, check: 'daily-close', minuteClose: String(c1), dailyClose: String(c1 + 0.01) });
+  fs.writeFileSync(CHECKS(y), JSON.stringify([{ id: 'qvol-daily-2099-02-02', ...entry, note: 'TEST ONLY — a stand-in confirmation', confirmedAt: '2099-02-03' }], null, 2) + '\n');
+  const go = await inForce(y.root, '2099-02-03T00:25:00Z', { key, node, daily: (d, c) => (d === D1 ? c + 0.01 : undefined) });
+  assert.equal(go.code, 0, go.err);
+  assert.match(go.out, new RegExp(`${D1}: Binance's daily candle closes at ${String(c1 + 0.01)}, the 1-minute bars at ${c1} — confirmed by qvol-daily-2099-02-02 in keeper/vol-index-source-checks\\.json; the line is written from the 1-minute bars, as the definition says`));
+  const [, L1] = readJsonl(y.rec);
+  assert.equal(L1.window[30][1], c1);
+  // a dry run: no daily candle is read without --daily; with it, the file's closes are the check
+  const dir = tmpDir('vol-if19-dry');
+  const good = path.join(dir, 'daily.json');
+  fs.writeFileSync(good, JSON.stringify(dailyKlines(BARS)));
+  const gz = path.join(dir, 'daily.json.gz');
+  fs.writeFileSync(gz, zlib.gzipSync(JSON.stringify(dailyKlines(BARS))));
+  const wrong = path.join(dir, 'wrong.json');
+  fs.writeFileSync(wrong, JSON.stringify(dailyKlines(BARS, { daily: (d, c) => (d === '2099-02-02' ? c + 1 : undefined) })));
+  const dry = async (extra) => {
+    const fb = withDaily(fakeBinance(BARS, Date.parse('2099-02-04T00:30:00Z')), BARS, Date.parse('2099-02-04T00:30:00Z'));
+    const out = tmpDir('vol-if19-out');
+    const res = await cli(run, ['--line', 'realized', '--dry-run', '--replay', `${D1}..2099-02-04`, '--out', out, ...extra], { root: x.root, now: () => Date.parse('2099-02-04T00:25:00Z'), fetch: fb.fetch });
+    return { ...res, lines: readJsonl(path.join(out, REA)), daily: fb.calls.filter((c) => c.includes('interval=1d')).length, calls: fb.calls.length };
+  };
+  const plain = await dry([]);
+  assert.equal(plain.code, 0, plain.err);
+  assert.equal(plain.daily, 0, 'a dry run without --daily reads no daily candle');
+  for (const f of [good, gz]) {
+    const d = await dry(['--daily', f]);
+    assert.equal(d.code, 0, d.err);
+    assert.deepEqual(d.lines, plain.lines, `${f}: the lines differ from a dry run without --daily`);
+    assert.equal(d.daily, 0);
+    assert.equal(d.calls, plain.calls);
+  }
+  const dw = await dry(['--daily', wrong]);
+  assert.equal(dw.code, 1);
+  assert.match(dw.err, new RegExp(`DAILY CLOSE DIFFERS — the 1-minute bars close 2099-02-02 at ${c1}, the daily candle in .*wrong\\.json closes it at ${c1 + 1}; nothing written for line 2099-02-03`));
+  assert.equal(dw.lines.length, 1);
+  // a malformed file, or --daily without --dry-run: refused (exit 2) before any request
+  const junk = path.join(dir, 'junk.json');
+  fs.writeFileSync(junk, JSON.stringify([[Date.parse('2099-02-01T00:05:00Z'), '1', '1', '1', '1', '1', 0]]));
+  for (const argv of [['--line', 'realized', '--dry-run', '--replay', `${D1}..${D1}`, '--out', tmpDir('vol-if19-j'), '--daily', junk], ['--line', 'realized', '--daily', good]]) {
+    let calls = 0;
+    const rj = await cli(run, argv, { root: x.root, now: () => Date.parse('2099-02-04T00:25:00Z'), fetch: async () => (calls++, new Response('[]')) });
+    assert.equal(rj.code, 2, `${argv.join(' ')}: ${rj.err}`);
+    assert.equal(calls, 0);
+  }
 });
