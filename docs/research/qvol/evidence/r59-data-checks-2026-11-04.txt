@@ -1,0 +1,41 @@
+R59 data checks of the qVOL inputs — 2026-11-04
+$ node docs/methodology/checklist-runs/qvol/evidence/r59-data-checks.mjs      (exit 0, node v22.23.1, site repository at 5ad9e4ed)
+script sha256 b8bcfec6c46ee63f1f80c922bd8fc3ccc3843fb8006de9ce80d5404309fa3eba; inputs: docs/research/leverage/params-v6/data-1m (checked against index-1m.json by the reader) and docs/research/qvol/prereg-2026-10-13/snapshot/E-2026-11-02/rest-1m
+
+(1) gaps in the 1-minute files (patched): 35; |open after / close before - 1|: median 0.0001%, max 0.1219%; over 1%: 0; over 5%: 0
+    2017-09-06T16:01Z 419 min · close before 4619.43 · open after 4619.43 · 0.0000%
+    2017-12-04T06:01Z 48 min · close before 11478 · open after 11464.01 · -0.1219%
+    2017-12-18T10:01Z 13 min · close before 18668.53 · open after 18680.91 · 0.0663%
+    2017-12-18T12:30Z 64 min · close before 19161 · open after 19161 · 0.0000%
+    2018-01-04T03:01Z 125 min · close before 15119.97 · open after 15119.97 · 0.0000%
+    2018-02-08T00:29Z 2011 min · close before 7784.02 · open after 7789.9 · 0.0755%
+    2018-02-10T06:00Z 15 min · close before 8842.98 · open after 8842.98 · 0.0000%
+    2018-02-11T04:01Z 34 min · close before 7976.74 · open after 7976.74 · 0.0000%
+    2018-06-26T02:00Z 600 min · close before 6227.99 · open after 6228 · 0.0002%
+    2018-06-27T13:00Z 105 min · close before 6087.84 · open after 6087.84 · 0.0000%
+    2018-07-04T00:23Z 457 min · close before 6481.69 · open after 6481.72 · 0.0005%
+    2018-10-19T06:00Z 210 min · close before 6588.01 · open after 6588 · -0.0002%
+    2018-11-14T02:00Z 420 min · close before 6472 · open after 6469 · -0.0464%
+    2019-03-12T02:00Z 360 min · close before 3834.69 · open after 3834.69 · 0.0000%
+    2019-05-15T03:00Z 600 min · close before 7946.71 · open after 7946.71 · 0.0000%
+    2019-06-07T21:14Z 61 min · close before 7930.85 · open after 7930.85 · 0.0000%
+    2019-08-15T02:00Z 480 min · close before 10095.05 · open after 10085.65 · -0.0931%
+    2019-11-13T02:00Z 140 min · close before 8767 · open after 8767.01 · 0.0001%
+    2019-11-13T05:30Z 3 min · close before 8738.43 · open after 8738.43 · 0.0000%
+    2019-11-25T02:00Z 120 min · close before 6713.49 · open after 6717.21 · 0.0554%
+    2020-02-09T02:00Z 60 min · close before 9938.9 · open after 9938.86 · -0.0004%
+    2020-02-19T11:36Z 354 min · close before 10148.93 · open after 10149.99 · 0.0104%
+    2020-03-04T09:22Z 128 min · close before 8795.06 · open after 8795.06 · 0.0000%
+    2020-04-25T02:00Z 150 min · close before 7480.78 · open after 7480.68 · -0.0013%
+    2020-06-28T02:00Z 210 min · close before 8971.8 · open after 8971.86 · 0.0007%
+    2020-11-30T06:00Z 60 min · close before 18520.47 · open after 18520.27 · -0.0011%
+    2020-12-21T13:48Z 252 min · close before 22681.32 · open after 22693.65 · 0.0544%
+    2020-12-25T02:00Z 60 min · close before 23597.21 · open after 23597.2 · -0.0000%
+    2021-02-11T03:41Z 79 min · close before 44582.07 · open after 44583.71 · 0.0037%
+    2021-03-06T02:00Z 90 min · close before 48647.38 · open after 48647.37 · -0.0000%
+    2021-04-20T02:00Z 150 min · close before 54764.12 · open after 54764.13 · 0.0000%
+    2021-04-25T04:01Z 284 min · close before 49683.94 · open after 49683.95 · 0.0000%
+    2021-08-13T02:00Z 270 min · close before 44847.26 · open after 44847.27 · 0.0000%
+    2021-09-29T07:00Z 120 min · close before 42450.25 · open after 42442 · -0.0194%
+    2023-03-24T12:40Z 80 min · close before 28080 · open after 28079.99 · -0.0000%
+(2) REST snapshot: 94 files, 135360 one-minute bars; volume 0: 0; trades 0: 0
