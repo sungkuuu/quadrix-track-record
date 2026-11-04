@@ -35,6 +35,7 @@ import { honestRecord, copyRoot, inForce, inForceRoot, D1 } from './qvol-inforce
 
 const D2 = '2099-02-03'; // line #1, from the bars of D1 = 2099-02-02
 const PAGE1 = `startTime=${dayMs(D1)}&limit=1000`; // the first page of the day line #1 adds (both fetches ask for it)
+const CALLS = 9; // the Binance calls of a run that writes line #1
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const gaps = (t) => t.slice(1).map((x, i) => x - t[i]);
 
@@ -50,7 +51,8 @@ const control = (async () => {
   const r = await second();
   assert.equal(r.code, 0, r.err);
   assert.equal(r.lines.length, 2);
-  assert.equal(r.calls.length, 6); // server time, the finality probe, two fetches of two pages
+  // server time, the finality probe, the last line's day read again (two pages), two fetches of two pages, the daily candle
+  assert.equal(r.calls.length, CALLS);
   return r.file;
 })();
 
@@ -102,10 +104,10 @@ test('O2 call spacing (250 ms between Binance calls): the spacing measured at it
     };
     const r = await second({ wrap: timed, ...(wait ? { wait } : {}) });
     assert.equal(r.code, 0, r.err);
-    assert.equal(at.length, 6, label);
+    assert.equal(at.length, CALLS, label);
     assert.ok(Math.min(...gaps(at)) >= floor, `${label}: gaps ${gaps(at).join(', ')} ms`);
     assert.ok(r.file.equals(want), `${label}: the line differs`);
-    t.diagnostic(`spacing ${label}: gaps between the 6 calls ${gaps(at).join(', ')} ms`);
+    t.diagnostic(`spacing ${label}: gaps between the ${CALLS} calls ${gaps(at).join(', ')} ms`);
   }
 });
 
@@ -130,7 +132,7 @@ test('O3 time limit of one attempt (30 s): every attempt asks for 30,000 ms; an 
     let r = await second({ wrap: hanging(1, hung) });
     assert.equal(r.code, 0, r.err);
     assert.equal(hung.length, 1);
-    assert.equal(asked.length, 7); // 6 calls + 1 retry
+    assert.equal(asked.length, CALLS + 1); // every call + 1 retry
     assert.ok(asked.every((ms) => ms === FETCH_TIMEOUT_MS), `asked ${asked.join(', ')}`);
     assert.ok(r.file.equals(want), 'the line differs');
     hung = [];

@@ -78,14 +78,72 @@ export const keyed = () => {
   return { key, address: privateKeyToAccount(key).address };
 };
 
+// ------------------------------------------------- the chain and the exchange as the keeper reads them
+// DEPLOY_TX, rpcTx, chainExtras, txView, withDaily and dailyKlines are copied from
+// keeper/test/vol-index.test.mjs (the keeper's own tests), so that both test the keeper
+// against the same stand-ins.
+
+/** The display vault's stand-in deployment: a contract creation in block 60 (chainExtras answers it as the signer's). */
+export const DEPLOY_TX = `0x${'e'.repeat(64)}`;
 const DEPOSIT_CAP = toFunctionSelector('function depositCap()');
-/** The fake node as viem's transport without retries (as vol-index.test.mjs); depositCap() answers 0. */
-export const quick = (node) =>
+const hexN = (n) => `0x${BigInt(n).toString(16)}`;
+/** A transaction as eth_getTransactionByHash answers it. */
+const rpcTx = ({ hash, from, to = null, input = '0x', block = null }) => ({
+  hash, from, to, input, value: '0x0', nonce: '0x0', gas: '0xea60', type: '0x2', chainId: hexN(91342), maxFeePerGas: '0x77359400', maxPriorityFeePerGas: '0x1',
+  accessList: [], v: '0x0', r: '0x1', s: '0x1', yParity: '0x0', transactionIndex: block == null ? null : '0x0',
+  blockNumber: block == null ? null : hexN(block), blockHash: block == null ? null : `0x${BigInt(block).toString(16).padStart(64, '0')}`,
+});
+/**
+ * What GIWA would answer for transactions the fake node did not see, stand-ins
+ * read from a scratch root: the inception decision's anchor (the ledger's
+ * txHash: a self-send from `from` with calldata qxdec:<sha256>, as
+ * scripts/anchor-decision.mjs sends it) and the display vault's deployment
+ * (the registry's deployTx: a contract creation by `from` whose receipt names
+ * the registry's address). hash → {from, to, input, block, contractAddress}.
+ */
+function chainExtras(root, from, { fork = false } = {}) {
+  const m = new Map();
+  if (!root || !from) return m;
+  for (const e of readJsonl(path.join(root, 'trackrecord', 'decisions.jsonl'))) {
+    if (/^0x[0-9a-fA-F]{64}$/.test(e.txHash ?? '')) m.set(e.txHash.toLowerCase(), { from, to: from, input: toHex(`qxdec:${e.sha256}`), block: 50 });
+  }
+  const reg = path.join(root, 'keeper', ...(fork ? ['dryrun'] : []), 'leverage-vaults.json');
+  const v = fs.existsSync(reg) ? JSON.parse(fs.readFileSync(reg, 'utf8')).qvol : null;
+  if (v?.address && /^0x[0-9a-fA-F]{64}$/.test(v.deployTx ?? '')) m.set(v.deployTx.toLowerCase(), { from, to: null, input: '0x6080604052', block: 60, contractAddress: getAddress(v.address) });
+  return m;
+}
+/**
+ * eth_getTransactionByHash (which the fake node does not answer) for the
+ * node's own transactions and the stand-ins of chainExtras, and
+ * eth_getTransactionReceipt for the stand-ins; a hash in `forget` is unknown
+ * (a reorg dropped it). undefined: the node answers the request itself.
+ */
+function txView(node, req, { root = null, from = null, fork = false, forget = null } = {}) {
+  if (req.method !== 'eth_getTransactionByHash' && req.method !== 'eth_getTransactionReceipt') return undefined;
+  const h = String(req.params?.[0] ?? '').toLowerCase();
+  if (forget?.has(h)) return null;
+  const own = node.txs.find((t) => t.hash.toLowerCase() === h);
+  const x = own ? null : chainExtras(root, from, { fork }).get(h);
+  if (req.method === 'eth_getTransactionByHash') return own ? rpcTx({ ...own, input: own.data }) : x ? rpcTx({ hash: h, ...x }) : null;
+  if (!x) return undefined;
+  return {
+    transactionHash: h, blockNumber: hexN(x.block), blockHash: `0x${BigInt(x.block).toString(16).padStart(64, '0')}`, transactionIndex: '0x0', status: x.status ?? '0x1', gasUsed: '0x5208',
+    cumulativeGasUsed: '0x5208', effectiveGasPrice: '0x3b9aca01', logs: [], logsBloom: `0x${'0'.repeat(512)}`, type: '0x2', contractAddress: x.contractAddress ?? null, from: x.from, to: x.to,
+  };
+}
+/**
+ * The fake node as viem's transport without retries (as vol-index.test.mjs): depositCap() answers 0;
+ * transactions are looked up through txView (`chain`: {root, from, fork, forget}) — the node's own
+ * (the line anchors, with their sender, recipient, calldata and block) and the decision's anchor.
+ */
+export const quick = (node, chain = {}) =>
   custom(
     {
       async request(req) {
         if (req.method === 'eth_fillTransaction') throw Object.assign(new Error('the method eth_fillTransaction does not exist'), { code: -32601 });
         if (req.method === 'eth_call' && String(req.params?.[0]?.data ?? '').startsWith(DEPOSIT_CAP)) return `0x${'0'.repeat(64)}`;
+        const seen = txView(node, req, chain);
+        if (seen !== undefined) return seen;
         return node.transport({ retryCount: 0 }).request(req);
       },
     },
@@ -93,20 +151,59 @@ export const quick = (node) =>
   );
 
 /**
- * One in-force run of the keeper at `iso` (the runner's clock; the fake exchange's clock is 5 minutes
- * later). `wrap(fetch)` may wrap the fake exchange (failures, hangs, timing); `wait` replaces the
- * keeper's wait (cli's default waits nothing); `runFn` replaces the keeper's run. Without `key` and
- * `node` nothing is anchored and no chain call may happen.
+ * The fake Binance of vol-helpers answers every klines call with 1-minute rows
+ * (it does not read `interval`). Daily candles (interval=1d) are answered
+ * here from the same bars, as Binance's are: a closed day's candle opens at
+ * 00:00 UTC and closes at the day's last 1-minute close. `daily(day, close)`
+ * may change a candle's close (undefined: unchanged; null: no candle).
  */
-export async function inForce(root, iso, { key = null, node = null, argv = ['--anchor'], bars = BARS, tamper = null, wrap = null, wait = null, runFn = run, extra = {} } = {}) {
+export function withDaily(bin, days, serverTime, { daily = null } = {}) {
+  const fetch = async (url, init) => {
+    const u = new URL(url);
+    if (u.pathname !== '/api/v3/klines' || u.searchParams.get('interval') !== '1d') return bin.fetch(url, init);
+    bin.calls.push(u.pathname + u.search);
+    const rows = dailyKlines(days, { daily, from: Number(u.searchParams.get('startTime')), to: Number(u.searchParams.get('endTime')), serverTime });
+    return new Response(JSON.stringify(rows.slice(0, Number(u.searchParams.get('limit')))), { status: 200 });
+  };
+  return { fetch, calls: bin.calls };
+}
+/** Daily candles (klines rows, as Binance's REST API answers interval=1d) of the closed days of `days` that open in [from, to]. */
+function dailyKlines(days, { daily = null, from = -Infinity, to = Infinity, serverTime = Infinity } = {}) {
+  const rows = [];
+  for (const d of Object.keys(days).sort()) {
+    const open = Date.parse(`${d}T00:00:00Z`);
+    const mins = days[d];
+    if (open < from || open > to || !mins.length || open + 86_400_000 - 1 >= serverTime) continue;
+    let c = mins.at(-1).c;
+    if (daily) {
+      const x = daily(d, c);
+      if (x === null) continue;
+      if (x !== undefined) c = x;
+    }
+    const hi = Math.max(c, ...mins.map((m) => m.h));
+    const lo = Math.min(c, ...mins.map((m) => m.l));
+    rows.push([open, mins[0].o.toFixed(8), hi.toFixed(8), lo.toFixed(8), c.toFixed(8), '1440.00000000', open + 86_400_000 - 1, '1.0', 1440, '0.5', '0.5', '0']);
+  }
+  return rows;
+}
+
+/**
+ * One in-force run of the keeper at `iso` (the runner's clock; the fake exchange's clock is 5 minutes
+ * later). The exchange serves 1-minute bars and daily candles of `bars` (a day's candle closes at its
+ * last 1-minute close; `daily` may change it). `wrap(fetch)` may wrap the fake exchange (failures,
+ * hangs, timing); `wait` replaces the keeper's wait (cli's default waits nothing); `runFn` replaces
+ * the keeper's run. Without `key` and `node` nothing is anchored and no chain call may happen.
+ */
+export async function inForce(root, iso, { key = null, node = null, argv = ['--anchor'], bars = BARS, tamper = null, daily = null, wrap = null, wait = null, runFn = run, extra = {} } = {}) {
   const now = Date.parse(iso);
-  const bin = fakeBinance(bars, now + 300_000, tamper ? { tamper } : {});
+  const bin = withDaily(fakeBinance(bars, now + 300_000, tamper ? { tamper } : {}), bars, now + 300_000, { daily });
+  const from = key ? privateKeyToAccount(key).address : null;
   const r = await cli(runFn, ['--line', 'realized', ...argv], {
     root,
     now: () => now,
     fetch: wrap ? wrap(bin.fetch) : bin.fetch,
     env: key ? { KEEPER_PK: key } : {},
-    transport: node ? () => quick(node) : () => { throw new Error('no chain call expected'); },
+    transport: node ? () => quick(node, { root, from }) : () => { throw new Error('no chain call expected'); },
     pollingInterval: 5,
     readTiming: { waitMs: 50, stepMs: 1 },
     ...(wait ? { wait } : {}),
@@ -147,7 +244,7 @@ async function listen(srv) {
 
 /** The fake exchange of vol-helpers as an HTTP server: `days` = {date: minutes[]}, `serverTime` (ms), `tamper` as fakeBinance's. */
 export async function exchangeServer(days, serverTime, { tamper = null } = {}) {
-  const fb = fakeBinance(days, serverTime, tamper ? { tamper } : {});
+  const fb = withDaily(fakeBinance(days, serverTime, tamper ? { tamper } : {}), days, serverTime);
   const srv = http.createServer(async (req, res) => {
     const r = await fb.fetch(`https://data-api.binance.vision${req.url}`);
     res.writeHead(r.status, { 'content-type': 'application/json' });
