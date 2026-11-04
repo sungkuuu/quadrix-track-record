@@ -1,0 +1,14 @@
+Public word scan of the qVOL branch — 2026-11-04
+code: branch keeper/qvol-2026-11-02 at e0dda23a2cc24f26ff77ea3871e6548d2551246c; base: commit af79c9099170c47f545ed30bcfc9c61380c41508 (main, where the branch last took main in)
+scope: every file the branch adds or changes against the base (163 files) and the author, committer and message of every branch commit after the base (45 commits)
+word lists (kept private; their sha256): words-i (matched ignoring case, 14 patterns) 3231544b4d924c2f82b44c0110953c0946ee36b38ff6291bdae26b27e9d3aa49 · words-c (matched with case, 3 patterns) 6df39ad4e9f334fbf69e6b799b93479ff09d749110c8d211abb9d017aed783cb
+
+$ git diff -z --name-only --diff-filter=AMR af79c9099170c47f545ed30bcfc9c61380c41508 HEAD | xargs -0 grep -IinE -f words-i
+$ git diff -z --name-only --diff-filter=AMR af79c9099170c47f545ed30bcfc9c61380c41508 HEAD | xargs -0 grep -InE -f words-c
+$ git log --format='%an <%ae> | %cn <%ce>%n%B' af79c9099170c47f545ed30bcfc9c61380c41508..HEAD | grep -inE -f words-i
+$ git log --format='%an <%ae> | %cn <%ce>%n%B' af79c9099170c47f545ed30bcfc9c61380c41508..HEAD | grep -nE -f words-c
+
+RESULT: no line matched — all four commands print nothing
+authors and committers of the 45 commits: Quadrix <support@quadrix.finance>, every one
+
+Not in this scan: this file, and the files that pin it (the inception decision, the provenance file and the gate report). They are scanned the same way before the anchor.
