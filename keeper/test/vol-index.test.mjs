@@ -6,7 +6,9 @@
  * scripts/verify-vol.mjs (T19). The last section tests the realized line in
  * force (a stand-in inception decision in a scratch ledger, a fake GIWA node,
  * a key generated here): the decision check, the line, the verifier, the
- * anchor, the display vault's mark and the refusal of open-deposits for qvol.
+ * anchor, the display vault's mark and the refusal of open-deposits for qvol;
+ * and its fork rehearsal (--rpc, --from: T-IF14 to T-IF16), against the same
+ * fake node standing in for a local fork that holds the --from account unlocked.
  *
  *   node --test keeper/test/vol-index.test.mjs
  */
@@ -20,7 +22,7 @@ import http from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { custom, decodeFunctionData, getAddress, parseTransaction, toFunctionSelector, toHex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { run, parseArgs, rulebookProblem, markUnits } from '../vol-index.mjs';
+import { run, parseArgs, rulebookProblem, markUnits, isLocalRpc, GIWA_RPC } from '../vol-index.mjs';
 import { markSteps } from '../leverage-step.mjs';
 import { VAULT_ABI } from '../leverage-index.mjs';
 import { NAMES, DISPLAY_ONLY } from '../deploy-mark-vault.mjs';
@@ -1128,4 +1130,204 @@ test('in force T-IF13 scripts/verify.mjs --series qvol: not started, pending, th
     assert.equal(r.code, 1, `${label}: ${r.out}`);
     assert.match(r.out, why, label);
   }
+});
+
+// ------------------------------------------------- the fork rehearsal (--rpc, --from)
+const FORK_RPC = 'http://127.0.0.1:8599';
+/**
+ * A local fork node for viem: the fake GIWA node, plus eth_sendTransaction from
+ * the one account it holds unlocked — signed here with that account's test key
+ * and passed on as a raw transaction, as anvil signs for an impersonated
+ * account. `calls` lists every method the keeper asked this node for (before a
+ * send becomes a signed transaction); depositCap() answers `cap`.
+ */
+function forkNode(node, unlocked, { cap = 0n } = {}) {
+  const calls = [];
+  const account = privateKeyToAccount(unlocked.key);
+  const inner = node.transport({ retryCount: 0 });
+  const transport = custom(
+    {
+      async request(req) {
+        calls.push(req.method);
+        if (req.method === 'eth_fillTransaction') throw Object.assign(new Error('the method eth_fillTransaction does not exist'), { code: -32601 });
+        if (req.method === 'eth_call' && String(req.params?.[0]?.data ?? '').startsWith(DEPOSIT_CAP)) return `0x${cap.toString(16).padStart(64, '0')}`;
+        if (req.method === 'eth_sendTransaction') {
+          const [tx] = req.params;
+          if (getAddress(tx.from) !== account.address) throw Object.assign(new Error('unknown account'), { code: -32000 });
+          const nonce = Number(await inner.request({ method: 'eth_getTransactionCount', params: [tx.from, 'pending'] }));
+          const raw = await account.signTransaction({ chainId: 91342, type: 'eip1559', to: tx.to, data: tx.data ?? '0x', value: 0n, gas: BigInt(tx.gas), nonce, maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 1n });
+          return inner.request({ method: 'eth_sendRawTransaction', params: [raw] });
+        }
+        return inner.request(req);
+      },
+    },
+    { retryCount: 0 }
+  );
+  return { transport, calls };
+}
+/** An in-force root whose fork registry (keeper/dryrun/leverage-vaults.json) names `vault`, and whose own registry names `realVault`. */
+function forkRoot({ vault = QVAULT, realVault = getAddress('0x00000000000000000000000000000000000dead1'), ledger = true } = {}) {
+  const x = inForceRoot({ vaults: qvolVaults({ mode: 'step' }, realVault), ledger });
+  const dry = path.join(x.root, 'keeper', 'dryrun');
+  fs.mkdirSync(dry, { recursive: true });
+  fs.writeFileSync(path.join(dry, 'leverage-vaults.json'), JSON.stringify(qvolVaults({ mode: 'step' }, vault), null, 2) + '\n');
+  return { ...x, dry, frec: path.join(dry, REA), fanc: path.join(dry, ANC), fmarks: path.join(dry, 'marks-qvol.jsonl'), realReg: path.join(x.root, 'keeper', 'leverage-vaults.json') };
+}
+/** One fork-rehearsal run at `iso`: --anchor --rpc FORK_RPC --from <unlocked>, the transport factory recording the URL it is asked for. */
+async function forkRun(x, iso, { unlocked, fork, env = {}, argv = null, urls = [] }) {
+  return inForce(x.root, iso, { argv: argv ?? ['--anchor', '--rpc', FORK_RPC, '--from', unlocked.address], extra: { env, transport: (url) => (urls.push(url), fork.transport) } });
+}
+
+test('in force T-IF14 fork rehearsal flags: --rpc and --from only together, a local node only (the host as a URL parser reads it), an address, never with --dry-run, --line implied or --out, never under GitHub Actions — refused (exit 2) before any Binance or chain request, nothing written', async () => {
+  assert.ok(isLocalRpc('http://127.0.0.1:8599') && isLocalRpc('http://localhost:8545/') && isLocalRpc('http://[::1]:8545'));
+  for (const u of [GIWA_RPC, 'http://127.0.0.1:1@sepolia-rpc.giwa.io/', 'http://127.0.0.1.example.com:8599', 'ws://127.0.0.1:8545', 'http://user:pw@localhost:8545', '127.0.0.1:8545', '']) assert.equal(isLocalRpc(u), false, u);
+  const x = forkRoot();
+  const from = keyed().address;
+  const cases = [
+    [['--anchor', '--from', from], {}, /--rpc and --from go together/],
+    [['--anchor', '--rpc', FORK_RPC], {}, /--rpc and --from go together/],
+    [['--anchor', '--rpc', GIWA_RPC, '--from', from], {}, /--rpc https:\/\/sepolia-rpc\.giwa\.io is not a local node/],
+    [['--anchor', '--rpc', 'http://127.0.0.1:1@sepolia-rpc.giwa.io/', '--from', from], {}, /is not a local node/],
+    [['--anchor', '--rpc', 'http://127.0.0.1.example.com:8599', '--from', from], {}, /is not a local node/],
+    [['--anchor', '--rpc', FORK_RPC, '--from', '0x1234'], {}, /--from 0x1234 is not an address/],
+    [['--dry-run', '--replay', `${D1}..${D1}`, '--rpc', FORK_RPC, '--from', from], {}, /a dry run never reaches a chain/],
+    [['--anchor', '--rpc', FORK_RPC, '--from', from, '--out', tmpDir('vol-if-fork-out')], {}, /--out is for --dry-run and --collect-only; the line in force is written to keeper\/dryrun\/record-qvol\.jsonl/],
+    [['--anchor', '--rpc', FORK_RPC, '--from', from], { GITHUB_ACTIONS: 'true' }, /a fork rehearsal \(--rpc, --from\) runs on a local machine only, never in a workflow/],
+  ];
+  const before = listAll(x.root);
+  for (const [argv, env, why] of cases) {
+    const r = await inForce(x.root, `${D1}T00:25:00Z`, { argv, extra: { env, transport: () => { throw new Error('a refused fork rehearsal must not reach a node'); } } });
+    assert.equal(r.code, 2, `${argv.join(' ')}: exit ${r.code} ${r.err}`);
+    assert.match(r.err, why, argv.join(' '));
+    assert.equal(r.binanceCalls, 0, `${argv.join(' ')}: Binance was called`);
+    assert.deepEqual(listAll(x.root), before, `${argv.join(' ')}: a file changed`);
+  }
+  // the implied line has no in-force path, so no rehearsal of one
+  let calls = 0;
+  const ri = await cli(run, ['--line', 'implied', '--rpc', FORK_RPC, '--from', from], { root: ON, env: {}, fetch: async () => (calls++, new Response('{}')) });
+  assert.equal(ri.code, 2);
+  assert.match(ri.err, /--rpc is for --line realized/);
+  assert.equal(calls, 0);
+  // the repository's rulebook (inception null): the rehearsal of a line not in force is NOT IN FORCE too, nothing read
+  const rr = await cli(run, ['--line', 'realized', '--anchor', '--rpc', FORK_RPC, '--from', from], { env: {}, fetch: async () => (calls++, new Response('[]')), transport: () => { throw new Error('no node expected'); } });
+  assert.equal(rr.code, 0, rr.err);
+  assert.match(rr.out, /qvol: NOT IN FORCE \(keeper\/rulebooks\/qvol\.json inception is null\)/);
+  assert.equal(calls, 0);
+});
+
+test('in force T-IF15 a fork rehearsal never writes the record or registry of the line in force and never signs: its line, anchor and marks go under keeper/dryrun/ (nothing under trackrecord/, no keeper/marks-qvol.jsonl, keeper/leverage-vaults.json unread for the mark and unchanged); every request goes to the --rpc node, every transaction is eth_sendTransaction from --from, KEEPER_PK in the environment is not used; the line is byte for byte the line the keeper key writes', async () => {
+  const x = forkRoot();
+  const unlocked = keyed();
+  const live = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qVOL' });
+  const fork = forkNode(node, unlocked);
+  const urls = [];
+  const trBefore = listAll(path.join(x.root, 'trackrecord'));
+  const regBefore = fs.readFileSync(x.realReg);
+  const r = await forkRun(x, `${D1}T00:25:00Z`, { unlocked, fork, env: { KEEPER_PK: live.key }, urls });
+  assert.equal(r.code, 0, r.err);
+  // where it wrote
+  const lines = readJsonl(x.frec);
+  assert.deepEqual(lines.map((l) => [l.seq, l.date]), [[0, D1]]);
+  assert.deepEqual(readJsonl(x.fanc).map((a) => [a.seq, a.date, a.headHash, a.txHash]), [[0, D1, lines[0].hash, node.txs[0].hash]]);
+  const marks = readJsonl(x.fmarks);
+  assert.deepEqual(marks.map((m) => BigInt(m.nav)), markSteps(1_000_000n, markUnits(lines[0].value)));
+  assert.deepEqual(listAll(path.join(x.root, 'trackrecord')), trBefore, 'a file under trackrecord/ changed');
+  assert.equal(fs.existsSync(x.rec) || fs.existsSync(x.anc) || fs.existsSync(x.marks), false);
+  assert.ok(fs.readFileSync(x.realReg).equals(regBefore));
+  // where it sent: the --rpc node only, no transaction signed by the keeper itself, all from --from, the mark to the fork registry's vault
+  assert.ok(urls.length > 0 && urls.every((u) => u === FORK_RPC), urls.join(','));
+  assert.ok(fork.calls.includes('eth_sendTransaction') && !fork.calls.includes('eth_sendRawTransaction'), fork.calls.join(','));
+  assert.ok(node.txs.length > 1 && node.txs.every((t) => t.from === unlocked.address), 'a transaction not from --from');
+  assert.ok(!node.txs.some((t) => t.from === live.address || t.to === live.address));
+  assert.deepEqual(node.anchorsOf(), [`qxpi-qvol:${lines[0].hash}`]);
+  assert.ok(node.txs.filter((t) => t.to !== t.from).every((t) => t.to === QVAULT));
+  assert.equal(node.state.nav, markUnits(lines[0].value));
+  // the same day with the keeper key, from the same bars and clock: the same bytes
+  const k = inForceRoot({ vaults: qvolVaults() });
+  const kn = fakeNode({ vault: QVAULT, keeper: live.address, symbol: 'qVOL' });
+  assert.equal((await inForce(k.root, `${D1}T00:25:00Z`, { key: live.key, node: kn })).code, 0);
+  assert.ok(fs.readFileSync(k.rec).equals(fs.readFileSync(x.frec)), 'the rehearsal line differs from the line in force');
+  assert.equal(kn.state.nav, node.state.nav);
+  // the next run the same minute sends nothing
+  const n0 = node.txs.length;
+  assert.equal((await forkRun(x, `${D1}T00:26:00Z`, { unlocked, fork })).code, 0);
+  assert.equal(node.txs.length, n0);
+  // a node that does not hold --from unlocked (as GIWA Sepolia's public endpoint): no anchor, nothing signed here — the line stays written, exit 1
+  const y = forkRoot();
+  const stranger = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qVOL' });
+  const ry = await inForce(y.root, `${D1}T00:25:00Z`, { argv: ['--anchor', '--rpc', FORK_RPC, '--from', unlocked.address], extra: { env: { KEEPER_PK: live.key }, transport: () => quick(stranger) } });
+  assert.equal(ry.code, 1);
+  assert.match(ry.err, new RegExp(`line #0 ${D1} is written but its anchor failed: .* — no mark; the next run anchors it first`));
+  assert.equal(stranger.txs.length, 0);
+  assert.ok(!stranger.methods.includes('eth_sendRawTransaction'));
+  assert.equal(readJsonl(y.frec).length, 1);
+  assert.equal(fs.existsSync(y.rec), false);
+});
+
+test('in force T-IF16 a fork rehearsal prints each step\'s result in order — the rehearsal line, the decision, each line, its recompute by scripts/verify-vol.mjs, its anchor, the mark and every mark step; each refusal prints what stopped and what stays: no decision → no line; a deposit cap above 0 or another vault\'s symbol → the line written and anchored, no mark, exit 1', async () => {
+  const x = forkRoot();
+  const unlocked = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qVOL' });
+  const fork = forkNode(node, unlocked);
+  const r1 = await forkRun(x, `${D1}T00:25:00Z`, { unlocked, fork });
+  assert.equal(r1.code, 0, r1.err);
+  const [L0] = readJsonl(x.frec);
+  const n6 = markUnits(L0.value);
+  const steps = markSteps(1_000_000n, n6);
+  const out = r1.out.split('\n');
+  const at = (re) => {
+    const i = out.findIndex((l) => re.test(l));
+    assert.ok(i >= 0, `missing ${re} in\n${r1.out}`);
+    return i;
+  };
+  const order = [
+    at(new RegExp(`^qvol: FORK REHEARSAL — node ${FORK_RPC.replace(/\./g, '\\.')}, signer ${unlocked.address} \\(unlocked on that node; KEEPER_PK is not read\\); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/$`)),
+    at(new RegExp(`^qVOL \\(qvol\\) in force: decision ${DECISION} · first line ${D1} · rulebook [0-9a-f]{12}… · 0 line\\(s\\) in keeper/dryrun/record-qvol\\.jsonl$`)),
+    at(new RegExp(`^qvol #0 ${D1} ${String(L0.value).replace('.', '\\.')} · head ${L0.hash.slice(0, 16)}…$`)),
+    at(new RegExp(`^  #0 ${D1} recomputed by scripts/verify-vol\\.mjs before it was appended — agrees$`)),
+    at(new RegExp(`^  anchored #0 ${D1} in ${node.txs[0].hash} \\(block \\d+\\)$`)),
+    at(new RegExp(`^  vault ${QVAULT}: navPerShare 1000000 → target ${n6} \\(n6 of the value ${String(L0.value).replace('.', '\\.')}\\) in ${steps.length} step\\(s\\)$`)),
+  ];
+  for (let k = 0; k < steps.length; k++) order.push(at(new RegExp(`^    step ${k + 1}/${steps.length}: navPerShare ${steps[k]} tx=0x[0-9a-f]{64} block \\d+`)));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), r1.out);
+  // the next day: one line, its recompute, its anchor, the mark from the last value
+  const r2 = await forkRun(x, '2099-02-03T00:25:00Z', { unlocked, fork });
+  assert.equal(r2.code, 0, r2.err);
+  const L1 = readJsonl(x.frec)[1];
+  assert.match(r2.out, new RegExp(`qVOL \\(qvol\\) in force: .* · 1 line\\(s\\) in keeper/dryrun/record-qvol\\.jsonl`));
+  assert.match(r2.out, /  #1 2099-02-03 recomputed by scripts\/verify-vol\.mjs before it was appended — agrees/);
+  assert.match(r2.out, /  anchored #1 2099-02-03 in 0x[0-9a-f]{64} \(block \d+\)/);
+  assert.match(r2.out, new RegExp(`vault ${QVAULT}: navPerShare ${n6} → target ${markUnits(L1.value)} `));
+  assert.equal(node.state.nav, markUnits(L1.value));
+  // refusals, each its own run
+  // (a) the decision is not anchored (not in the ledger): NOT IN FORCE, exit 0, no line, no request
+  const a = forkRoot({ ledger: false });
+  const na = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qVOL' });
+  const ra = await forkRun(a, `${D1}T00:25:00Z`, { unlocked, fork: forkNode(na, unlocked) });
+  assert.equal(ra.code, 0, ra.err);
+  assert.match(ra.out, /qvol: FORK REHEARSAL — /);
+  assert.match(ra.out, new RegExp(`qvol: NOT IN FORCE: decision not anchored or does not pin this rulebook \\(${DECISION} is not in trackrecord/decisions\\.jsonl\\)`));
+  assert.equal(fs.existsSync(a.frec), false);
+  assert.equal(ra.binanceCalls, 0);
+  assert.equal(na.methods.length, 0);
+  // (b) a deposit cap above 0: the line written, recomputed and anchored, no setNav, exit 1
+  const b = forkRoot();
+  const nb = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qVOL' });
+  const rb = await forkRun(b, `${D1}T00:25:00Z`, { unlocked, fork: forkNode(nb, unlocked, { cap: 1_000_000_000_000n }) });
+  assert.equal(rb.code, 1);
+  assert.match(rb.out, /  #0 2099-02-02 recomputed by scripts\/verify-vol\.mjs before it was appended — agrees/);
+  assert.match(rb.out, /  anchored #0 2099-02-02 in 0x/);
+  assert.match(rb.err, /qVOL vault marks FAILED after line #0 was written and anchored: REFUSED: vault .* has deposit cap 1000000000000, not 0 — a display vault takes no deposits; no mark sent/);
+  assert.deepEqual([readJsonl(b.frec).length, readJsonl(b.fanc).length, fs.existsSync(b.fmarks)], [1, 1, false]);
+  assert.equal(nb.txs.filter((t) => t.to === QVAULT).length, 0);
+  assert.equal(nb.state.nav, 1_000_000n);
+  // (c) the fork registry names a vault whose symbol is not qVOL: the line written and anchored, no setNav, exit 1
+  const c = forkRoot();
+  const nc = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qBTC2X' });
+  const rc = await forkRun(c, `${D1}T00:25:00Z`, { unlocked, fork: forkNode(nc, unlocked) });
+  assert.equal(rc.code, 1);
+  assert.match(rc.err, /vault .* is "qBTC2X", not qVOL — keeper\/dryrun\/leverage-vaults\.json names the wrong vault; no mark sent/);
+  assert.deepEqual([readJsonl(c.frec).length, readJsonl(c.fanc).length, fs.existsSync(c.fmarks)], [1, 1, false]);
+  assert.equal(nc.txs.filter((t) => t.to === QVAULT).length, 0);
 });

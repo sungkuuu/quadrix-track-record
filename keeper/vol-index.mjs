@@ -55,6 +55,20 @@
  * A dry run never reads a key, never anchors and never marks; it loads no
  * chain library.
  *
+ * Fork rehearsal (--rpc <local URL> --from 0x…, the two together): the same
+ * in-force path against a local anvil fork of GIWA Sepolia, signed by the
+ * account --from that the fork node holds unlocked (eth_sendTransaction to
+ * --rpc; KEEPER_PK is not read and nothing is signed here). The record, the
+ * anchors, the marks and the vault registry are read and written under
+ * keeper/dryrun/ instead (that registry is the one keeper/deploy-mark-vault.mjs
+ * writes on a fork); the decision ledger, the rulebook JSON and the gap file
+ * are read where the line in force reads them, and nothing under trackrecord/
+ * is written. --rpc must name 127.0.0.1, localhost or [::1] (the host as a URL
+ * parser reads it). --rpc or --from alone, with --dry-run, with --line implied
+ * or under GitHub Actions is refused (exit 2) before anything is read. Each
+ * step prints its result: the decision check, each line and its recompute,
+ * each anchor, each mark step (keeper/test/rehearse-qvol.mjs drives it).
+ *
  * Implied, one run (--dry-run): a line for today already → nothing to do →
  * get_instruments, then get_book_summary_by_currency (or the saved raw
  * responses of --from-snapshot) → value or null with a reason → recompute →
@@ -62,6 +76,7 @@
  *
  * Usage:
  *   node keeper/vol-index.mjs --line realized --anchor        # the daily workflow step (KEEPER_PK in env)
+ *   node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 --from 0x<unlocked>   # fork rehearsal
  *   node keeper/vol-index.mjs --line realized --dry-run --replay 2019-03-04..2019-03-31 --out keeper/dryrun
  *   node keeper/vol-index.mjs --line implied --collect-only --out <dir>
  *   node keeper/vol-index.mjs --line implied --dry-run --from-snapshot <book.json.gz> --instruments <inst.json.gz>
@@ -71,6 +86,8 @@
  *   --anchor                  (realized, in force) anchor each new line and mark the display vault, with
  *                             KEEPER_PK; without it, or without the key, lines are written unanchored and
  *                             the next run with the key anchors them first. Not accepted with --dry-run
+ *   --rpc URL --from 0x…      (realized, in force) fork rehearsal: a local RPC (127.0.0.1, localhost, [::1]) and
+ *                             an account unlocked there; record, anchors, marks and registry under keeper/dryrun/
  *   --dry-run                 write lines under --out only; every line carries "shadow": true
  *   --out <dir>               default keeper/dryrun/ (gitignored); for --dry-run and --collect-only (refused in force)
  *   --collect-only            (implied) save the two raw responses gzipped and their sha256; no value
@@ -134,9 +151,9 @@ const refuse = (m) => new Exit(2, m);
 // ------------------------------------------------------------------ arguments
 
 export function parseArgs(argv, cwd = process.cwd()) {
-  const valued = ['--line', '--out', '--from-snapshot', '--instruments', '--replay', '--offline', '--gaps', '--quotes'];
+  const valued = ['--line', '--out', '--from-snapshot', '--instruments', '--replay', '--offline', '--gaps', '--quotes', '--rpc', '--from'];
   const flags = ['--dry-run', '--collect-only', '--anchor'];
-  const o = { line: null, dryRun: false, collectOnly: false, anchor: false, out: null, fromSnapshot: null, instruments: null, replay: null, offline: null, gaps: null, quotes: 'embed' };
+  const o = { line: null, dryRun: false, collectOnly: false, anchor: false, out: null, fromSnapshot: null, instruments: null, replay: null, offline: null, gaps: null, quotes: 'embed', rpc: null, from: null, fork: false };
   const seen = new Set();
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -157,6 +174,8 @@ export function parseArgs(argv, cwd = process.cwd()) {
     else if (a === '--offline') o.offline = path.resolve(cwd, v);
     else if (a === '--gaps') o.gaps = path.resolve(cwd, v);
     else if (a === '--quotes') o.quotes = v;
+    else if (a === '--rpc') o.rpc = v;
+    else if (a === '--from') o.from = v;
     else if (a === '--replay') {
       const m = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(v);
       if (!m || !isDate(m[1]) || !isDate(m[2]) || m[2] < m[1]) throw refuse(`--replay must be FROM..TO with FROM <= TO (got ${v})`);
@@ -164,7 +183,7 @@ export function parseArgs(argv, cwd = process.cwd()) {
     }
   }
   if (o.line !== 'realized' && o.line !== 'implied') throw refuse(`--line must be realized or implied (got ${o.line})`);
-  const realizedOnly = ['--replay', '--offline', '--gaps', '--anchor'];
+  const realizedOnly = ['--replay', '--offline', '--gaps', '--anchor', '--rpc', '--from'];
   const impliedOnly = ['--collect-only', '--from-snapshot', '--instruments', '--quotes'];
   for (const a of o.line === 'realized' ? impliedOnly : realizedOnly) if (seen.has(a)) throw refuse(`${a} is for --line ${o.line === 'realized' ? 'implied' : 'realized'}`);
   for (const a of ['--replay', '--offline', '--gaps', '--from-snapshot']) if (seen.has(a) && !o.dryRun) throw refuse(`${a} is accepted only with --dry-run`);
@@ -172,7 +191,26 @@ export function parseArgs(argv, cwd = process.cwd()) {
   if (!!o.fromSnapshot !== !!o.instruments) throw refuse('--from-snapshot and --instruments go together');
   if (o.quotes !== 'embed' && o.quotes !== 'hash') throw refuse(`--quotes must be embed or hash (got ${o.quotes})`);
   if (o.collectOnly && (o.fromSnapshot || o.dryRun || seen.has('--quotes'))) throw refuse('--collect-only takes no --dry-run, --from-snapshot or --quotes (it computes nothing)');
+  // the fork rehearsal: both flags or neither; a local node only; never a dry run
+  if (seen.has('--rpc') || seen.has('--from')) {
+    if (!seen.has('--rpc') || !seen.has('--from')) throw refuse('--rpc and --from go together: a fork rehearsal needs a local node and an account unlocked on it (the line in force always signs with KEEPER_PK on GIWA Sepolia)');
+    if (!isLocalRpc(o.rpc)) throw refuse(`--rpc ${o.rpc} is not a local node: a fork rehearsal runs only against 127.0.0.1, localhost or [::1]`);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(o.from)) throw refuse(`--from ${o.from} is not an address`);
+    if (o.dryRun) throw refuse('--rpc and --from are for a fork rehearsal of the line in force; a dry run never reaches a chain');
+    o.fork = true;
+  }
   return o;
+}
+
+/** Is `rpc` a local node? The host as a URL parser reads it: userinfo (`http://127.0.0.1:1@host/`) does not make a remote host local (as keeper/leverage-index.mjs). */
+export function isLocalRpc(rpc) {
+  let u;
+  try {
+    u = new URL(String(rpc));
+  } catch {
+    return false;
+  }
+  return (u.protocol === 'http:' || u.protocol === 'https:') && ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname) && !u.username && !u.password;
 }
 
 // ------------------------------------------------------------------ rulebook
@@ -331,6 +369,7 @@ export async function run(argv, depsIn = {}) {
 
 async function runInner(argv, deps) {
   const o = parseArgs(argv, deps.cwd);
+  if (o.fork && deps.env.GITHUB_ACTIONS === 'true') throw refuse('a fork rehearsal (--rpc, --from) runs on a local machine only, never in a workflow');
   const rbRel = rulebookFile(o.line);
   const rbPath = path.join(deps.root, rbRel);
   let rbBytes;
@@ -353,7 +392,7 @@ async function runInner(argv, deps) {
   if (!o.dryRun) {
     if (rb.inception.date == null) throw new Exit(0, `${rb.series}: NOT IN FORCE (${rbRel} inception is null) — nothing read, nothing written`);
     if (o.line !== 'realized') throw refuse(`${rb.series}: ${rbRel} inception is set, but the implied line has no in-force path (no decision check, no anchor) — see docs/vol-index.md "Later wiring"`);
-    if (o.out) throw refuse(`${rb.series}: --out is for --dry-run and --collect-only; the line in force is written to trackrecord/record-${rb.series}.jsonl`);
+    if (o.out) throw refuse(`${rb.series}: --out is for --dry-run and --collect-only; the line in force is written to ${o.fork ? 'keeper/dryrun' : 'trackrecord'}/record-${rb.series}.jsonl`);
     return runRealizedInForce(o, rb, rulebookSha256, deps, rbPath, rbRel);
   }
   return o.line === 'realized' ? runRealized(o, rb, rulebookSha256, out, deps, rbPath) : runImplied(o, rb, rulebookSha256, out, deps, rbPath);
@@ -510,13 +549,20 @@ export const GIWA_CHAIN_ID = 91342;
 const ANCHOR_GAS = 60_000n; // as the other daily series (keeper/leverage-index.mjs)
 const SETNAV_GAS = 120_000n; // as keeper/leverage-index.mjs (setNav measured at 36,137 gas)
 
-/** The files of the realized line in force, under the repository root. */
-export function inForcePaths(root, series) {
+/**
+ * The files of the realized line in force, under the repository root. A fork
+ * rehearsal (fork = true) reads and writes the record, anchors, marks and the
+ * vault registry under keeper/dryrun/ (as keeper/leverage-index.mjs and
+ * keeper/deploy-mark-vault.mjs on a fork) and writes nothing under trackrecord/.
+ */
+export function inForcePaths(root, series, fork = false) {
+  const out = fork ? path.join(root, 'keeper', 'dryrun') : path.join(root, 'trackrecord');
+  const keeper = fork ? path.join(root, 'keeper', 'dryrun') : path.join(root, 'keeper');
   return {
-    records: path.join(root, 'trackrecord', `record-${series}.jsonl`),
-    anchors: path.join(root, 'trackrecord', `anchors-${series}.jsonl`),
-    marks: path.join(root, 'keeper', `marks-${series}.jsonl`),
-    vaults: path.join(root, 'keeper', 'leverage-vaults.json'),
+    records: path.join(out, `record-${series}.jsonl`),
+    anchors: path.join(out, `anchors-${series}.jsonl`),
+    marks: path.join(keeper, `marks-${series}.jsonl`),
+    vaults: path.join(keeper, 'leverage-vaults.json'),
     gaps: path.join(root, 'keeper', 'vol-index-gaps.json'),
     ledger: path.join(root, 'trackrecord', 'decisions.jsonl'),
     trackrecord: path.join(root, 'trackrecord'),
@@ -581,6 +627,20 @@ async function makeSigner(deps) {
   return { pc, wallet: viem.createWalletClient({ account, chain, transport: transport(GIWA_RPC) }), address: account.address };
 }
 
+/**
+ * The signer of a fork rehearsal: the account --from, which the local fork
+ * node (--rpc) holds unlocked — viem sends eth_sendTransaction there and the
+ * node signs. No key is read here and nothing is sent anywhere but --rpc.
+ */
+async function forkSigner(o, deps) {
+  const { viem } = await chainLib();
+  const chain = viem.defineChain({ id: GIWA_CHAIN_ID, name: 'GIWA Sepolia (local fork)', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [o.rpc] } } });
+  const transport = deps.transport ?? ((rpc) => viem.http(rpc));
+  const address = viem.getAddress(o.from);
+  const pc = viem.createPublicClient({ chain, transport: transport(o.rpc), pollingInterval: deps.pollingInterval ?? 1000 });
+  return { pc, wallet: viem.createWalletClient({ account: address, chain, transport: transport(o.rpc) }), address };
+}
+
 async function sendNonceSafe(fn, wait) {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -616,7 +676,7 @@ export function markUnits(x) {
 }
 
 /** Marks the display vault to the line's value: navPerShare = indexLevel = n6, in steps inside the contract's 25% bound — only a vault with deposit cap 0. */
-async function markDisplayVault({ signer, vault, ticker, gate, line, marksPath, deps }) {
+async function markDisplayVault({ signer, vault, ticker, gate, line, marksPath, registry, deps }) {
   const { viem, readback, abi } = await chainLib();
   const { pc, wallet, address } = signer;
   const target = markUnits(line.value);
@@ -625,7 +685,7 @@ async function markDisplayVault({ signer, vault, ticker, gate, line, marksPath, 
   const read = (functionName, blockNumber) => pc.readContract({ address: vault, abi, functionName, ...(blockNumber != null ? { blockNumber } : {}) });
   // every testnet vault has the same keeper key, so the keeper check alone accepts any of them
   const symbol = await read('symbol');
-  if (symbol !== ticker) throw new Exit(1, `vault ${vault} is ${JSON.stringify(symbol)}, not ${ticker} — keeper/leverage-vaults.json names the wrong vault; no mark sent`);
+  if (symbol !== ticker) throw new Exit(1, `vault ${vault} is ${JSON.stringify(symbol)}, not ${ticker} — ${registry} names the wrong vault; no mark sent`);
   const keeper = viem.getAddress(await read('keeper'));
   if (keeper !== viem.getAddress(address)) throw new Exit(1, `vault ${vault} keeper is ${keeper}, not the signer ${address} — no mark sent`);
   // a display vault takes no deposits (keeper/deploy-mark-vault.mjs DISPLAY_ONLY): a cap other than 0 stops every mark
@@ -680,7 +740,8 @@ async function markDisplayVault({ signer, vault, ticker, gate, line, marksPath, 
 
 /** The realized line in force: in force? → anchor what is unanchored → the new lines → the display vault's mark. */
 async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
-  const P = inForcePaths(deps.root, L.series);
+  const P = inForcePaths(deps.root, L.series, o.fork);
+  if (o.fork) deps.log(`${L.series}: FORK REHEARSAL — node ${o.rpc}, signer ${o.from} (unlocked on that node; KEEPER_PK is not read); record, anchors, marks and the vault registry under keeper/dryrun/, nothing written under trackrecord/`);
   const rel = (p) => path.relative(deps.root, p);
   const records = readLines(P.records);
   // Before the first line, "not in force" is the normal state (exit 0). Once
@@ -706,7 +767,7 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
   const gaps = readGaps(P.gaps);
   deps.log(`${L.ticker} (${L.series}) in force: decision ${inception.decision} · first line ${L.inception.date} · rulebook ${rulebookSha256.slice(0, 12)}… · ${records.length} line(s) in ${rel(P.records)}`);
 
-  const signer = o.anchor ? await makeSigner(deps) : null;
+  const signer = o.anchor ? (o.fork ? await forkSigner(o, deps) : await makeSigner(deps)) : null;
   if (o.anchor && !signer) deps.log('--anchor requested but KEEPER_PK is not set — lines are written unanchored; the next run with the key anchors them first');
   if (!o.anchor) deps.log('--anchor not passed — no on-chain anchor attempted for this run.');
   /** A line on disk whose anchor fails stays written: the next run anchors it first. Nothing is marked. */
@@ -764,6 +825,7 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
     records.push(line);
     written++;
     deps.log(`${L.series} #${line.seq} ${D} ${line.value}${line.late ? ' (late)' : ''}${line.gaps ? ` gap accepted ${line.gapAccepted}` : ''} · head ${line.hash.slice(0, 16)}…`);
+    deps.log(`  #${line.seq} ${D} recomputed by scripts/verify-vol.mjs before it was appended — agrees`);
     if (signer) await anchor(line);
     prev = line;
   }
@@ -800,7 +862,7 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
     const chainId = await signer.pc.getChainId();
     if (chainId !== v.chainId) throw new Exit(1, `RPC is chain ${chainId}, the vault entry says ${v.chainId}`);
     const { viem } = await chainLib();
-    await markDisplayVault({ signer, vault: viem.getAddress(v.address), ticker: L.ticker, gate: v.gate, line: last, marksPath: P.marks, deps });
+    await markDisplayVault({ signer, vault: viem.getAddress(v.address), ticker: L.ticker, gate: v.gate, line: last, marksPath: P.marks, registry: rel(P.vaults), deps });
   } catch (e) {
     const msg = e instanceof Exit ? e.message : (e?.shortMessage ?? e?.message ?? String(e)).split('\n')[0];
     deps.err(`${L.ticker} vault marks FAILED after line #${last.seq} was written and anchored: ${msg}`);
