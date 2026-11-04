@@ -1,5 +1,6 @@
 /**
- * The testnet mark vault of a leverage series (qBTC2X, qETH2X, qETH1.5X):
+ * The testnet mark vault of a leverage series (qBTC2X, qETH2X, qETH1.5X) or
+ * the qVOL display vault (deposit cap 0 for good; open-deposits is refused):
  * deploys a QuadrixIndexVault — the contract of the redeployed vaults, with a
  * guardian — with a deposit cap of 0, so nobody can deposit from deployment
  * until the owner opens it, then appoints its guardian; and the owner actions
@@ -79,7 +80,7 @@
  *        --rpc http://127.0.0.1:8545 --from 0x<anvil>                                           # fork rehearsal
  *
  * Options:
- *   --index qbtc2x|qeth2x|qeth15   required
+ *   --index qbtc2x|qeth2x|qeth15|qvol   required
  *   --action deploy|set-guardian|open-deposits|pause   default deploy
  *   --manager 0x…             deploy: the constructor's manager_ (becomes owner and keeper; a live
  *                             deployment is signed by it, since it also sends setGuardian)
@@ -104,7 +105,9 @@ export const REFERENCE_INDEX = 'qbtc2x';
 export const REFERENCE_SYMBOL = 'qBTC2X';
 const GIWA_RPC = 'https://sepolia-rpc.giwa.io';
 /** name, symbol — the symbol is the rulebook's ticker (keeper/rulebooks/<index>.json): the leg marks only a vault whose symbol() is it. */
-export const NAMES = { qbtc2x: ['Quadrix BTC 2x Vault', 'qBTC2X'], qeth2x: ['Quadrix ETH 2x Vault', 'qETH2X'], qeth15: ['Quadrix ETH 1.5x Vault', 'qETH1.5X'] };
+export const NAMES = { qbtc2x: ['Quadrix BTC 2x Vault', 'qBTC2X'], qeth2x: ['Quadrix ETH 2x Vault', 'qETH2X'], qeth15: ['Quadrix ETH 1.5x Vault', 'qETH1.5X'], qvol: ['Quadrix BTC Realized Volatility Vault', 'qVOL'] };
+/** Display vaults: no deposits by definition (encoded as deposit cap 0); this tool never raises their cap. */
+export const DISPLAY_ONLY = new Set(['qvol']);
 const ACTIONS = ['deploy', 'set-guardian', 'open-deposits', 'pause'];
 /** The artifact's contract has a guardian (the redeployed code): a deployment must appoint one. */
 export const HAS_GUARDIAN = ARTIFACT.abi.some((f) => f.type === 'function' && f.name === 'setGuardian');
@@ -156,6 +159,7 @@ function parseArgs(argv) {
   };
   if (!Object.hasOwn(NAMES, o.index)) throw new Refused(`--index must be one of ${Object.keys(NAMES).join(', ')} (got ${o.index})`);
   if (!ACTIONS.includes(o.action)) throw new Refused(`--action must be one of ${ACTIONS.join(', ')} (got ${o.action})`);
+  if (DISPLAY_ONLY.has(o.index) && o.action === 'open-deposits') throw new Refused(`${o.index} is a display vault: it takes no deposits by definition (deposit cap 0) — raising the cap needs a new decision, not this tool`);
   if (o.action === 'deploy' && !(o.manager && isAddress(o.manager))) throw new Refused('--manager <address> is required for a deployment (it becomes owner and keeper)');
   const needGuardian = o.action === 'set-guardian' || (o.action === 'deploy' && HAS_GUARDIAN);
   if (needGuardian && !(o.guardian && isAddress(o.guardian))) throw new Refused(`--guardian <address> is required for ${o.action === 'deploy' ? 'a deployment of this contract (it has a guardian; a vault is never left with guardian 0)' : 'set-guardian'}`);

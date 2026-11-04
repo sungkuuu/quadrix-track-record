@@ -10,6 +10,7 @@
  *     keeper/dryrun/leverage-vaults.json with the gate unchanged;
  *   - a second deployment for an index that already names a vault is refused;
  *   - qETH1.5X: its name and symbol (the rulebook's ticker);
+ *   - qVOL: its name and symbol; open-deposits refused for the display vault;
  *   - the guardian rule (not 0, not the keeper, not the owner, no timelock
  *     role), before anything is sent and on the chain after setGuardian;
  *   - the reference vault: the registry's qBTC2X line as committed (also on a
@@ -285,6 +286,15 @@ test('qETH1.5X — name "Quadrix ETH 1.5x Vault", symbol = the rulebook ticker; 
   } finally {
     s.srv.close();
   }
+});
+
+test('qVOL — a display vault: name "Quadrix BTC Realized Volatility Vault", symbol = the rulebook ticker qVOL; open-deposits is refused for qvol (exit 2) before anything is read from the RPC', async () => {
+  const rb = JSON.parse(fs.readFileSync(path.join(KEEPER_DIR, 'rulebooks', 'qvol.json'), 'utf8'));
+  assert.deepEqual(NAMES.qvol, ['Quadrix BTC Realized Volatility Vault', rb.ticker]);
+  // a closed local port: a refusal that came after an RPC read would fail on the connection instead
+  const r = await runTool(['--index', 'qvol', '--action', 'open-deposits', '--cap', '1', '--rpc', 'http://127.0.0.1:9']);
+  assert.equal(r.code, 2, r.out);
+  assert.match(r.out, /REFUSED: qvol is a display vault: it takes no deposits by definition \(deposit cap 0\)/);
 });
 
 test('the guardian rule — missing, 0, = manager (keeper and owner), or a timelock role: REFUSED before anything is sent', async () => {
