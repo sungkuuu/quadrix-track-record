@@ -903,6 +903,26 @@ and its `depositCap()` is 0. **First mark:** the vault starts at 1.000000, so
 the first run after the deployment takes several steps, one transaction each
 (16 for a value of 28.4); every later day moves it by the day's change only.
 
+**Fork rehearsal** (local only, no key; one fork at a time on the machine):
+
+```bash
+anvil --fork-url https://sepolia-rpc.giwa.io --port 8599 --host 127.0.0.1 &
+node keeper/test/rehearse-qvol.mjs --rpc http://127.0.0.1:8599 --out <dir>
+```
+
+It works in temporary copies of this repository (the real `trackrecord/` and
+`keeper/dryrun/` are never touched), with two fresh addresses impersonated on
+the fork and, in each copy, a stand-in inception decision anchored on the fork
+only. It deploys the display vault with `keeper/deploy-mark-vault.mjs` (cap 0),
+runs the leg on yesterday's and today's lines (UTC; run it after 00:05 UTC) in
+its fork mode (`--anchor --rpc … --from …`: the line, the
+`scripts/verify-vol.mjs` gate, the anchor, the marks), checks the
+copy's record with `scripts/verify.mjs --series qvol` on the fork, then the
+refusals one run each (a cap above 0, no decision, `open-deposits`, another
+vault's symbol) and the freshness watchdog on the copy's record. The leg's fork
+mode writes under `keeper/dryrun/` only and is refused without both `--rpc`
+(a local node) and `--from`.
+
 ### What can go wrong in the qVOL leg
 
 | Symptom | What it means | What to do |
