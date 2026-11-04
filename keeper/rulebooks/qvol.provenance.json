@@ -4,12 +4,12 @@
  "track": "trading-tool",
  "rulebook": {
   "path": "rulebooks/qvol.md",
-  "commit": "1a7cf8589d56cfa00c4023076a56ac449688dde9",
-  "sha256": "9d67e3421cbd3306b22d05cdf611f669c63d3860a057d41cba1b6b97a5a468a1"
+  "commit": "fcd1966c2cce17f7bb76cfda9f8e395c4b0b77da",
+  "sha256": "121174c6b317253f1114884e5f297ed182ec3c6b3fd6cdc355f60fc2965f3fea"
  },
  "checklistRun": {
   "path": "docs/methodology/checklist-runs/qvol/2026-11-05.json",
-  "sha256": "613f75becef389ed0ee3fc0c5223b1882acc26611d8b97efac3bb1914db0c611",
+  "sha256": "7c587523564fc6acf31bfebaa23f6a9d53d143ed4a0b614155e706550cc79c7f",
   "repo": "site (private)"
  },
  "keeperJson": {
