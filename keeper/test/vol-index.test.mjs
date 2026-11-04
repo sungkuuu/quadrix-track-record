@@ -869,10 +869,14 @@ test('in force T-IF5: when scripts/verify-vol.mjs rejects the new line, nothing 
   assert.equal(node.txs.length, 0);
   assert.equal(fs.existsSync(x.marks), false);
   // with a line on the record: the next line is rejected, the record keeps its line and nothing more is sent
+  // (the injected verifier fails the new line's check, --tail, and runs the real one on the record as a whole)
+  const failingTail = path.join(tmpDir('vol-if-v'), 'verify-fails-tail.mjs');
+  fs.writeFileSync(failingTail, `import { spawnSync } from 'node:child_process';\nif (process.argv.includes('--tail')) { console.log('FAIL injected'); process.exit(1); }\nprocess.exit(spawnSync(process.execPath, [${JSON.stringify(VERIFY)}, ...process.argv.slice(2)], { stdio: 'inherit' }).status);\n`);
   assert.equal((await inForce(x.root, `${D1}T00:25:00Z`, { key, node })).code, 0);
   const sent = node.txs.length;
-  const r2 = await inForce(x.root, '2099-02-03T00:25:00Z', { key, node, extra: { verifyScript: failing } });
-  assert.equal(r2.code, 1);
+  const r2 = await inForce(x.root, '2099-02-03T00:25:00Z', { key, node, extra: { verifyScript: failingTail } });
+  assert.equal(r2.code, 1, r2.err);
+  assert.match(r2.err, /independent recompute \(scripts\/verify-vol\.mjs\) rejected line 2099-02-03 — nothing appended, nothing anchored, no mark/);
   assert.equal(readJsonl(x.rec).length, 1);
   assert.equal(node.txs.length, sent);
 });
@@ -1385,6 +1389,10 @@ function copyRoot(x) {
 }
 const writeJsonl = (file, lines) => fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
 
+// F1's recompute of an unanchored line (the first line on its own, a later one --tail after
+// the line before it) checks a subset of what the whole-record recompute of F4 (T-IF20)
+// checks, and F4 runs first: the lines below are refused by F4 before step 2 is reached.
+// F1's recompute stays as the gate right before each anchor.
 test('in force T-IF17 (F1): a line without an anchor is anchored only after scripts/verify-vol.mjs recomputes it — a hand-appended line it rejects (a date that does not follow, a second line for a day, a changed value, a broken hash) is refused (exit 2) and nothing is sent; an unanchored line before an anchored one, or an anchor entry that names another hash, is refused too; an honest unanchored line is anchored (control)', async () => {
   const x = inForceRoot();
   const { key, address } = keyed();
@@ -1399,7 +1407,7 @@ test('in force T-IF17 (F1): a line without an anchor is anchored only after scri
   assert.deepEqual([L2.seq, L2.date], [2, '2099-02-04']);
   const sent = node.txs.length;
   const bad = [
-    ['a date that does not follow #1 (2099-02-10)', rehash({ ...L2, date: '2099-02-10' }), /date 2099-02-10 does not follow 2099-02-03/],
+    ['a date that does not follow #1 (2099-02-01)', rehash({ ...L2, date: '2099-02-01' }), /date 2099-02-01 does not follow 2099-02-03/],
     ['a second line for 2099-02-03', rehash({ ...honest[1], seq: 2, prevHash: honest[1].hash }), /date 2099-02-03 does not follow 2099-02-03/],
     ['a value the window does not give (re-hashed)', rehash({ ...L2, value: L2.value * 1.5 }), /value .* vs recomputed/],
     ['a hash that is not the line\'s', { ...L2, value: L2.value * 1.5 }, /hash does not match the line/],
@@ -1423,9 +1431,9 @@ test('in force T-IF17 (F1): a line without an anchor is anchored only after scri
   assert.equal(rg.code, 2, rg.err);
   assert.match(rg.err, /line #0 2099-02-02 has no anchor in trackrecord\/anchors-qvol\.jsonl, but line #1 after it has one — only the last lines of the record can be unanchored/);
   assert.equal(node.txs.length, sent);
-  // an anchor entry that names another hash (#1 changed after its anchor; verify-vol does not read observedAt)
+  // an anchor entry that names another hash (#1 changed after its anchor, in a field the recompute does not read: keeper.run)
   const h = copyRoot(x);
-  writeJsonl(h.rec, [honest[0], rehash({ ...honest[1], observedAt: '2099-02-03T00:26:00.000Z' })]);
+  writeJsonl(h.rec, [honest[0], rehash({ ...honest[1], keeper: { ...honest[1].keeper, run: 'https://github.com/example/example/actions/runs/1' } })]);
   const rh = await inForce(h.root, '2099-02-04T00:25:00Z', { key, node });
   assert.equal(rh.code, 2, rh.err);
   assert.match(rh.err, /the anchor of #1 in trackrecord\/anchors-qvol\.jsonl names 2099-02-03 with head [0-9a-f]{64}, but line #1 is 2099-02-03 with hash [0-9a-f]{64} — the line changed after it was anchored; nothing sent/);
@@ -1626,4 +1634,51 @@ test('in force T-IF19 (F12): before line D is written, Binance\'s daily candle o
     assert.equal(rj.code, 2, `${argv.join(' ')}: ${rj.err}`);
     assert.equal(calls, 0);
   }
+});
+
+test('in force T-IF20 (F4): once per run, before anything is sent or appended, scripts/verify-vol.mjs recomputes the whole record (hash chain, dates, windows, values) — an old line edited in place, an edited line re-hashed, a whole chain re-hashed after an edit, a line dated after the runner\'s clock, a dry-run line, another decision on the first line: each refused (exit 2), nothing appended, anchored or marked; the honest record goes on (control)', async () => {
+  const x = inForceRoot();
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  assert.equal((await inForce(x.root, '2099-02-04T00:25:00Z', { key, node })).code, 0);
+  const lines = readJsonl(x.rec);
+  assert.equal(lines.length, 3);
+  // the honest #3 (2099-02-05), as a run without the key writes it on a copy
+  const w = copyRoot(x);
+  assert.equal((await inForce(w.root, '2099-02-05T00:25:00Z', { argv: [] })).code, 0);
+  const L3 = readJsonl(w.rec)[3];
+  /** Lines from k on re-hashed, each chained to the one before. */
+  const rechain = (ls, k) => {
+    const out = ls.slice(0, k);
+    for (let i = k; i < ls.length; i++) out.push(rehash({ ...ls[i], prevHash: i ? out[i - 1].hash : null }));
+    return out;
+  };
+  const up = (l) => ({ ...l, value: l.value * 1.01 });
+  const cases = [
+    ['#0 edited in place', [up(lines[0]), ...lines.slice(1)], '2099-02-05', /hash does not match the line/],
+    ['#1 edited and re-hashed', [lines[0], rehash(up(lines[1])), lines[2]], '2099-02-05', /prevHash does not match the previous line/],
+    ['#0 edited and the whole chain re-hashed', rechain([up(lines[0]), ...lines.slice(1)], 0), '2099-02-05', /value .* vs recomputed/],
+    ['a line dated after the runner\'s clock (the honest 2099-02-05 line at 2099-02-04 00:25)', [...lines, L3], '2099-02-04', /line #3 is dated 2099-02-05, after the runner's clock \(2099-02-04T00:25:00\.000Z\): a day is never written before it has ended/],
+    ['a dry-run line', rechain([...lines.slice(0, 2), { ...lines[2], shadow: true }], 2), '2099-02-05', /line #2 2099-02-04 is a dry-run line \("shadow"\)/],
+    ['another decision on the first line', rechain([{ ...lines[0], inception: { ...lines[0].inception, decisionSha256: '0'.repeat(64) } }, ...lines.slice(1)], 0), '2099-02-05', /the first line names the decision/],
+  ];
+  const sent = node.txs.length;
+  for (const [label, ls, day, why] of cases) {
+    const y = copyRoot(x);
+    writeJsonl(y.rec, ls);
+    const before = listAll(y.root);
+    const r = await inForce(y.root, `${day}T00:25:00Z`, { key, node });
+    assert.equal(r.code, 2, `${label}: exit ${r.code} ${r.err}`);
+    assert.match(r.err, /qvol: the record does not verify: .* — nothing sent, nothing appended, no mark/, label);
+    assert.match(r.err, why, label);
+    assert.deepEqual(listAll(y.root), before, `${label}: a file changed`);
+    assert.equal(node.txs.length, sent, `${label}: a transaction was sent`);
+    assert.equal(r.binanceCalls, 0, `${label}: Binance was called`);
+  }
+  // control: the honest record — recomputed as a whole, then the next line is written and anchored
+  const ok = await inForce(x.root, '2099-02-05T00:25:00Z', { key, node });
+  assert.equal(ok.code, 0, ok.err);
+  assert.match(ok.out, /trackrecord\/record-qvol\.jsonl: 3 line\(s\) recomputed as a whole by scripts\/verify-vol\.mjs — agrees/);
+  assert.equal(readJsonl(x.rec).length, 4);
+  assert.equal(node.txs.length, sent + 1);
 });

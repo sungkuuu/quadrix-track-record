@@ -32,7 +32,13 @@
  *      day. A decision not in the ledger yet, or a run before inception.date
  *      00:00 UTC, is NOT IN FORCE (exit 0, nothing written, no request); a
  *      decision in the ledger that the files no longer satisfy is refused
- *      (exit 2), and so is any of these once the record has a line;
+ *      (exit 2), and so is any of these once the record has a line. Then the
+ *      record as a whole, once per run before anything is sent or appended:
+ *      scripts/verify-vol.mjs recomputes every line (seq, hash chain, dates,
+ *      windows, values, the rule against the rulebook JSON), no line is dated
+ *      after the runner's clock, none is a dry-run line, and only the first
+ *      carries this decision's inception — else refused (exit 2), nothing
+ *      sent, nothing appended;
  *   2. a line an earlier run wrote but did not anchor is anchored first, never
  *      on trust: every anchor entry must name a line of the record by seq,
  *      date and hash, only the last lines may be unanchored, and each is
@@ -811,6 +817,35 @@ export function decisionProblem(P, rb, rulebookSha) {
 }
 
 /**
+ * The record of the line in force as a whole, once per run before anything is
+ * sent or appended: no line dated after the runner's clock (line D is never
+ * written before D 00:00 UTC), no dry-run line ("shadow"), the first line's
+ * inception is this decision {decision, decisionSha256} and no later line
+ * carries one, and scripts/verify-vol.mjs (a child process, on a copy of the
+ * file) recomputes every line — seq, hash chain, dates, windows, values, the
+ * rule against the rulebook JSON. The first problem, or null.
+ */
+function recordProblem(deps, series, recPath, records, inception, rbPath) {
+  const today = dateOf(deps.now());
+  for (const l of records) {
+    if (!(l.date <= today)) return `line #${l.seq} is dated ${l.date}, after the runner's clock (${new Date(deps.now()).toISOString()}): a day is never written before it has ended`;
+    if ('shadow' in l) return `line #${l.seq} ${l.date} is a dry-run line ("shadow")`;
+    if (l.seq !== 0 && 'inception' in l) return `line #${l.seq} ${l.date} carries an inception; only the first line does`;
+  }
+  const inc = records[0].inception;
+  if (inc?.decision !== inception.decision || inc?.decisionSha256 !== inception.decisionSha256) return `the first line names the decision ${JSON.stringify(inc)}, not ${JSON.stringify(inception)}`;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `${series}-record-`));
+  try {
+    fs.copyFileSync(recPath, path.join(tmp, `record-${series}.jsonl`));
+    const r = spawnSync(process.execPath, [deps.verifyScript, '--dir', tmp, '--line', 'realized', '--rulebook', rbPath, '--recompute-only', '--quiet'], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '' } });
+    if (r.status !== 0) return `scripts/verify-vol.mjs rejects it:\n${`${r.stdout ?? ''}${r.stderr ?? ''}`.trim()}`;
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  return null;
+}
+
+/**
  * Which lines of the record carry an anchor (trackrecord/anchors-qvol.jsonl)?
  * Every anchor entry must name a line of the record by seq, date and hash —
  * an entry whose line is gone or whose line no longer hashes to the entry's
@@ -1002,6 +1037,18 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
   }
   const gaps = readGaps(P.gaps);
   deps.log(`${L.ticker} (${L.series}) in force: decision ${inception.decision} · first line ${L.inception.date} · rulebook ${rulebookSha256.slice(0, 12)}… · ${records.length} line(s) in ${rel(P.records)}`);
+  // the record as a whole, once per run, before anything is sent or appended
+  if (records.length) {
+    const why = recordProblem(deps, L.series, P.records, records, inception, rbPath);
+    if (why) {
+      const [head, ...details] = why.split('\n');
+      throw refuse(
+        `${L.series}: the record does not verify: ${head} — nothing sent, nothing appended, no mark. A person restores ${rel(P.records)} from the repository's history ` +
+          `(an anchored line is never edited or removed; a line that is not anchored and not the keeper's is removed by a commit)${details.length ? `\n${details.join('\n')}` : ''}`
+      );
+    }
+    deps.log(`  ${rel(P.records)}: ${records.length} line(s) recomputed as a whole by scripts/verify-vol.mjs — agrees`);
+  }
 
   const signer = o.anchor ? (o.fork ? await forkSigner(o, deps) : await makeSigner(deps)) : null;
   if (o.anchor && !signer) deps.log('--anchor requested but KEEPER_PK is not set — lines are written unanchored; the next run with the key anchors them first');
