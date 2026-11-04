@@ -13,26 +13,71 @@
  * build the line → have scripts/verify-vol.mjs recompute it on its own (a
  * child process, the new line after the record's last line with --tail, the
  * rule against the rulebook JSON; non-zero = discard, exit 1) → append → next day.
+ * A run that continues a record first reads the last line's day again (its
+ * offline file, or one more fetch) and stops (exit 1, nothing written) when
+ * the bars are not those the line records. With --daily <file> (Binance daily
+ * candles) each new line's newest window day (every window day on the first
+ * line) must close where its daily candle closes, else exit 1; without
+ * --daily the dry run reads no daily candle (and prints nothing about it).
  *
  * Realized, in force (no --dry-run; the daily paper-index step runs
  * `--line realized --anchor` with KEEPER_PK in its environment):
  *   1. in force? With inception.date null in keeper/rulebooks/qvol.json:
  *      NOT IN FORCE, exit 0, nothing else read, nothing written. Otherwise
- *      inception.decision must be in trackrecord/decisions.jsonl (the ledger
- *      the decision anchor appends to), its file must still hash to the
+ *      inception.decision must be an id <YYYY-MM-DD>-qvol-inception, be in
+ *      trackrecord/decisions.jsonl (the ledger the decision anchor appends
+ *      to) effective on the date in its id, its file must still hash to the
  *      ledger's value and carry this rulebook's sha256, and it must be
  *      effective on the day before inception.date: the decision is effective
  *      on the day it is anchored and the first line is dated the next UTC
- *      day. A decision not in the ledger yet, or a run before inception.date
- *      00:00 UTC, is NOT IN FORCE (exit 0, nothing written, no request); a
- *      decision in the ledger that the files no longer satisfy is refused
- *      (exit 2), and so is any of these once the record has a line;
- *   2. a line an earlier run wrote but did not anchor is anchored first;
- *   3. every closed UTC day since the last line, in order — the first line
- *      is dated inception.date and no day before it is ever written: the
- *      same line a dry run builds (same fields, same order), without
- *      "shadow" and with inception {decision, decisionSha256} on the first
- *      line → scripts/verify-vol.mjs recomputes it as above (a mismatch: exit
+ *      day. An id of another form, a decision not in the ledger yet, or a
+ *      run before inception.date 00:00 UTC, is NOT IN FORCE (exit 0, nothing
+ *      written, no request); a decision in the ledger that the files no
+ *      longer satisfy is refused (exit 2), and so is any of these once the
+ *      record has a line. Then the record as a whole, once per run before
+ *      anything is sent or appended: scripts/verify-vol.mjs recomputes every
+ *      line (seq, hash chain, dates, windows, values, the rule against the
+ *      rulebook JSON), no line is dated after the runner's clock, none is a
+ *      dry-run line, and only the first carries this decision's inception —
+ *      else refused (exit 2), nothing sent, nothing appended. Then a run that
+ *      can anchor (it has the key) reads the decision's own anchor
+ *      transaction (the ledger's txHash): it must be on chain, successful, a
+ *      zero-value self-send from the signer with calldata qxdec:<the decision
+ *      file's sha256> — else NOT IN FORCE, exit 1, nothing read from Binance,
+ *      nothing written;
+ *   2. the last anchor is read again (a run that can anchor): its
+ *      transaction must still be on chain and be the signer's self-send of
+ *      that line's hash — one that is gone (dropped, as by a reorg) has its
+ *      line anchored again here (and the anchor before it is read the same
+ *      way); one that is another key's or carries other calldata is refused
+ *      (exit 2), nothing sent. Every transaction's receipt is waited for at
+ *      most RECEIPT_TIMEOUT_MS (5 minutes): past it, exit 1 with the line left
+ *      on disk without an anchor entry (the next run anchors it first; a
+ *      second anchor transaction with the same calldata is harmless).
+ *      A line an earlier run wrote but did not anchor is anchored first, never
+ *      on trust: every anchor entry must name a line of the record by seq,
+ *      date and hash, only the last lines may be unanchored, and each is
+ *      recomputed by scripts/verify-vol.mjs (the first line on its own, a
+ *      later one after the line before it) before its anchor is sent — any
+ *      of these failing is refused (exit 2), nothing sent — and the bars it
+ *      records are read again from Binance (the first line: every window
+ *      day): other bars, exit 1, nothing sent;
+ *   3. before the first new line of a run, the bars of the last line's day
+ *      are read again (one more fetch): other bars than the line records stop
+ *      the run (exit 1, nothing written, the message names the day and both
+ *      sha256) for a person; an anchored line whose day the source changed
+ *      later goes on only once a person confirms that change in
+ *      keeper/vol-index-source-checks.json. Then every closed UTC day since
+ *      the last line, in order — the first line is dated inception.date and
+ *      no day before it is ever written: the same line a dry run builds
+ *      (same fields, same order), without "shadow" and with inception
+ *      {decision, decisionSha256} on the first line → the daily-candle gate:
+ *      Binance's daily candle of D-1 (on the first line: of every window day,
+ *      in one request) must close where the 1-minute bars close that day, as
+ *      String(Number(close)) — a difference stops the run (exit 1, nothing
+ *      written; once a person confirms it in keeper/vol-index-source-checks.json
+ *      the next run writes the line from the 1-minute bars) →
+ *      scripts/verify-vol.mjs recomputes the line as above (a mismatch: exit
  *      1, nothing appended, anchored or marked) → appended to
  *      trackrecord/record-qvol.jsonl → anchored: a zero-value self-send whose
  *      calldata is `qxpi-qvol:` + the line's hash, signed here with KEEPER_PK
@@ -43,7 +88,9 @@
  *      run from the same closed bars and carries "late": true;
  *   4. the display vault (keeper/leverage-vaults.json, entry qvol; deposit
  *      cap 0) is marked to the last line after that line is anchored, never
- *      before, and only when its symbol() is the rulebook's ticker, its
+ *      before, and only when the entry's deployTx is the signer's own
+ *      contract creation of that address (in the entry's block), its
+ *      symbol() is the rulebook's ticker, its
  *      keeper() is the signer and its depositCap() is 0: the share price goes to
  *      n6 = floor(value x 1,000,000) — the record value, unrounded, cut to the
  *      contract's unit of 1e-6 — in setNav steps inside the contract's bound
@@ -95,6 +142,8 @@
  *   --replay FROM..TO         (realized, --dry-run) FROM is the first line's date, TO the last
  *   --offline <dir>           (realized, --dry-run) bars from <dir>/btcusdt-1m-<YYYY-MM-DD>.csv; no network
  *   --gaps <file>             (realized, --dry-run) the gap acceptance file; default keeper/vol-index-gaps.json
+ *   --daily <file>            (realized, --dry-run) Binance daily candles (the JSON array of GET /api/v3/klines
+ *                             interval=1d, .gz allowed): each new line's window closes are checked against them
  *   --quotes embed|hash       (implied) embed the quotes in the line (default) or only their sha256
  *
  * Each line has its own rulebook JSON (realized keeper/rulebooks/qvol.json,
@@ -118,10 +167,17 @@
  *
  * Exit codes: 0 = done, nothing to do, not in force, inactive; 1 = data or
  * chain failure (nothing written for the failed day; a line whose anchor
- * failed is written, and the next run anchors it first), or a vault mark that
- * failed after the line was written and anchored; 2 = configuration (bad
- * option, bad rulebook or acceptance file, an anchored inception decision
- * that the files no longer satisfy).
+ * failed is written, and the next run anchors it first) — among them the
+ * source checks (a day read again that differs from its line, a daily
+ * candle that differs from the 1-minute close), a decision whose anchor
+ * transaction is not the signer's, and a receipt that does not come within
+ * RECEIPT_TIMEOUT_MS — or a vault mark that failed or was refused (the
+ * registry's deployment not the keeper's) after the line was written and
+ * anchored; 2 = configuration or a record that is not what the keeper wrote
+ * (bad option, bad rulebook, acceptance or source-check file, an anchored
+ * inception decision that the files no longer satisfy, a record that does
+ * not verify as a whole, an unanchored line before an anchored one, an
+ * anchor entry that does not name its line or is not the keeper's anchor).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -130,10 +186,10 @@ import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  sha256, dayMs, dateOf, addDays, isDate, canonicalMinuteText, minuteGaps, dayClose, realizedFromWindow, windowDates, buildRealizedLine, DAY_MIN, DAY_MS, SERIES,
+  sha256, dayMs, dateOf, addDays, isDate, canonicalMinuteText, minuteGaps, dayClose, realizedFromWindow, windowDates, buildRealizedLine, parseKlines, DAY_MIN, DAY_MS, SERIES,
 } from './vol-realized.mjs';
 import { parseDeribit, joinQuotes, computeImplied, buildImpliedLine, expiryList, quotesSha256, FormatError } from './vol-implied.mjs';
-import { binanceRest, binanceDayIsFinal, binanceDayOnce, offlineDay, offlineDayIsFinal, deribitRest } from './vol-sources.mjs';
+import { binanceRest, binanceDayIsFinal, binanceDayOnce, offlineDay, offlineDayIsFinal, deribitRest, RETRY_WAITS_MS, BINANCE_SPACING_MS, FETCH_TIMEOUT_MS } from './vol-sources.mjs';
 import { markSteps } from './leverage-step.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -151,9 +207,9 @@ const refuse = (m) => new Exit(2, m);
 // ------------------------------------------------------------------ arguments
 
 export function parseArgs(argv, cwd = process.cwd()) {
-  const valued = ['--line', '--out', '--from-snapshot', '--instruments', '--replay', '--offline', '--gaps', '--quotes', '--rpc', '--from'];
+  const valued = ['--line', '--out', '--from-snapshot', '--instruments', '--replay', '--offline', '--gaps', '--quotes', '--rpc', '--from', '--daily'];
   const flags = ['--dry-run', '--collect-only', '--anchor'];
-  const o = { line: null, dryRun: false, collectOnly: false, anchor: false, out: null, fromSnapshot: null, instruments: null, replay: null, offline: null, gaps: null, quotes: 'embed', rpc: null, from: null, fork: false };
+  const o = { line: null, dryRun: false, collectOnly: false, anchor: false, out: null, fromSnapshot: null, instruments: null, replay: null, offline: null, gaps: null, daily: null, quotes: 'embed', rpc: null, from: null, fork: false };
   const seen = new Set();
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -173,6 +229,7 @@ export function parseArgs(argv, cwd = process.cwd()) {
     else if (a === '--instruments') o.instruments = path.resolve(cwd, v);
     else if (a === '--offline') o.offline = path.resolve(cwd, v);
     else if (a === '--gaps') o.gaps = path.resolve(cwd, v);
+    else if (a === '--daily') o.daily = path.resolve(cwd, v);
     else if (a === '--quotes') o.quotes = v;
     else if (a === '--rpc') o.rpc = v;
     else if (a === '--from') o.from = v;
@@ -183,10 +240,10 @@ export function parseArgs(argv, cwd = process.cwd()) {
     }
   }
   if (o.line !== 'realized' && o.line !== 'implied') throw refuse(`--line must be realized or implied (got ${o.line})`);
-  const realizedOnly = ['--replay', '--offline', '--gaps', '--anchor', '--rpc', '--from'];
+  const realizedOnly = ['--replay', '--offline', '--gaps', '--daily', '--anchor', '--rpc', '--from'];
   const impliedOnly = ['--collect-only', '--from-snapshot', '--instruments', '--quotes'];
   for (const a of o.line === 'realized' ? impliedOnly : realizedOnly) if (seen.has(a)) throw refuse(`${a} is for --line ${o.line === 'realized' ? 'implied' : 'realized'}`);
-  for (const a of ['--replay', '--offline', '--gaps', '--from-snapshot']) if (seen.has(a) && !o.dryRun) throw refuse(`${a} is accepted only with --dry-run`);
+  for (const a of ['--replay', '--offline', '--gaps', '--daily', '--from-snapshot']) if (seen.has(a) && !o.dryRun) throw refuse(`${a} is accepted only with --dry-run`);
   if (o.anchor && o.dryRun) throw refuse('--anchor is not accepted with --dry-run: a dry run never anchors, never marks and reads no key');
   if (!!o.fromSnapshot !== !!o.instruments) throw refuse('--from-snapshot and --instruments go together');
   if (o.quotes !== 'embed' && o.quotes !== 'hash') throw refuse(`--quotes must be embed or hash (got ${o.quotes})`);
@@ -301,6 +358,64 @@ export function readGaps(file) {
   return list;
 }
 
+/**
+ * keeper/vol-index-source-checks.json — absent until a person confirms a
+ * difference that the source checks of the line in force found (the next run
+ * then goes on; the record is never changed):
+ *   {id, series, day, check: "refetch", recorded, served, note, confirmedAt}
+ *     the bars of `day`, read again before the series continues from the
+ *     anchored line built from them, no longer hash to `recorded` (that
+ *     line's source.sha256) but to `served`;
+ *   {id, series, day, check: "daily-close", minuteClose, dailyClose, note, confirmedAt}
+ *     Binance's daily candle of `day` closes at `dailyClose` (null: none),
+ *     the day's 1-minute bars at `minuteClose`.
+ * An entry is used only when every one of these values matches what the run
+ * reads; an entry never makes the keeper anchor a line it did not write.
+ */
+export function readSourceChecks(file) {
+  if (!fs.existsSync(file)) return [];
+  let list;
+  try {
+    list = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    throw refuse(`source check file ${file}: ${e.message}`);
+  }
+  if (!Array.isArray(list)) throw refuse(`source check file ${file}: not a JSON array`);
+  const close = (x) => x === null || (typeof x === 'string' && x !== '');
+  for (const e of list) {
+    const base = typeof e?.id === 'string' && e.id !== '' && e.series === SERIES && isDate(e.day);
+    const refetch = e?.check === 'refetch' && /^[0-9a-f]{64}$/.test(e.recorded ?? '') && /^[0-9a-f]{64}$/.test(e.served ?? '') && e.recorded !== e.served;
+    const daily = e?.check === 'daily-close' && close(e.minuteClose) && close(e.dailyClose) && e.minuteClose !== e.dailyClose;
+    if (!base || !(refetch || daily)) {
+      throw refuse(`source check file ${file}: entry ${JSON.stringify(e).slice(0, 160)} needs id, series "${SERIES}", day, and check "refetch" with recorded and served (two different sha256) or check "daily-close" with minuteClose and dailyClose (two different closes)`);
+    }
+  }
+  return list;
+}
+
+/**
+ * --daily <file> (dry run): Binance daily candles as its REST API answers
+ * GET /api/v3/klines?interval=1d — a JSON array of klines, gzipped when the
+ * name ends in .gz — as Map(day → close as String(Number(close))).
+ */
+export function readDaily(file) {
+  let rows;
+  try {
+    const bytes = fs.readFileSync(file);
+    rows = parseKlines(JSON.parse((file.endsWith('.gz') ? zlib.gunzipSync(bytes) : bytes).toString('utf8')));
+  } catch (e) {
+    throw refuse(`--daily ${file}: ${e.message}`);
+  }
+  const closes = new Map();
+  for (const c of rows) {
+    if (c.openMs % DAY_MS !== 0) throw refuse(`--daily ${file}: a candle opens at ${new Date(c.openMs).toISOString()}, not at 00:00 UTC — not daily candles`);
+    const day = dateOf(c.openMs);
+    if (closes.has(day) && closes.get(day) !== String(c.c)) throw refuse(`--daily ${file}: two candles of ${day} with different closes`);
+    closes.set(day, String(c.c));
+  }
+  return closes;
+}
+
 // ---------------------------------------------------------------------- io
 
 const readLines = (p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l)) : []);
@@ -400,13 +515,55 @@ async function runInner(argv, deps) {
 
 // ----------------------------------------------------------------- realized
 
+/** One GET of Binance JSON with the retry policy of keeper/vol-sources.mjs: at most 3 attempts, 2 s then 4 s apart, on a network error, a time-out (30 s per attempt), HTTP 429 or 5xx. */
+async function getJsonWithRetry(url, fetchImpl, wait) {
+  const where = url.split('?')[0];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      if (r.status === 429 || r.status >= 500) throw Object.assign(new Error(`HTTP ${r.status} from ${where}`), { retry: true });
+      const text = await r.text();
+      if (!r.ok) throw new Error(`HTTP ${r.status} from ${where}: ${text.slice(0, 200)}`);
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error(`Binance answered non-JSON from ${where}`);
+      }
+    } catch (e) {
+      const again = e?.retry === true || e?.name === 'TimeoutError' || /fetch failed|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|network/i.test(String(e?.message));
+      if (!again || attempt >= RETRY_WAITS_MS.length) throw e;
+      await wait(RETRY_WAITS_MS[attempt]);
+    }
+  }
+}
+
+/**
+ * Binance's daily candles (interval 1d) of the UTC days first … last, in one
+ * request: Map(day → close as String(Number(close)), the form a line's closes
+ * take). Only a candle that opens at a day's 00:00 UTC and is closed by the
+ * server time counts.
+ */
+export async function binanceDailyCloses({ host, klinesPath, symbol, first, last, serverTime, fetchImpl, wait }) {
+  const start = dayMs(first);
+  const q = new URLSearchParams({ symbol, interval: '1d', startTime: String(start), endTime: String(dayMs(last) + DAY_MS - 1), limit: String(Math.round((dayMs(last) - start) / DAY_MS) + 1) });
+  await wait(BINANCE_SPACING_MS);
+  const closes = new Map();
+  for (const c of parseKlines(await getJsonWithRetry(`${host}${klinesPath}?${q}`, fetchImpl, wait))) {
+    if (c.openMs % DAY_MS === 0 && c.openMs >= start && c.openMs <= dayMs(last) && c.closeMs < serverTime) closes.set(dateOf(c.openMs), String(c.c));
+  }
+  return closes;
+}
+
 /**
  * The bars of the realized line: the --offline files, or Binance REST (the
  * server time is read once per run). isFinal(day): has the UTC day ended?
- * fetchDay(day): that day's bars, complete or accepted. The dry run and the
+ * fetchDay(day): that day's bars, complete or accepted. refetch(day): the
+ * day's bars read once more, as the source serves them now. dailyCloses(days):
+ * the daily candles' closes of those days — from Binance in force, from
+ * --daily in a dry run (null in a dry run without it). The dry run and the
  * line in force read their bars through this one function.
  */
-function realizedSource(o, L, gaps, deps) {
+function realizedSource(o, L, gaps, deps, daily = null) {
   const symbol = L.source.symbol;
   let serverTime = null;
   const binance = o.offline ? null : binanceRest({ host: L.source.host, klinesPath: L.source.path, fetchImpl: deps.fetch, wait: deps.wait });
@@ -446,8 +603,80 @@ function realizedSource(o, L, gaps, deps) {
     const { close, lastBar } = dayClose(minutes);
     return { close, lastBar, rows, sha, gaps: g, gapAccepted, fetchedAt: o.offline ? null : new Date(deps.now()).toISOString() };
   };
-  return { isFinal, fetchDay };
+
+  /** One day's bars read once more (one fetch; offline: its file again), as the source serves them now: {sha, rows, close, lastBar}. */
+  const refetch = async (day) => {
+    let minutes;
+    if (o.offline) {
+      minutes = offlineDay(o.offline, symbol, day);
+      if (minutes == null) throw new Exit(1, `${L.series}: no offline file for ${day} under ${o.offline} — the last line was built from that day, which cannot be read again; nothing written`);
+    } else minutes = await binanceDayOnce(binance, symbol, day, await time());
+    return { sha: sha256(canonicalMinuteText(minutes)), rows: minutes.length, ...dayClose(minutes) };
+  };
+
+  /** The daily candles' closes of `days` (consecutive): Map(day → String(close)); null in a dry run without --daily. */
+  const dailyCloses = async (days) => {
+    if (daily) return daily;
+    if (o.dryRun) return null;
+    return binanceDailyCloses({ host: L.source.host, klinesPath: L.source.path, symbol, first: days[0], last: days.at(-1), serverTime: await time(), fetchImpl: deps.fetch, wait: deps.wait });
+  };
+  return { isFinal, fetchDay, refetch, dailyCloses };
 }
+
+/**
+ * The days whose bars a line records: its newest window day (source.day);
+ * with `all`, on the first line, every day of `sources` and the carried day
+ * too. Each with the row count, the canonical text's sha256 and the close
+ * the line holds for it.
+ */
+function recordedDays(line, all) {
+  const W = line.window.length - 1;
+  const newest = { day: line.source.day, rows: line.source.rows, sha: line.source.sha256, close: line.window[W][1], lastBar: line.source.lastBar };
+  if (!all || !Array.isArray(line.sources)) return [newest];
+  const days = line.sources.map(([day, rows, sha], k) => (day === newest.day ? newest : { day, rows, sha, close: line.window[k][1] }));
+  if (Array.isArray(line.carriedFrom) && line.carriedFrom.length >= 4) {
+    const [day, close, rows, sha] = line.carriedFrom;
+    days.unshift({ day, rows, sha, close });
+  }
+  return days;
+}
+
+/**
+ * Do the bars a line was built from still come from the source? Each
+ * recorded day is read once more; its canonical text must hash to the
+ * sha256 the line records, with the same row count, the same last bar and
+ * the close the line holds for that day. The first difference, or null.
+ */
+async function sourceChange(line, src, all = false) {
+  for (const want of recordedDays(line, all)) {
+    const got = await src.refetch(want.day);
+    if (got.sha !== want.sha || got.rows !== want.rows || got.close !== want.close || (want.lastBar !== undefined && got.lastBar !== want.lastBar)) return { want, got };
+  }
+  return null;
+}
+const barsText = (x) => `${x.rows} rows, close ${x.close}${x.lastBar ? ` (bar ${x.lastBar})` : ''}, canonical text sha256 ${x.sha}`;
+const sourceChangeText = (series, line, { want, got }) =>
+  `${series}: SOURCE CHANGED — line #${line.seq} ${line.date} was built from the bars of ${want.day} (${barsText(want)}), but the source now serves ${barsText(got)}`;
+
+/**
+ * The daily-candle gate: the close the 1-minute bars give each window day a
+ * line adds (the newest day; every window day on the first line) must be the
+ * close of the source's daily candle of that day, as String(Number(close)).
+ * Every difference [{day, minute, daily (null: no candle)}], in day order.
+ */
+async function dailyDifferences(line, first, src) {
+  const days = first ? line.window : [line.window.at(-1)];
+  const closes = await src.dailyCloses(days.map(([d]) => d));
+  const out = [];
+  for (const [day, c] of days) {
+    const minute = c == null ? null : String(c);
+    const daily = closes.get(day) ?? null;
+    if (minute !== daily) out.push({ day, minute, daily });
+  }
+  return out;
+}
+const dailyText = (series, D, { day, minute, daily }, where) =>
+  `${series}: DAILY CLOSE DIFFERS — the 1-minute bars close ${day} at ${minute}, ${where} ${daily == null ? 'has no closed daily candle of that day' : `closes it at ${daily}`}; nothing written for line ${D}`;
 
 /**
  * The line of day D after `prev` (prev null: the first line, which fetches
@@ -502,6 +731,7 @@ async function runRealized(o, L, rulebookSha256, out, deps, rbPath) {
   const recPath = path.join(out, `record-${L.series}.jsonl`);
   const records = readLines(recPath);
   const gaps = readGaps(o.gaps ?? path.join(deps.root, 'keeper', 'vol-index-gaps.json'));
+  const daily = o.daily ? readDaily(o.daily) : null;
   const run = runUrl(deps.env);
 
   let prev = records.at(-1) ?? null;
@@ -517,8 +747,10 @@ async function runRealized(o, L, rulebookSha256, out, deps, rbPath) {
   const to = o.replay?.to ?? null;
 
   // the source: offline files, or Binance REST (server time read once)
-  const src = realizedSource(o, L, gaps, deps);
+  const src = realizedSource(o, L, gaps, deps, daily);
 
+  // a record continued: before its first new line, the day of the line it continues from is read again
+  let recheck = !!prev;
   let written = 0;
   for (;;) {
     if (to && D > to) {
@@ -530,7 +762,16 @@ async function runRealized(o, L, rulebookSha256, out, deps, rbPath) {
       deps.log(`${L.series}: ${day} has not ended (or its next-day bar is not there yet) — ${written} line(s) written this run`);
       return 0;
     }
+    if (recheck) {
+      recheck = false;
+      const ch = await sourceChange(prev, src);
+      if (ch) throw new Exit(1, `${sourceChangeText(L.series, prev, ch)} — nothing written: the dry run does not continue from a line whose day the source no longer confirms`);
+    }
     const line = await nextRealizedLine({ o, L, src, prev, D, rule, run, deps, shadow: true });
+    if (daily) {
+      const [dd] = await dailyDifferences(line, !prev, src);
+      if (dd) throw new Exit(1, dailyText(L.series, D, dd, `the daily candle in ${o.daily}`));
+    }
     const rc = recompute(deps, L.series, records, line, null, rbPath);
     if (!rc.ok) throw new Exit(1, `${L.series}: independent recompute (scripts/verify-vol.mjs) rejected line ${D} — nothing written\n${rc.out}`);
     appendLine(recPath, line);
@@ -547,6 +788,8 @@ async function runRealized(o, L, rulebookSha256, out, deps, rbPath) {
 export const GIWA_RPC = 'https://sepolia-rpc.giwa.io';
 export const GIWA_CHAIN_ID = 91342;
 const ANCHOR_GAS = 60_000n; // as the other daily series (keeper/leverage-index.mjs)
+/** How long the keeper waits for one transaction's receipt (an anchor, a setNav step) before it gives up: exit 1, the line stays on disk. */
+export const RECEIPT_TIMEOUT_MS = 300_000;
 const SETNAV_GAS = 120_000n; // as keeper/leverage-index.mjs (setNav measured at 36,137 gas)
 
 /**
@@ -564,6 +807,7 @@ export function inForcePaths(root, series, fork = false) {
     marks: path.join(keeper, `marks-${series}.jsonl`),
     vaults: path.join(keeper, 'leverage-vaults.json'),
     gaps: path.join(root, 'keeper', 'vol-index-gaps.json'),
+    checks: path.join(root, 'keeper', 'vol-index-source-checks.json'),
     ledger: path.join(root, 'trackrecord', 'decisions.jsonl'),
     trackrecord: path.join(root, 'trackrecord'),
   };
@@ -571,7 +815,9 @@ export function inForcePaths(root, series, fork = false) {
 
 /**
  * Is the realized line in force? Returns {entry} when its inception decision
- * is, else {msg, anchored}. The same checks as keeper/leverage-index.mjs
+ * is, else {msg, anchored}. The id must be <YYYY-MM-DD>-<series>-inception
+ * (a decision of another series is never this one's) and the ledger must date
+ * it on the date in its id. The same checks as keeper/leverage-index.mjs
  * (the decision is in the ledger the decision anchor appends to, its file
  * still hashes to the ledger's value and contains the rulebook's sha256),
  * with one difference: this decision is effective on the day it is anchored
@@ -584,6 +830,9 @@ export function inForcePaths(root, series, fork = false) {
 export function decisionProblem(P, rb, rulebookSha) {
   const id = rb.inception?.decision;
   if (!rb.inception?.date || !id) return { anchored: false, msg: 'NOT IN FORCE: inception.date / inception.decision are null' };
+  // only an inception decision of this series starts it: <YYYY-MM-DD>-qvol-inception
+  const form = new RegExp(`^(\\d{4}-\\d{2}-\\d{2})-${rb.series}-inception$`).exec(String(id));
+  if (!form || !isDate(form[1])) return { anchored: false, msg: `NOT IN FORCE: inception.decision ${JSON.stringify(id)} is not an inception decision of this series (an id <YYYY-MM-DD>-${rb.series}-inception)` };
   const entry = readLines(P.ledger).find((d) => d.id === id);
   if (!entry) return { anchored: false, msg: `NOT IN FORCE: decision not anchored or does not pin this rulebook (${id} is not in trackrecord/decisions.jsonl)` };
   const broken = (why) => ({ anchored: true, msg: `NOT IN FORCE: ${why}` });
@@ -593,9 +842,63 @@ export function decisionProblem(P, rb, rulebookSha) {
   if (sha256(bytes) !== entry.sha256) return broken(`${entry.file} no longer hashes to the ledger's value`);
   if (!bytes.toString('utf8').includes(rulebookSha)) return broken(`${id} does not contain the rulebook sha256 ${rulebookSha}`);
   if (!isDate(entry.effectiveFrom)) return broken(`decision ${id} has no effective date in the ledger (effectiveFrom ${JSON.stringify(entry.effectiveFrom)})`);
+  if (entry.effectiveFrom !== form[1]) return broken(`decision ${id} is effective from ${entry.effectiveFrom} in the ledger, not on the date in its id`);
   const firstLine = addDays(entry.effectiveFrom, 1);
   if (firstLine !== rb.inception.date) return broken(`decision ${id} is effective from ${entry.effectiveFrom}, so the first line is dated ${firstLine}, but the rulebook's inception.date is ${rb.inception.date}`);
   return { entry };
+}
+
+/**
+ * The record of the line in force as a whole, once per run before anything is
+ * sent or appended: no line dated after the runner's clock (line D is never
+ * written before D 00:00 UTC), no dry-run line ("shadow"), the first line's
+ * inception is this decision {decision, decisionSha256} and no later line
+ * carries one, and scripts/verify-vol.mjs (a child process, on a copy of the
+ * file) recomputes every line — seq, hash chain, dates, windows, values, the
+ * rule against the rulebook JSON. The first problem, or null.
+ */
+function recordProblem(deps, series, recPath, records, inception, rbPath) {
+  const today = dateOf(deps.now());
+  for (const l of records) {
+    if (!(l.date <= today)) return `line #${l.seq} is dated ${l.date}, after the runner's clock (${new Date(deps.now()).toISOString()}): a day is never written before it has ended`;
+    if ('shadow' in l) return `line #${l.seq} ${l.date} is a dry-run line ("shadow")`;
+    if (l.seq !== 0 && 'inception' in l) return `line #${l.seq} ${l.date} carries an inception; only the first line does`;
+  }
+  const inc = records[0].inception;
+  if (inc?.decision !== inception.decision || inc?.decisionSha256 !== inception.decisionSha256) return `the first line names the decision ${JSON.stringify(inc)}, not ${JSON.stringify(inception)}`;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `${series}-record-`));
+  try {
+    fs.copyFileSync(recPath, path.join(tmp, `record-${series}.jsonl`));
+    const r = spawnSync(process.execPath, [deps.verifyScript, '--dir', tmp, '--line', 'realized', '--rulebook', rbPath, '--recompute-only', '--quiet'], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '' } });
+    if (r.status !== 0) return `scripts/verify-vol.mjs rejects it:\n${`${r.stdout ?? ''}${r.stderr ?? ''}`.trim()}`;
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  return null;
+}
+
+/**
+ * Which lines of the record carry an anchor (trackrecord/anchors-qvol.jsonl)?
+ * Every anchor entry must name a line of the record by seq, date and hash —
+ * an entry whose line is gone or whose line no longer hashes to the entry's
+ * headHash means the record changed after it was anchored. Only the last
+ * lines can be unanchored: a run anchors unanchored lines first, in order, so
+ * an unanchored line before an anchored one was not left by a run. Any of
+ * these is refused (exit 2) before anything is sent. Returns the index of the
+ * first unanchored line (records.length when every line has an anchor).
+ */
+export function anchorCoverage(series, records, anchors, where) {
+  for (const a of anchors) {
+    const line = records.find((l) => l.seq === a.seq);
+    if (!line) throw refuse(`${series}: ${where} names an anchor of #${a.seq} ${a.date}, a line the record does not hold — the record lost a line after it was anchored; nothing sent. A person restores the record from the repository's history (an anchored line is never removed or edited)`);
+    if (a.headHash !== line.hash || a.date !== line.date) throw refuse(`${series}: the anchor of #${a.seq} in ${where} names ${a.date} with head ${a.headHash}, but line #${line.seq} is ${line.date} with hash ${line.hash} — the line changed after it was anchored; nothing sent. A person restores the record from the repository's history (an anchored line is never removed or edited)`);
+  }
+  const has = records.map((l) => anchors.some((a) => a.seq === l.seq));
+  const first = has.indexOf(false);
+  if (first < 0) return records.length;
+  const later = has.indexOf(true, first);
+  if (later >= 0) throw refuse(`${series}: line #${records[first].seq} ${records[first].date} has no anchor in ${where}, but line #${records[later].seq} after it has one — only the last lines of the record can be unanchored (a run anchors them first, in order); nothing sent`);
+  return first;
 }
 
 /** viem, its local signer and the read-back helpers: loaded only when the in-force path signs (a dry run needs Node built-ins only). */
@@ -641,6 +944,60 @@ async function forkSigner(o, deps) {
   return { pc, wallet: viem.createWalletClient({ account: address, chain, transport: transport(o.rpc) }), address };
 }
 
+const NOT_FOUND = new Set(['TransactionNotFoundError', 'TransactionReceiptNotFoundError']);
+const notFound = (e) => {
+  for (let c = e, i = 0; c && i < 10; c = c.cause, i++) if (NOT_FOUND.has(c.name)) return true;
+  return false;
+};
+/** A chain error in one line: viem's short message, with the node's own words when it gives them. */
+const shortError = (e) => {
+  const head = (e?.shortMessage ?? e?.message ?? String(e)).split('\n')[0];
+  const details = typeof e?.details === 'string' ? e.details.split('\n')[0] : '';
+  return details && !head.includes(details) ? `${head} (${details})` : head;
+};
+
+/**
+ * A transaction and its receipt, read through the signer's node. A node
+ * that does not know the hash is asked again within the read-back time
+ * (keeper/readback.mjs, 30 s); null when it still does not — the transaction
+ * is not on chain (never sent, or dropped by a reorg). Other errors throw.
+ */
+async function readTx(signer, hash, deps) {
+  const { readback } = await chainLib();
+  try {
+    const { value } = await readback.retryRead(async () => ({ tx: await signer.pc.getTransaction({ hash }), rc: await signer.pc.getTransactionReceipt({ hash }) }), {
+      what: `transaction ${hash}`,
+      retryIf: notFound,
+      ...(deps.readTiming ?? {}),
+    });
+    return value;
+  } catch (e) {
+    if (e instanceof readback.ReadTimeout) return null;
+    throw e;
+  }
+}
+
+/**
+ * Is `hash` a successful zero-value self-send from the signer whose calldata
+ * is `calldata` (the form of every anchor: scripts/anchor-decision.mjs sends
+ * `qxdec:` + a decision's sha256, this keeper `qxpi-qvol:` + a line's hash)?
+ * {problem: why not | null, missing: not on chain, block}.
+ */
+async function selfSendCheck(signer, hash, calldata, deps) {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(String(hash))) return { problem: `is not a transaction hash (${JSON.stringify(hash)})`, missing: false };
+  const { viem } = await chainLib();
+  const t = await readTx(signer, hash, deps);
+  if (!t) return { problem: 'is not on chain', missing: true };
+  const me = viem.getAddress(signer.address);
+  let problem = null;
+  if (t.rc.status !== 'success' || t.rc.blockNumber == null) problem = `did not succeed (receipt status ${t.rc.status})`;
+  else if (viem.getAddress(t.tx.from) !== me) problem = `was sent by ${t.tx.from}, not by the signer ${me}`;
+  else if (!t.tx.to || viem.getAddress(t.tx.to) !== me) problem = `is not a self-send (to ${t.tx.to ?? 'no address: a contract creation'})`;
+  else if (t.tx.value != null && t.tx.value !== 0n) problem = `carries a value of ${t.tx.value} wei`;
+  else if (String(t.tx.input).toLowerCase() !== viem.toHex(calldata).toLowerCase()) problem = `does not carry ${calldata}`;
+  return { problem, missing: false, block: t.rc.blockNumber };
+}
+
 async function sendNonceSafe(fn, wait) {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -652,6 +1009,20 @@ async function sendNonceSafe(fn, wait) {
   }
 }
 
+/**
+ * A transaction's receipt, waited for at most RECEIPT_TIMEOUT_MS (deps.receiptTimeoutMs
+ * in tests): past it, Exit(1) — the transaction may still be mined later.
+ */
+async function receiptOf(pc, hash, what, deps) {
+  const ms = deps.receiptTimeoutMs ?? RECEIPT_TIMEOUT_MS;
+  try {
+    return await pc.waitForTransactionReceipt({ hash, timeout: ms });
+  } catch (e) {
+    if (e?.name === 'WaitForTransactionReceiptTimeoutError') throw new Exit(1, `no receipt for ${what} ${hash} within ${ms / 1000} s`);
+    throw e;
+  }
+}
+
 /** The anchor of one line: a zero-value self-send, calldata `qxpi-<series>:` + the line's hash (as keeper/leverage-index.mjs). */
 async function anchorLine(signer, series, line, anchorsPath, deps) {
   const { viem } = await chainLib();
@@ -659,10 +1030,30 @@ async function anchorLine(signer, series, line, anchorsPath, deps) {
     () => signer.wallet.sendTransaction({ to: signer.address, value: 0n, data: viem.toHex(`qxpi-${series}:` + line.hash), gas: ANCHOR_GAS }),
     deps.wait
   );
-  const rc = await signer.pc.waitForTransactionReceipt({ hash });
+  const rc = await receiptOf(signer.pc, hash, `the anchor of #${line.seq}`, deps);
   if (rc.status !== 'success') throw new Exit(1, `anchor of #${line.seq} ${line.date} reverted (${hash})`);
   appendLine(anchorsPath, { date: line.date, seq: line.seq, headHash: line.hash, txHash: hash });
   deps.log(`  anchored #${line.seq} ${line.date} in ${hash} (block ${rc.blockNumber})`);
+}
+
+/**
+ * Is the registry entry's deployTx the keeper's own creation of `vault`? A
+ * contract creation (no `to`) sent by the signer, successful, whose receipt
+ * names `vault` as the contract it created, in the block the entry gives
+ * (when it gives one). {problem: why not | null, block}.
+ */
+async function deploymentCheck(signer, v, vault, deps) {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(String(v.deployTx))) return { problem: `its deployTx is ${JSON.stringify(v.deployTx ?? null)}, not a transaction hash` };
+  const { viem } = await chainLib();
+  const t = await readTx(signer, v.deployTx, deps);
+  const me = viem.getAddress(signer.address);
+  if (!t) return { problem: `its deployTx ${v.deployTx} is not on chain` };
+  if (t.rc.status !== 'success') return { problem: `its deployTx ${v.deployTx} did not succeed` };
+  if (t.tx.to != null) return { problem: `its deployTx ${v.deployTx} is not a contract creation (it is sent to ${t.tx.to})` };
+  if (viem.getAddress(t.tx.from) !== me) return { problem: `its deployTx ${v.deployTx} was sent by ${t.tx.from}, not by the keeper ${me}` };
+  if (!t.rc.contractAddress || viem.getAddress(t.rc.contractAddress) !== vault) return { problem: `its deployTx ${v.deployTx} created ${t.rc.contractAddress ?? 'no contract'}, not ${vault}` };
+  if (v.block != null && t.rc.blockNumber !== BigInt(v.block)) return { problem: `its deployTx ${v.deployTx} is in block ${t.rc.blockNumber}, not in block ${v.block} as the entry says` };
+  return { problem: null, block: t.rc.blockNumber };
 }
 
 /**
@@ -722,7 +1113,7 @@ async function markDisplayVault({ signer, vault, ticker, gate, line, marksPath, 
     const data = viem.encodeFunctionData({ abi, functionName: 'setNav', args: [next, indexLevel] });
     await simulate(data, `setNav step ${k + 1}/${steps.length}`); // a revert stops here, before anything is sent
     const tx = await sendNonceSafe(() => wallet.sendTransaction({ to: vault, data, gas: SETNAV_GAS }), deps.wait);
-    const rc = await pc.waitForTransactionReceipt({ hash: tx });
+    const rc = await receiptOf(pc, tx, `setNav step ${k + 1}/${steps.length}`, deps);
     if (rc.status !== 'success') throw new Exit(1, `setNav step ${k + 1}/${steps.length} reverted (${tx})`);
     floor = rc.blockNumber;
     appendLine(marksPath, { date: line.date, seq: line.seq, step: k + 1, of: steps.length, nav: Number(next), indexLevel: Number(indexLevel), tx, block: Number(rc.blockNumber) });
@@ -766,44 +1157,179 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
   }
   const gaps = readGaps(P.gaps);
   deps.log(`${L.ticker} (${L.series}) in force: decision ${inception.decision} · first line ${L.inception.date} · rulebook ${rulebookSha256.slice(0, 12)}… · ${records.length} line(s) in ${rel(P.records)}`);
+  // the record as a whole, once per run, before anything is sent or appended
+  if (records.length) {
+    const why = recordProblem(deps, L.series, P.records, records, inception, rbPath);
+    if (why) {
+      const [head, ...details] = why.split('\n');
+      throw refuse(
+        `${L.series}: the record does not verify: ${head} — nothing sent, nothing appended, no mark. A person restores ${rel(P.records)} from the repository's history ` +
+          `(an anchored line is never edited or removed; a line that is not anchored and not the keeper's is removed by a commit)${details.length ? `\n${details.join('\n')}` : ''}`
+      );
+    }
+    deps.log(`  ${rel(P.records)}: ${records.length} line(s) recomputed as a whole by scripts/verify-vol.mjs — agrees`);
+  }
 
   const signer = o.anchor ? (o.fork ? await forkSigner(o, deps) : await makeSigner(deps)) : null;
   if (o.anchor && !signer) deps.log('--anchor requested but KEEPER_PK is not set — lines are written unanchored; the next run with the key anchors them first');
   if (!o.anchor) deps.log('--anchor not passed — no on-chain anchor attempted for this run.');
+  // the decision's own anchor, read once per run by every run that can anchor: a ledger line alone does not start the series
+  if (signer) {
+    let c;
+    try {
+      c = await selfSendCheck(signer, d.entry.txHash, `qxdec:${d.entry.sha256}`, deps);
+    } catch (e) {
+      throw new Exit(1, `${L.series}: the chain failed while reading the inception decision's anchor ${d.entry.txHash}: ${shortError(e)} — nothing read from Binance, nothing written, nothing sent; the next run reads it again`);
+    }
+    if (c.problem) throw new Exit(1, `${L.series}: NOT IN FORCE: the inception decision ${d.entry.id} is in trackrecord/decisions.jsonl, but its anchor transaction ${d.entry.txHash} ${c.problem} — the decision anchor is a self-send from the keeper key with calldata qxdec:<the decision file's sha256>; nothing read from Binance, nothing written, nothing sent`);
+    deps.log(`  decision ${d.entry.id}: anchored in ${d.entry.txHash} (block ${c.block}) — the signer's self-send of qxdec:<its sha256>`);
+  }
   /** A line on disk whose anchor fails stays written: the next run anchors it first. Nothing is marked. */
   const anchor = async (line) => {
     try {
       await anchorLine(signer, L.series, line, P.anchors, deps);
     } catch (e) {
-      const msg = e instanceof Exit ? e.message : (e?.shortMessage ?? e?.message ?? String(e)).split('\n')[0];
-      throw new Exit(1, `${L.series}: line #${line.seq} ${line.date} is written but its anchor failed: ${msg} — no mark; the next run anchors it first`);
+      const msg = e instanceof Exit ? e.message : shortError(e);
+      const late = /^no receipt for /.test(msg) ? ' (if that transaction is mined later, the line has two anchor transactions with the same calldata: harmless, the anchors file names the later one)' : '';
+      throw new Exit(1, `${L.series}: line #${line.seq} ${line.date} is written but its anchor failed: ${msg} — no mark; the next run anchors it first${late}`);
     }
   };
 
-  // 2. a line written by an earlier run but not anchored is anchored first
-  if (signer) {
-    const anchors = readLines(P.anchors);
-    for (const line of records) {
-      if (anchors.some((a) => a.seq === line.seq)) continue;
-      deps.log(`  #${line.seq} ${line.date} has no anchor — anchoring it first`);
-      await anchor(line);
-    }
-  }
-
-  // 3. every closed UTC day since the last line, in order
-  const src = realizedSource({ offline: null }, L, gaps, deps);
-  const run = runUrl(deps.env);
+  // the source of every day this run reads: Binance REST (server time read once)
+  const src = realizedSource({ offline: null, dryRun: false }, L, gaps, deps);
   const host = L.source.host.replace(/^https?:\/\//, '');
-  /** A Binance failure names the host, the day and what was not written. */
-  const fromSource = async (what, D, fn) => {
+  /** A Binance failure names the host, the day it was reading and what was not written. */
+  const fromSource = async (what, day, D, fn) => {
     try {
       return await fn();
     } catch (e) {
       if (e instanceof Exit) throw e;
-      throw new Exit(1, `${L.series}: Binance (${host}) failed while ${what} ${addDays(D, -1)}: ${e?.message ?? e} — nothing written for ${D}; the next run continues from the last line`);
+      throw new Exit(1, `${L.series}: Binance (${host}) failed while ${what} ${day}: ${e?.message ?? e} — nothing written for ${D}; the next run continues from the last line`);
     }
   };
+  const nextDate = records.length ? addDays(records.at(-1).date, 1) : L.inception.date;
+  const reread = new Set(); // lines whose days were read again in this run
+
+  /**
+   * F2: the day of the line the series continues from, read once more. A
+   * difference stops the run (exit 1, nothing written) for a person — unless
+   * the line is anchored and the source changed the day after the line was
+   * written, and a person has confirmed exactly that change (check "refetch").
+   */
+  const recheckLast = async (last, D) => {
+    const ch = await fromSource('reading again the bars of', last.source.day, D, () => sourceChange(last, src));
+    if (!ch) {
+      deps.log(`  #${last.seq} ${last.date}: the bars of ${last.source.day} read again from Binance — the same as the line records`);
+      return;
+    }
+    const revised = lastAnchored && ch.got.sha !== ch.want.sha;
+    const entry = revised ? readSourceChecks(P.checks).find((e) => e.check === 'refetch' && e.day === ch.want.day && e.recorded === ch.want.sha && e.served === ch.got.sha) : null;
+    if (entry) {
+      deps.log(`  #${last.seq} ${last.date}: the bars of ${ch.want.day} changed after the line was written (sha256 ${ch.want.sha} → ${ch.got.sha}) — confirmed by ${entry.id} in ${rel(P.checks)}; the line stays as written`);
+      return;
+    }
+    if (revised) deps.err(`${L.series}: the entry a person adds once the source is found to have changed ${ch.want.day} after the line was written: ${JSON.stringify({ series: L.series, day: ch.want.day, check: 'refetch', recorded: ch.want.sha, served: ch.got.sha })}`);
+    throw new Exit(1,
+      `${sourceChangeText(L.series, last, ch)} — nothing written, nothing anchored, no mark. ` +
+        (revised
+          ? `The line is anchored: a person checks the day at the source; if the source changed it after the line was written, the printed entry (with an id and a note) goes into ${rel(P.checks)} and the next run continues — the line stays as written`
+          : lastAnchored
+            ? 'The bars still hash to the line\'s sha256 but the line holds another row count, close or last bar: the line is not what those bars give; a person checks'
+            : 'The line has no anchor: if the source never served those bars, the line did not come from it — a person removes it (and every line after it) by a commit, and the next run writes those days again')
+    );
+  };
+
+  /**
+   * F12: the daily-candle gate before line D is written. A difference stops
+   * the run (exit 1, nothing written) unless a person has confirmed exactly
+   * that difference (check "daily-close"); the line is then written from the
+   * 1-minute bars, as the definition says.
+   */
+  const dailyGate = async (line, first, D) => {
+    const diffs = await fromSource('reading the daily candles up to', addDays(D, -1), D, () => dailyDifferences(line, first, src));
+    const open = [];
+    let entries = null;
+    for (const dd of diffs) {
+      entries ??= readSourceChecks(P.checks);
+      const entry = entries.find((e) => e.check === 'daily-close' && e.day === dd.day && e.minuteClose === dd.minute && e.dailyClose === dd.daily);
+      if (entry) deps.log(`  ${dd.day}: Binance's daily candle ${dd.daily == null ? 'is missing' : `closes at ${dd.daily}`}, the 1-minute bars at ${dd.minute} — confirmed by ${entry.id} in ${rel(P.checks)}; the line is written from the 1-minute bars, as the definition says`);
+      else open.push(dd);
+    }
+    if (open.length) {
+      const dd = open[0];
+      deps.err(`${L.series}: the entry a person adds once the 1-minute bars of ${dd.day} are found right: ${JSON.stringify({ series: L.series, day: dd.day, check: 'daily-close', minuteClose: dd.minute, dailyClose: dd.daily })}`);
+      throw new Exit(1, `${dailyText(L.series, D, dd, "Binance's daily candle")}${open.length > 1 ? ` (and ${open.length - 1} more day(s))` : ''}, nothing anchored, no mark. A person compares the two at the source; if the 1-minute bars are right, the printed entry (with an id and a note) goes into ${rel(P.checks)} and the next run writes the line`);
+    }
+    if (!diffs.length) deps.log(first ? `  #0 ${D}: Binance's daily candles of the ${line.window.length} window days close where the 1-minute bars close them` : `  #${line.seq} ${D}: Binance's daily candle of ${addDays(D, -1)} closes at ${String(line.window.at(-1)[1])}, where the 1-minute bars close it`);
+  };
+
+  // 2. a line written by an earlier run but not anchored is anchored first — never on trust:
+  //    only the last lines of the record can be unanchored; each is recomputed by
+  //    scripts/verify-vol.mjs (the first line on its own, a later one after the line before
+  //    it), and the bars it records are read again from Binance (the first line: every day
+  //    of its window), before its anchor is sent
+  const anchors = readLines(P.anchors);
+  let firstUnanchored = anchorCoverage(L.series, records, anchors, rel(P.anchors));
+  // F8: the last anchor is read again — still on chain (a reorg can drop it: that line is then
+  // anchored again, with the lines after it) and the keeper's anchor of that very line
+  const dropped = new Set();
+  if (signer) {
+    for (let k = firstUnanchored - 1; k >= 0; k--) {
+      const line = records[k];
+      const a = anchors.filter((x) => x.seq === line.seq).at(-1); // the anchor the file names last for that line
+      let c;
+      try {
+        c = await selfSendCheck(signer, a.txHash, `qxpi-${L.series}:${line.hash}`, deps);
+      } catch (e) {
+        throw new Exit(1, `${L.series}: the chain failed while reading the anchor of #${line.seq} ${line.date} (${a.txHash}): ${shortError(e)} — nothing written, nothing sent; the next run reads it again`);
+      }
+      if (c.missing) {
+        deps.log(`  the anchor of #${line.seq} ${line.date} (${a.txHash}) is not on chain any more (dropped, as by a reorg) — #${line.seq} is anchored again`);
+        dropped.add(line.seq);
+        firstUnanchored = k;
+        continue;
+      }
+      if (c.problem) {
+        throw refuse(
+          `${L.series}: the anchor of #${line.seq} ${line.date} in ${rel(P.anchors)} (${a.txHash}) ${c.problem} — it is not the keeper's anchor of that line; nothing sent. ` +
+            'An anchor entry is written only by the keeper, after its transaction\'s receipt: a person checks who wrote this one'
+        );
+      }
+      deps.log(`  last anchor: #${line.seq} ${line.date} in ${a.txHash} (block ${c.block}) — on chain, the signer's self-send of this line's hash`);
+      break;
+    }
+  }
+  if (signer) {
+    for (let k = firstUnanchored; k < records.length; k++) {
+      const line = records[k];
+      deps.log(`  #${line.seq} ${line.date} has no anchor${dropped.has(line.seq) ? ' on chain' : ''} — anchoring it first`);
+      const rc = recompute(deps, L.series, records.slice(0, k), line, null, rbPath);
+      if (!rc.ok) {
+        throw refuse(
+          `${L.series}: line #${line.seq} ${line.date} has no anchor, and scripts/verify-vol.mjs rejects it (${k ? `after #${records[k - 1].seq}` : 'on its own'}) — it is not anchored: nothing sent, nothing appended, no mark. ` +
+            `A line the keeper did not write and check is never anchored with its key; a person removes it (and every line after it) by a commit, and the next run writes those days again\n${rc.out}`
+        );
+      }
+      deps.log(`  #${line.seq} ${line.date} recomputed by scripts/verify-vol.mjs before its anchor — agrees`);
+      const ch = await fromSource('reading again the bars of', line.source.day, nextDate, () => sourceChange(line, src, k === 0));
+      if (ch) {
+        throw new Exit(1,
+          `${sourceChangeText(L.series, line, ch)} — #${line.seq} has no anchor and is not anchored: nothing sent, nothing appended, no mark. ` +
+            'If the source never served those bars, the line did not come from it: a person removes it (and every line after it) by a commit, and the next run writes those days again'
+        );
+      }
+      reread.add(line.seq);
+      deps.log(`  #${line.seq} ${line.date}: the bars it records read again from Binance (${k === 0 ? `${recordedDays(line, true).length} days` : line.source.day}) — the same`);
+      await anchor(line);
+    }
+  }
+  const lastAnchored = !!signer || firstUnanchored === records.length; // does the last line carry an anchor now?
+
+  // 3. every closed UTC day since the last line, in order
+  const run = runUrl(deps.env);
   let prev = records.at(-1) ?? null;
+  // before the first new line, the day of the line it is built on is read again (once per run)
+  let recheck = !!prev && !reread.has(prev.seq);
   let written = 0;
   for (;;) {
     const D = prev ? addDays(prev.date, 1) : L.inception.date;
@@ -812,13 +1338,18 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
       deps.log(`${L.series}: line ${D} not written: the runner's clock (${new Date(deps.now()).toISOString()}) is before ${D}T00:00Z — a day is never written before it has ended`);
       break;
     }
-    if (!(await fromSource('checking the end of', D, () => src.isFinal(day)))) {
+    if (!(await fromSource('checking the end of', day, D, () => src.isFinal(day)))) {
       // a source that still calls the day open a full day after it ended has a stuck clock or stuck bars
       if (deps.now() >= dayMs(D) + DAY_MS) throw new Exit(1, `${L.series}: Binance says ${day} has not ended (no closed 1-minute bar at or after ${D}T00:00Z), but the runner's clock is ${new Date(deps.now()).toISOString()}, more than a day later — the source is stuck; nothing written for ${D}`);
       deps.log(`${L.series}: ${day} has not ended (or its next-day bar is not there yet) — line ${D} not written`);
       break;
     }
-    const line = await fromSource('fetching the 1-minute bars up to', D, () => nextRealizedLine({ o: { offline: null }, L, src, prev, D, rule, run, deps, shadow: false, inception: prev ? null : inception }));
+    if (recheck) {
+      recheck = false;
+      await recheckLast(prev, D);
+    }
+    const line = await fromSource('fetching the 1-minute bars up to', day, D, () => nextRealizedLine({ o: { offline: null }, L, src, prev, D, rule, run, deps, shadow: false, inception: prev ? null : inception }));
+    await dailyGate(line, !prev, D);
     const rc = recompute(deps, L.series, records, line, null, rbPath);
     if (!rc.ok) throw new Exit(1, `${L.series}: independent recompute (scripts/verify-vol.mjs) rejected line ${D} — nothing appended, nothing anchored, no mark\n${rc.out}`);
     appendLine(P.records, line);
@@ -862,7 +1393,12 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
     const chainId = await signer.pc.getChainId();
     if (chainId !== v.chainId) throw new Exit(1, `RPC is chain ${chainId}, the vault entry says ${v.chainId}`);
     const { viem } = await chainLib();
-    await markDisplayVault({ signer, vault: viem.getAddress(v.address), ticker: L.ticker, gate: v.gate, line: last, marksPath: P.marks, registry: rel(P.vaults), deps });
+    const vault = viem.getAddress(v.address);
+    // F10: the entry must name the vault the keeper itself deployed (keeper/deploy-mark-vault.mjs writes it from that receipt)
+    const dep = await deploymentCheck(signer, v, vault, deps);
+    if (dep.problem) throw new Exit(1, `REFUSED: ${rel(P.vaults)} ${L.series} names ${vault}, but ${dep.problem} — the entry does not name the keeper's own display vault; no mark sent. A person corrects the entry from the deployment log beside it (mark-vaults.jsonl)`);
+    deps.log(`  vault ${vault}: created by the signer in ${v.deployTx} (block ${dep.block}), as the registry says`);
+    await markDisplayVault({ signer, vault, ticker: L.ticker, gate: v.gate, line: last, marksPath: P.marks, registry: rel(P.vaults), deps });
   } catch (e) {
     const msg = e instanceof Exit ? e.message : (e?.shortMessage ?? e?.message ?? String(e)).split('\n')[0];
     deps.err(`${L.ticker} vault marks FAILED after line #${last.seq} was written and anchored: ${msg}`);

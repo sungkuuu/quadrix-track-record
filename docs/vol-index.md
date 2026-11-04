@@ -168,46 +168,118 @@ reproducibility test; the step checks `node --version` and stops on any other).
 One run:
 
 1. **In force?** With `inception` null: NOT IN FORCE, exit 0, nothing else
-   read, nothing written. Otherwise `inception.decision` must be in
-   `trackrecord/decisions.jsonl` (the ledger the decision anchor appends to),
-   the decision file must still hash to the ledger's value and contain the
-   sha256 of `keeper/rulebooks/qvol.json`, and the decision must be effective
-   on the day before `inception.date`: the decision is effective on the day it
-   is anchored, and the first line is dated the next UTC day. A decision not
-   in the ledger yet, or a run before `inception.date` 00:00 UTC, is NOT IN
-   FORCE (exit 0, nothing written, no request). A decision in the ledger that
-   the files no longer satisfy is refused (exit 2), and so is any of these once
-   the record has a line.
-2. A line that an earlier run wrote but did not anchor is anchored first.
-3. **Lines.** Every closed UTC day since the last line, in order. The first
-   line is dated `inception.date`; no day before it is ever written. Each line
-   is the line a dry run builds from the same bars (same fields, same order,
-   same values), without `shadow`, and the first line carries
-   `inception: {decision, decisionSha256}`. `scripts/verify-vol.mjs`
-   recomputes it before it is appended (a mismatch: exit 1, nothing appended,
-   anchored or marked). It is appended to `trackrecord/record-qvol.jsonl` and
-   anchored on GIWA Sepolia like the other daily series: a zero-value
-   transfer to the keeper's own address whose calldata is `qxpi-qvol:` and the
-   line's hash, signed locally (`trackrecord/anchors-qvol.jsonl`). Line D is
-   never written before D 00:00 UTC on the runner's clock; a source that
-   still calls the day open a full day after that is a failure (exit 1). A
-   day that earlier runs missed is written by a later run from the same
+   read, nothing written. Otherwise `inception.decision` must be an id of the
+   form `<YYYY-MM-DD>-qvol-inception` (a decision of another series never
+   starts this one) and be in `trackrecord/decisions.jsonl` (the ledger the
+   decision anchor appends to) effective on the date in its id; the decision
+   file must still hash to the ledger's value and contain the sha256 of
+   `keeper/rulebooks/qvol.json`, and the decision must be effective on the day
+   before `inception.date`: the decision is effective on the day it is
+   anchored, and the first line is dated the next UTC day. An id of another
+   form, a decision not in the ledger yet, or a run before `inception.date`
+   00:00 UTC, is NOT IN FORCE (exit 0, nothing written, no request). A
+   decision in the ledger that the files no longer satisfy is refused (exit
+   2), and so is any of these once the record has a line.
+2. **The record as a whole**, once per run, before anything is sent or
+   appended: `scripts/verify-vol.mjs` recomputes every line (seq, hash chain,
+   dates, windows, values, the rule against the rulebook JSON); no line may be
+   dated after the runner's clock, none may be a dry-run line, and only the
+   first line carries this decision's `inception`. A failure is refused (exit
+   2): nothing sent, appended or marked.
+3. **The decision's own anchor.** A run that can anchor (it has the key) reads
+   the decision's anchor transaction (the ledger's `txHash`): it must be on
+   chain, successful, and a zero-value self-send from the signer whose
+   calldata is `qxdec:` and the decision file's sha256, as
+   `scripts/anchor-decision.mjs` sends it. Otherwise NOT IN FORCE, exit 1,
+   nothing read from Binance, nothing written. A run without the key reads no
+   chain: it writes lines unanchored, and the next run with the key checks the
+   decision's anchor before it anchors anything.
+4. **The anchors.** Every entry of `trackrecord/anchors-qvol.jsonl` must name a
+   line of the record by seq, date and hash, and only the last lines may be
+   unanchored (a run anchors them first, in order); anything else is refused
+   (exit 2), nothing sent. A run that can anchor reads the last anchor's
+   transaction again: one no longer on chain (dropped, as by a reorg) has its
+   line anchored again first (and the anchor before it is read the same way);
+   one sent by another key or carrying other calldata is refused (exit 2).
+   A line without an anchor is anchored only after `scripts/verify-vol.mjs`
+   recomputes it (the first line on its own, a later line after the line
+   before it; a failure: exit 2) and the bars it records are fetched again from
+   Binance (the first line: every window day) and match it — the sha256 of
+   their canonical text, the row count, the last bar and the close (other
+   bars: exit 1, nothing sent). A line the keeper cannot confirm is never
+   anchored with its key.
+5. **Lines.** Before the first new line of a run, the bars of the last line's
+   day are fetched again (one more fetch) and must match the line as above;
+   other bars stop the run (exit 1, nothing written, the message names the day
+   and both sha256). Then every closed UTC day since the last line, in order.
+   The first line is dated `inception.date`; no day before it is ever
+   written. Each line is the line a dry run builds from the same bars (same
+   fields, same order, same values), without `shadow`, and the first line
+   carries `inception: {decision, decisionSha256}`. Before it is written,
+   Binance's daily candle of the newest window day (on the first line: of
+   every window day, in one request) must close where the 1-minute bars close
+   that day, compared as `String(Number(close))`; a difference or a missing
+   candle stops the run (exit 1, nothing written). The pre-registered
+   reproducibility test made the same comparison as part of its check V3:
+   6,844 closes against the exchange's daily candles, 0 mismatches
+   (`docs/research/qvol/prereg-2026-10-13/README-public.md`).
+   `scripts/verify-vol.mjs` then recomputes the line
+   (a mismatch: exit 1, nothing appended, anchored or marked). It is appended
+   to `trackrecord/record-qvol.jsonl` and anchored on GIWA Sepolia like the
+   other daily series: a zero-value transfer to the keeper's own address
+   whose calldata is `qxpi-qvol:` and the line's hash, signed locally
+   (`trackrecord/anchors-qvol.jsonl`). The keeper waits for each receipt at
+   most 5 minutes (`RECEIPT_TIMEOUT_MS`): past it, exit 1, the line stays on
+   disk without an anchor entry and the next run anchors it first (if the
+   first transaction is mined later, the line has two anchor transactions
+   with the same calldata; harmless — the anchors file names the later one).
+   Line D is never written before D 00:00 UTC on the runner's clock; a source
+   that still calls the day open a full day after that is a failure (exit 1).
+   A day that earlier runs missed is written by a later run from the same
    closed bars and carries `"late": true`. Without `--anchor` or without the
    key, lines are written unanchored and the next run with the key anchors
    them first.
-4. **The display vault** (`keeper/leverage-vaults.json`, entry `qvol`; deposit
+6. **The display vault** (`keeper/leverage-vaults.json`, entry `qvol`; deposit
    cap 0) is marked to the last line after that line is anchored, never
    before: share price n6 = floor(value x 1,000,000) in the contract's unit of
    1e-6 (the unrounded record value, cut; no decimal rounding), sent as
    `setNav(step, n6)` in steps inside the contract's bound of 25% per mark,
    each step read back (`keeper/marks-qvol.jsonl`). It marks only a vault
-   whose `symbol()` is the rulebook's ticker (qVOL), whose `keeper()` is the
-   signer and whose `depositCap()` is 0 (a display vault takes no deposits; a
-   cap above 0 is refused: no mark, exit 1). No address or no mark method in
-   the registry, no key, or an unanchored last line: no mark. The keeper sends that vault nothing but
+   whose registry entry's `deployTx` is the keeper's own contract creation of
+   that address (in the entry's `block`), whose `symbol()` is the rulebook's
+   ticker (qVOL), whose `keeper()` is the signer and whose `depositCap()` is 0
+   (a display vault takes no deposits; a cap above 0 is refused: no mark,
+   exit 1). No address or no mark method in the registry, no key, or an
+   unanchored last line: no mark. The keeper sends that vault nothing but
    `setNav`, and `keeper/deploy-mark-vault.mjs` refuses `open-deposits` for
-   `qvol` before any RPC call. A failed mark leaves the line written and
-   anchored and exits 1.
+   `qvol` before any RPC call. A failed or refused mark leaves the line written
+   and anchored and exits 1; the next run goes on from the vault's value
+   (no step is sent twice).
+
+**Halts and how the series resumes.** Each stop below leaves the record as it
+was; the message names what stopped. Two of them can be passed once a person
+confirms what they found, in `keeper/vol-index-source-checks.json` (absent
+until needed; a public commit, so an owner confirmation, like the gap
+acceptance file). The halt prints the entry to add; the person adds an `id`,
+a `note` and `confirmedAt`. An entry is used only when every value in it
+matches what the run reads, and never makes the keeper anchor a line it did
+not write.
+
+| Halt (exit) | What a person checks | How the series resumes |
+|---|---|---|
+| `SOURCE CHANGED — line #N D was built from the bars of <day> (…, canonical text sha256 A), but the source now serves (…, sha256 B) — … The line is anchored …` (1) | fetch the day from `data-api.binance.vision` and compare its canonical text with the line's `source` | if Binance changed the day after the line was written: the printed entry `{series, day, check: "refetch", recorded: A, served: B}` goes into the file and the next run continues; the line stays as written |
+| `SOURCE CHANGED — … — #N has no anchor and is not anchored …` (1), or `the bars still hash to the line's sha256 but the line holds another row count, close or last bar` (1) | who committed the line; whether Binance ever served those bars | a line the source does not confirm is removed (with every line after it) by a commit; the next run writes those days again from Binance (`late`) |
+| `DAILY CLOSE DIFFERS — the 1-minute bars close <day> at X, Binance's daily candle closes it at Y` (1) | both at the source (`interval=1m` and `interval=1d`) | if the 1-minute bars are right: the printed entry `{series, day, check: "daily-close", minuteClose: X, dailyClose: Y}` goes into the file and the next run writes the line from the 1-minute bars, as the definition says; otherwise the series waits |
+| `the record does not verify: …` (2) | the repository's history of `trackrecord/record-qvol.jsonl` | the file is restored from history (an anchored line is never edited or removed; a line that is not anchored and not the keeper's is removed by a commit); the next run continues |
+| `line #N has no anchor …, but line #M after it has one`, `the anchor of #N … names … but line #N is … — the line changed after it was anchored`, `… names an anchor of #N …, a line the record does not hold` (2) | the history of the record and of `trackrecord/anchors-qvol.jsonl` | both files are restored from history; the next run continues |
+| `line #N D has no anchor, and scripts/verify-vol.mjs rejects it` (2) | who committed the line | the line (and every line after it) is removed by a commit; the next run writes those days again |
+| `the anchor of #N D in trackrecord/anchors-qvol.jsonl (tx) … — it is not the keeper's anchor of that line` (2) | who wrote that entry; the transaction on the explorer | the anchors file is restored from history; the next run continues |
+| `NOT IN FORCE: inception.decision "…" is not an inception decision of this series` (0 before the first line, 2 after) | the rulebook's `inception.decision` | the inception commit is corrected: the rulebook names the series' own anchored decision |
+| `decision … is effective from X in the ledger, not on the date in its id` (2) | the history of `trackrecord/decisions.jsonl` (the decision anchor writes `effectiveFrom` from the id) | the ledger is restored from history |
+| `NOT IN FORCE: the inception decision … is in trackrecord/decisions.jsonl, but its anchor transaction … is not on chain / was sent by … / is not a self-send / does not carry qxdec:… / did not succeed` (1) | the transaction on the explorer; the history of the ledger | a ledger line without its anchor is removed and the decision is anchored with `scripts/anchor-decision.mjs`; nothing was written meanwhile |
+| `the chain failed while reading …` (1) | the GIWA endpoint | nothing to do: the next run reads it again |
+| `line #N D is written but its anchor failed: no receipt for … within 300 s` (1); `vault marks FAILED … no receipt for setNav step k/n … within 300 s` (1) | the transaction on the explorer | nothing to do: the next run anchors the line again first / goes on from the vault's value |
+| `vault marks FAILED … REFUSED: keeper/leverage-vaults.json qvol names …, but its deployTx …` (1) | the entry against `keeper/mark-vaults.jsonl` and the explorer | the entry is corrected to the keeper's own deployment (a public commit); the next run marks |
 
 A dry run never reads a key, never anchors and never marks, and loads no
 chain library: `--anchor` is refused with `--dry-run`.
@@ -298,6 +370,9 @@ node keeper/vol-index.mjs --line realized --anchor --rpc http://127.0.0.1:8599 -
 node keeper/vol-index.mjs --line realized --dry-run --replay 2019-03-04..2019-03-31 --out keeper/dryrun
 #   --offline <dir>   bars from <dir>/btcusdt-1m-<YYYY-MM-DD>.csv ("openTimeMs,open,high,low,close", no header)
 #   --gaps <file>     another gap acceptance file (dry run only)
+#   --daily <file>    Binance daily candles (the JSON array GET /api/v3/klines?interval=1d answers, .gz allowed):
+#                     each new line's window closes are compared with them, as the line in force compares
+#                     them with Binance's; without it a dry run reads no daily candle
 
 # implied (runs only while volbtc-implied.json has "active": true; now it prints INACTIVE):
 # save the two raw answers (gz) and a manifest line; computes nothing
@@ -313,10 +388,20 @@ node scripts/verify-vol.mjs --dir keeper/dryrun
 
 Exit codes: 0 = done, nothing to do, not in force, or inactive (implied); 1 = data or
 chain failure (nothing written for the failed day; a line whose anchor failed
-is written, and the next run anchors it first), or a mark that failed after
-the line was written and anchored; 2 = configuration (bad option, bad
-rulebook, bad acceptance file, an anchored inception decision that the files
-no longer satisfy). Retries: at most 3 attempts per call, 2 s then
+is written, and the next run anchors it first) — among them a day read again
+that differs from its line, a daily candle that differs from the 1-minute
+close, a decision whose anchor transaction is not the signer's, and a receipt
+that does not come within 5 minutes — or a mark that failed or was refused
+after the line was written and anchored; 2 = configuration or a record that
+is not what the keeper wrote (bad option, bad rulebook, bad acceptance or
+source-check file, an anchored inception decision that the files no longer
+satisfy, a record that does not verify as a whole, an unanchored line before
+an anchored one, an anchor entry that does not name its line or is not the
+keeper's anchor). The halts and how the series resumes after each: "The
+realized line in force", above. A dry run that continues a record first
+reads the last line's day again (its offline file, or one more fetch) and
+stops (exit 1, nothing written) when the bars are not those the line
+records. Retries: at most 3 attempts per call, 2 s then
 4 s apart, on a network error, a time-out (30 s per attempt), HTTP 429 or 5xx;
 Binance calls at least 250 ms apart. The verifier recomputes the realized
 `variance` and `value` from the window and accepts each within a relative
@@ -341,11 +426,16 @@ folder that holds `record-qvol.jsonl`, C7, C11, C12 and C13 also run on that
 record; without it that test is skipped. Two tests need private inputs and
 are skipped without `VOL_FIXTURE_DIR`; no market data, no other firm's index
 values and no table copied from a methodology document are committed here.
-The tests named "in force T-IF1" … "T-IF16" in `keeper/test/vol-index.test.mjs`
+The tests named "in force T-IF1" … "T-IF27" in `keeper/test/vol-index.test.mjs`
 run the in-force path against a stand-in decision in a scratch ledger, a fake
 Binance and a fake GIWA node, with a key generated by the test; T-IF14 to
 T-IF16 run its fork rehearsal against the same fake node standing in for a
-fork that holds the `--from` account unlocked.
+fork that holds the `--from` account unlocked. T-IF17 to T-IF25 test the
+checks added after the red-team run of 2026-11-04 (each case beside a control
+that passes), T-IF26 and T-IF27 two idempotency cases (an anchor whose
+receipt answer was lost; a mark that failed part-way). Tests that describe
+the state before the inception decision run from a scratch root with the
+rulebook's inception null, so they hold before and after the decision.
 
 ## Later wiring (not done in this build)
 
