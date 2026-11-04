@@ -6,7 +6,7 @@
   "rulebook": {
     "path": "rulebooks/qvol.md",
     "repo": "record",
-    "sha256": "9d67e3421cbd3306b22d05cdf611f669c63d3860a057d41cba1b6b97a5a468a1"
+    "sha256": "121174c6b317253f1114884e5f297ed182ec3c6b3fd6cdc355f60fc2965f3fea"
   },
   "keeperJson": {
     "path": "keeper/rulebooks/qvol.json",
@@ -14,13 +14,13 @@
   },
   "provenance": {
     "path": "keeper/rulebooks/qvol.provenance.json",
-    "sha256": "e581a1e15dc9fa9e0d53444131ccca0f3159c0ea12a0632cbc500e5eaafb1557"
+    "sha256": "93b9def05fd68961f1b672b1a1a0d36af2697a23df245711cf8d55fc42f963d2"
   },
   "checklistRun": {
     "path": "docs/methodology/checklist-runs/qvol/2026-11-05.json",
-    "sha256": "613f75becef389ed0ee3fc0c5223b1882acc26611d8b97efac3bb1914db0c611"
+    "sha256": "7c587523564fc6acf31bfebaa23f6a9d53d143ed4a0b614155e706550cc79c7f"
   },
-  "siteCommit": "bc9e772937ca79d1eebaa35ff6c81b84ff2805eb",
+  "siteCommit": "f5e3aadb4f3bd3c2e6d2c290594d9c6439cbbbc3",
   "siteCommitPushed": true,
   "base": "origin/main",
   "counts": {
