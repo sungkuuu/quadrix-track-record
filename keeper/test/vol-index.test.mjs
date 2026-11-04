@@ -7,8 +7,11 @@
  * force (a stand-in inception decision in a scratch ledger, a fake GIWA node,
  * a key generated here): the decision check, the line, the verifier, the
  * anchor, the display vault's mark and the refusal of open-deposits for qvol;
- * and its fork rehearsal (--rpc, --from: T-IF14 to T-IF16), against the same
- * fake node standing in for a local fork that holds the --from account unlocked.
+ * its fork rehearsal (--rpc, --from: T-IF14 to T-IF16), against the same
+ * fake node standing in for a local fork that holds the --from account
+ * unlocked; and the keeper's guards added after the red-team run of
+ * 2026-11-04 (T-IF17 to T-IF25: F1, F2, the daily-candle gate, F4, F6, F7,
+ * F8, F9, F10) with two idempotency cases (T-IF26, T-IF27).
  *
  *   node --test keeper/test/vol-index.test.mjs
  */
@@ -1988,4 +1991,59 @@ test('in force T-IF25 (F10): before any mark the registry entry\'s deployTx must
   assert.equal(ok.code, 0, ok.err);
   assert.match(ok.out, new RegExp(`vault ${QVAULT}: created by the signer in ${DEPLOY_TX} \\(block 60\\), as the registry says`));
   assert.equal(node.state.nav, markUnits(readJsonl(x.rec)[0].value));
+});
+
+test('in force T-IF26 idempotency: an anchor sent and mined whose receipt answer is lost — exit 1, the line stays on disk without an anchor entry, nothing marked; the next run anchors it again with the same calldata (two anchor transactions for one line, harmless) and the anchors file names the later one; the run after reads that one again and sends nothing more for the line', async () => {
+  const x = inForceRoot({ vaults: qvolVaults() });
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const anchorTx = (req) => node.txs.some((t) => t.to === t.from && t.hash.toLowerCase() === String(req.params?.[0]).toLowerCase());
+  const lost = quick(node, (req) => {
+    if (req.method === 'eth_getTransactionReceipt' && anchorTx(req)) throw new Error('injected: the answer was lost after the node accepted the transaction');
+  }, { root: x.root, from: address });
+  const r1 = await inForce(x.root, `${D1}T00:25:00Z`, { key, transport: lost });
+  assert.equal(r1.code, 1, r1.err);
+  assert.match(r1.err, new RegExp(`line #0 ${D1} is written but its anchor failed: .*injected: the answer was lost.* — no mark; the next run anchors it first`));
+  const [L0] = readJsonl(x.rec);
+  assert.deepEqual(node.anchorsOf(), [`qxpi-qvol:${L0.hash}`], 'the anchor was mined');
+  assert.equal(fs.existsSync(x.anc), false);
+  assert.equal(node.txs.filter((t) => t.to === QVAULT).length, 0);
+  // the next run: the line has no anchor entry — anchored again (same calldata), then marked
+  const r2 = await inForce(x.root, `${D1}T00:40:00Z`, { key, node });
+  assert.equal(r2.code, 0, r2.err);
+  assert.match(r2.out, new RegExp(`#0 ${D1} has no anchor — anchoring it first`));
+  const anchors = node.txs.filter((t) => t.to === t.from);
+  assert.deepEqual(anchors.map((t) => hexToString(t.data)), [`qxpi-qvol:${L0.hash}`, `qxpi-qvol:${L0.hash}`]);
+  assert.deepEqual(readJsonl(x.anc).map((a) => [a.seq, a.headHash, a.txHash]), [[0, L0.hash, anchors[1].hash]]);
+  assert.equal(node.state.nav, markUnits(L0.value));
+  // the run after: the later anchor is read again, nothing is sent
+  const n = node.txs.length;
+  const r3 = await inForce(x.root, `${D1}T00:55:00Z`, { key, node });
+  assert.equal(r3.code, 0, r3.err);
+  assert.match(r3.out, new RegExp(`last anchor: #0 ${D1} in ${anchors[1].hash} `));
+  assert.equal(node.txs.length, n);
+});
+
+test('in force T-IF27 idempotency: a mark that fails part-way (setNav step 3 reverts) leaves the line written and anchored and exits 1; the next run goes on from the vault\'s value — the steps already done are not sent again and the marks file ends as one uninterrupted mark would', async () => {
+  const x = inForceRoot({ vaults: qvolVaults() });
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL', failSetNavAtStep: 3 });
+  const r1 = await inForce(x.root, `${D1}T00:25:00Z`, { key, node });
+  assert.equal(r1.code, 1, r1.err);
+  const [L0] = readJsonl(x.rec);
+  const n6 = markUnits(L0.value);
+  const plan = markSteps(1_000_000n, n6);
+  assert.ok(plan.length > 3, `${plan.length} steps`);
+  assert.match(r1.err, new RegExp(`qVOL vault marks FAILED after line #0 was written and anchored: setNav step 3/${plan.length} reverted`));
+  assert.deepEqual(readJsonl(x.marks).map((m) => BigInt(m.nav)), plan.slice(0, 2));
+  assert.equal(node.state.nav, plan[1]);
+  assert.equal(readJsonl(x.anc).length, 1);
+  const r2 = await inForce(x.root, `${D1}T00:40:00Z`, { key, node });
+  assert.equal(r2.code, 0, r2.err);
+  assert.match(r2.out, new RegExp(`vault ${QVAULT}: navPerShare ${plan[1]} → target ${n6} `));
+  assert.equal(node.state.nav, n6);
+  const ok = node.txs.filter((t) => t.to === QVAULT && t.status === '0x1').map((t) => decodeFunctionData({ abi: VAULT_ABI, data: t.data }).args[0]);
+  assert.deepEqual(ok, plan, 'the successful steps are the uninterrupted plan, none sent twice');
+  assert.deepEqual(readJsonl(x.marks).map((m) => BigInt(m.nav)), plan);
+  assert.equal(readJsonl(x.anc).length, 1, 'no second anchor');
 });
