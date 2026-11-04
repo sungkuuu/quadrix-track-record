@@ -7,6 +7,13 @@ name: leverage-dryrun
 #   node keeper/leverage-index.mjs --index <i> --dry-run --replay FROM..TO \
 #        [--throwaway-check n:T] [--throwaway-level bp:pct]
 #
+# index qvol replays the qVOL realized line instead (no throwaway values: its
+# rule has none) and recomputes it with scripts/verify-vol.mjs against its
+# rulebook JSON; the lines it would write are printed (date, value, variance,
+# sha256 of the day's 1-minute bars):
+#
+#   node keeper/vol-index.mjs --line realized --dry-run --replay FROM..TO
+#
 # It NEVER commits, anchors or touches a vault: permissions are contents:
 # read, KEEPER_PK is not passed (a step fails if one is in the environment),
 # and a dry run neither reads a key nor sends a transaction. Throwaway values
@@ -17,10 +24,10 @@ on:
   workflow_dispatch:
     inputs:
       index:
-        description: 'qbtc2x | qeth2x | qeth15'
+        description: 'qbtc2x | qeth2x | qeth15 | qvol'
         required: true
         type: choice
-        options: [qbtc2x, qeth2x, qeth15]
+        options: [qbtc2x, qeth2x, qeth15, qvol]
       replay:
         description: 'FROM..TO (FROM = the replayed inception date, TO = the last line date), e.g. 2020-03-10..2020-03-13'
         required: true
@@ -60,6 +67,7 @@ jobs:
           if [ "$TCHECK" != "" ] && ! printf '%s' "$TCHECK" | grep -Eq '^[0-9]+:[0-9]+(\.[0-9]+)?$'; then echo "::error::throwaway_check must be n:T"; exit 1; fi
           if [ "$TLEVEL" != "" ] && ! printf '%s' "$TLEVEL" | grep -Eq '^[0-9]+(\.[0-9]+)?:[0-9]+(\.[0-9]+)?$'; then echo "::error::throwaway_level must be bp:pct"; exit 1; fi
           if [ "${KEEPER_PK:-}" != "" ]; then echo "::error::KEEPER_PK is set — a dry run must not be able to sign"; exit 1; fi
+          if [ "$INDEX" = "qvol" ] && { [ "$TCHECK" != "" ] || [ "$TLEVEL" != "" ]; }; then echo "::error::qvol takes no throwaway values"; exit 1; fi
 
       - uses: actions/checkout@v4
         with:
@@ -73,6 +81,10 @@ jobs:
       - name: Replay
         run: |
           set -o pipefail
+          if [ "$INDEX" = "qvol" ]; then
+            node keeper/vol-index.mjs --line realized --dry-run --replay "$REPLAY" 2>&1 | tee replay.log
+            exit 0
+          fi
           args=(--index "$INDEX" --dry-run --replay "$REPLAY")
           if [ "$TCHECK" != "" ]; then args+=(--throwaway-check "$TCHECK"); fi
           if [ "$TLEVEL" != "" ]; then args+=(--throwaway-level "$TLEVEL"); fi
@@ -81,7 +93,22 @@ jobs:
       - name: Recompute with verify.mjs
         run: |
           set -o pipefail
+          if [ "$INDEX" = "qvol" ]; then
+            node scripts/verify-vol.mjs --dir keeper/dryrun --line realized --rulebook keeper/rulebooks/qvol.json 2>&1 | tee verify.log
+            exit 0
+          fi
           node scripts/verify.mjs --dir keeper/dryrun --series "$INDEX" --recompute-only --allow-rehearsal 2>&1 | tee verify.log
+
+      - name: qVOL lines (date, value, variance, sha256 of the day's 1-minute bars)
+        if: ${{ !cancelled() && inputs.index == 'qvol' }}
+        run: |
+          set -o pipefail
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            const lines = fs.readFileSync('keeper/dryrun/record-qvol.jsonl', 'utf8').split('\n').filter((l) => l.trim());
+            for (const l of lines.map((x) => JSON.parse(x))) console.log([l.seq, l.date, l.value, l.variance, l.source.day, l.source.rows, l.source.sha256, l.late ? 'late' : '-', l.shadow ? 'shadow' : '-'].join(' '));
+          " | tee lines.txt
+          { echo '## qVOL dry run — seq date value variance source.day rows source.sha256'; echo '```'; cat lines.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Tripwire — nothing outside keeper/dryrun/ changed
         if: ${{ !cancelled() }}
@@ -97,4 +124,5 @@ jobs:
             keeper/dryrun/
             replay.log
             verify.log
+            lines.txt
           retention-days: 30

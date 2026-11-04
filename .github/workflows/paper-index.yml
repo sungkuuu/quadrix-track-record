@@ -9,6 +9,11 @@ name: paper-index
 # anchored; until then the leg reports NOT IN FORCE and exits 0. qETH2X is held
 # (owner, 2026-10-06): its step below does not run. qETH1.5X (series id qeth15):
 # from 2026-10-16, once its inception decision is anchored; same guard.
+# qVOL realized line (series id qvol, a measurement — nothing is held): its first
+# line is dated the day after its inception decision's effective date
+# (inception.date in keeper/rulebooks/qvol.json), once that decision is
+# anchored; same guard. Its testnet display vault (deposit cap 0) is marked
+# after the day's line is anchored.
 on:
   workflow_dispatch:
   schedule:
@@ -178,6 +183,22 @@ jobs:
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 
+      - name: qVOL — compute the closed UTC days since the last line, anchor, mark
+        id: qvol
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        # As qETH1.5X: a step time limit fails only this step, and "Commit records" below still runs. Until the
+        # inception decision named in keeper/rulebooks/qvol.json is anchored and pins that file, the leg writes
+        # nothing and exits 0 (NOT IN FORCE). The first line is dated inception.date of that file, the day after
+        # the decision's effective date. A missed day is written late from the same closed bars (`late`); days
+        # before the first line are never written. The display vault (keeper/leverage-vaults.json, entry qvol;
+        # deposit cap 0) is marked to the value after the day's line is anchored; with its address null, no mark.
+        timeout-minutes: 20
+        run: |
+          set -o pipefail
+          node keeper/vol-index.mjs --line realized --anchor 2>&1 | tee pi-qvol.log
+        env:
+          KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
       - name: qX20 — mark the basket vault from keeper/state.json (no record append)
         id: qx20
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
@@ -229,7 +250,8 @@ jobs:
           for f in keeper/pending-registry-*.json keeper/plans keeper/cg-snapshot \
                    trackrecord/record-qbtc2x.jsonl trackrecord/anchors-qbtc2x.jsonl keeper/marks-qbtc2x.jsonl \
                    trackrecord/record-qeth2x.jsonl trackrecord/anchors-qeth2x.jsonl keeper/marks-qeth2x.jsonl \
-                   trackrecord/record-qeth15.jsonl trackrecord/anchors-qeth15.jsonl keeper/marks-qeth15.jsonl; do
+                   trackrecord/record-qeth15.jsonl trackrecord/anchors-qeth15.jsonl keeper/marks-qeth15.jsonl \
+                   trackrecord/record-qvol.jsonl trackrecord/anchors-qvol.jsonl keeper/marks-qvol.jsonl; do
             if [ -e "$f" ]; then git add -- "$f" || echo "::warning::could not stage $f"; fi
           done
           git diff --cached --quiet || git commit -m "paper-index: $(date -u +%Y-%m-%d)"
@@ -278,7 +300,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           PUSH_OUTCOME: ${{ steps.commit.outcome }}
-          OTHER_FAILED: ${{ steps.deps.outcome == 'failure' || steps.qrev.outcome == 'failure' || steps.qdefi.outcome == 'failure' || steps.barbell.outcome == 'failure' || steps.triens.outcome == 'failure' || steps.qai.outcome == 'failure' || steps.qbtc2x.outcome == 'failure' || steps.qeth15.outcome == 'failure' || steps.qx20.outcome == 'failure' || steps.qx20daily.outcome == 'failure' }}
+          OTHER_FAILED: ${{ steps.deps.outcome == 'failure' || steps.qrev.outcome == 'failure' || steps.qdefi.outcome == 'failure' || steps.barbell.outcome == 'failure' || steps.triens.outcome == 'failure' || steps.qai.outcome == 'failure' || steps.qbtc2x.outcome == 'failure' || steps.qeth15.outcome == 'failure' || steps.qvol.outcome == 'failure' || steps.qx20.outcome == 'failure' || steps.qx20daily.outcome == 'failure' }}
         run: |
           set -uo pipefail
           # The record push failed: the lines this run computed (and anchored,
@@ -307,7 +329,7 @@ jobs:
           {
             echo "The paper-index run failed. A missed day is simply absent from"
             echo "record-{qrev,qdefi,barbell,triens,qai}.jsonl — it is never backfilled."
-            echo "qBTC2X, qETH2X and qETH1.5X write a missed day late, from that day's bars."
+            echo "qBTC2X, qETH2X, qETH1.5X and qVOL write a missed day late, from that day's bars."
             echo
             echo "- run: $RUN_URL"
             echo
@@ -328,6 +350,8 @@ jobs:
             tail -n 40 pi-qeth2x.log 2>/dev/null || echo '(held — the qETH2X step does not run)'
             echo '--- qETH1.5X ---'
             tail -n 40 pi-qeth15.log 2>/dev/null || echo '(no output — failed before the qETH1.5X step ran)'
+            echo '--- qVOL ---'
+            tail -n 40 pi-qvol.log 2>/dev/null || echo '(no output — failed before the qVOL step ran)'
             echo '--- qX20 basket mark ---'
             tail -n 40 pi-qx20.log 2>/dev/null || echo '(no output — failed before the qX20 step ran)'
             echo '```'
