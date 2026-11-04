@@ -1,19 +1,21 @@
 # BTC volatility index (working name) — two draft lines
 
-**Status: draft. Not in force. Nothing is written to `trackrecord/`, nothing
-is anchored, and no number here is a rule yet.** The name is a working name.
-The realized line's id and series id are `qvol`; the implied line's series id
-`volbtc-implied` is a neutral placeholder.
-Every number in `keeper/rulebooks/qvol.json` and
-`keeper/rulebooks/volbtc-implied.json` is proposed as a measurement
-convention and the classification has not been confirmed. None of these
-values has been through a pre-registered test.
+**Status: the realized line (qVOL) starts with its inception decision
+`2026-11-05-qvol-inception`: in force from the day that decision is anchored,
+its first line dated 2026-11-06. Until the decision is in
+`trackrecord/decisions.jsonl`, nothing is written to `trackrecord/` and
+nothing is anchored.** Its rulebook is `rulebooks/qvol.md`; every value in
+`keeper/rulebooks/qvol.json` is a definition or a measurement convention with
+its citation in that rulebook's appendix P, and the one pre-registered test of
+the line is of reproducibility (`docs/research/qvol/prereg-2026-10-13/`). The
+name of the implied line is a working name; its series id `volbtc-implied` is
+a neutral placeholder, and its values are not rules.
 
 **The implied line is switched off until its own decision**
 (`"active": false` in its rulebook): the keeper does not run it in any mode.
 The realized line has no switch: it is in force only through its
 `inception.date`.
-Its code and tests stay. Whether the realized line starts first is open.
+Its code and tests stay. The realized line starts first (owner, 2026-11-02).
 
 The keeper has the realized line's in-force path ("The realized line in
 force", below). It does nothing until the line's inception decision is
