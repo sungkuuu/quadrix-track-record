@@ -1,14 +1,13 @@
 The public verifier over the record, and its qVOL tests — 2026-11-04
-code: branch keeper/qvol-2026-11-02 at 856257520a1ea154ee7b759d4c4f1291c3405732; node v22.23.1
-scripts/verify.mjs sha256 f6e3c063a74409dd487efe394c66eb3e734061e643fa1d0a13bc7d7c91f9859b
+code: branch keeper/qvol-2026-11-02-verify at 8b6c57b merge keeper/qvol-2026-11-02-verify; node v22.23.1
+scripts/verify.mjs sha256 3b20cb71dffa61cc3f9e3a99b933606ee2bd1b316039673889cbd233521ccfa0
 
-$ node scripts/verify.mjs --dir ./trackrecord      (every series, anchors read on GIWA Sepolia; exit 0)
-$ node scripts/verify.mjs --dir ./trackrecord --series qvol --recompute-only      (exit 0)
-$ node --test --test-name-pattern="T-IF13|V1 |V2 |qVOL recompute" keeper/test/vol-index.test.mjs keeper/test/qvol-verify.test.mjs keeper/test/watchdog-series.test.mjs      (exit 0)
+RESULT: VERIFIED — 341 records, 341 anchors, 106 qX20 closes, 33 decisions, 0 failures (exit 0); qVOL --recompute-only exit 0; qVOL tests 5 of 5 pass, 0 fail (the earlier file said 4 of 4)
+$ node scripts/verify.mjs --dir ./trackrecord
+$ node scripts/verify.mjs --dir ./trackrecord --series qvol --recompute-only
+$ node --test --test-name-pattern="T-IF13|V1 |V2 |qVOL recompute" keeper/test/vol-index.test.mjs keeper/test/qvol-verify.test.mjs keeper/test/watchdog-series.test.mjs
 
-RESULT: VERIFIED — 341 records, 341 anchors, 106 qX20 closes, 33 decisions, 0 failures; qVOL not started (no record, no inception decision yet); qVOL tests 4 of 4 pass
-
-== 1. node scripts/verify.mjs --dir ./trackrecord
+== 1. verify --dir ./trackrecord
 
 [DRY_RUN] chain — 18 record(s), record.jsonl
   ok    #0 2026-08-13 DRY_RUN head 7c7bcd9c2816…
@@ -934,23 +933,56 @@ VERIFIED — 341 records, 341 anchors, 106 qX20 closes, 33 decisions, 0 failures
    QVOL not started
    QX20 106 daily closes 2026-07-21 → 2026-11-03
 
+exit 0
 
-== 2. node scripts/verify.mjs --dir ./trackrecord --series qvol --recompute-only
+== 2. --series qvol --recompute-only
 
 [QVOL] not started — no record-qvol.jsonl and no inception decision
 
 VERIFIED (recompute only — no anchor checked) — 0 records, 0 anchor lines listed (not checked), 0 qX20 closes, 0 decisions, 0 failures
    QVOL not started
 
+exit 0
 
-== 3. the qVOL verifier tests (TAP)
-ok 1 - V1 --refetch-bars for qVOL (red team R47 F2): every day a line names is fetched again from the exchange; a day served differently is REVISED and, with --strict-source, fails that line naming the day and both sha256; a line whose sha256 the exchange still serves but whose close is not those bars' fails always; the same bars pass
+== 3. qVOL tests
+TAP version 13
+# Subtest: V1 --refetch-bars for qVOL (red team R47 F2): every day a line names is fetched again from the exchange; a day served differently fails that line naming the day and both sha256 (REVISED only with --allow-source-revision); a line whose sha256 the exchange still serves but whose close is not those bars' fails always; the same bars pass
+ok 1 - V1 --refetch-bars for qVOL (red team R47 F2): every day a line names is fetched again from the exchange; a day served differently fails that line naming the day and both sha256 (REVISED only with --allow-source-revision); a line whose sha256 the exchange still serves but whose close is not those bars' fails always; the same bars pass
+  ---
+  duration_ms: 8071.619458
+  type: 'test'
+  ...
+# Subtest: V2 the anchors' sender (red team R47 F3): with an RPC every qVOL anchor must be a self-send from the address that sent the inception decision's anchor — another sender, a transaction to another address or an answer without a sender fails, naming the anchor and both addresses; the keeper's own anchors pass
 ok 2 - V2 the anchors' sender (red team R47 F3): with an RPC every qVOL anchor must be a self-send from the address that sent the inception decision's anchor — another sender, a transaction to another address or an answer without a sender fails, naming the anchor and both addresses; the keeper's own anchors pass
+  ---
+  duration_ms: 2259.514125
+  type: 'test'
+  ...
+# Subtest: in force T-IF13 scripts/verify.mjs --series qvol: not started, pending, then the published record VERIFIED — recomputed by scripts/verify-vol.mjs (run as a child, not repeated), bound to its decision effective the day before the first line, and with an RPC every anchor checked; a changed value, a dry-run line, another effective date or another rulebook fails
 ok 3 - in force T-IF13 scripts/verify.mjs --series qvol: not started, pending, then the published record VERIFIED — recomputed by scripts/verify-vol.mjs (run as a child, not repeated), bound to its decision effective the day before the first line, and with an RPC every anchor checked; a changed value, a dry-run line, another effective date or another rulebook fails
+  ---
+  duration_ms: 3075.287292
+  type: 'test'
+  ...
+# Subtest: qVOL recompute (red team R47 F5): the watchdog runs scripts/verify.mjs --recompute-only --series qvol — an honest record is quiet; a corrupted old line, which the freshness and anchor checks do not see, is one problem line naming the failure; only qvol is recomputed, and this repository (no qVOL record yet) is quiet
 ok 4 - qVOL recompute (red team R47 F5): the watchdog runs scripts/verify.mjs --recompute-only --series qvol — an honest record is quiet; a corrupted old line, which the freshness and anchor checks do not see, is one problem line naming the failure; only qvol is recomputed, and this repository (no qVOL record yet) is quiet
-# tests 4
-# pass 4
+  ---
+  duration_ms: 2275.038208
+  type: 'test'
+  ...
+# Subtest: scripts/watchdog.mjs check 6: the watchdog itself runs the qVOL recompute and a record that does not verify is one of its problems (run offline in a scratch checkout: the gas check fails for want of a network, the rest is the scratch files)
+ok 5 - scripts/watchdog.mjs check 6: the watchdog itself runs the qVOL recompute and a record that does not verify is one of its problems (run offline in a scratch checkout: the gas check fails for want of a network, the rest is the scratch files)
+  ---
+  duration_ms: 1421.184125
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
 # fail 0
+# cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 12546.0415
+# duration_ms 10799.477125
+exit 0
