@@ -34,17 +34,17 @@
  *      run before inception.date 00:00 UTC, is NOT IN FORCE (exit 0, nothing
  *      written, no request); a decision in the ledger that the files no
  *      longer satisfy is refused (exit 2), and so is any of these once the
- *      record has a line. A run that can anchor (it has the key) then reads
- *      the decision's own anchor transaction (the ledger's txHash): it must
- *      be on chain, successful, a zero-value self-send from the signer with
- *      calldata qxdec:<the decision file's sha256> — else NOT IN FORCE,
- *      exit 1, nothing read from Binance, nothing written. Then the
- *      record as a whole, once per run before anything is sent or appended:
- *      scripts/verify-vol.mjs recomputes every line (seq, hash chain, dates,
- *      windows, values, the rule against the rulebook JSON), no line is dated
- *      after the runner's clock, none is a dry-run line, and only the first
- *      carries this decision's inception — else refused (exit 2), nothing
- *      sent, nothing appended;
+ *      record has a line. Then the record as a whole, once per run before
+ *      anything is sent or appended: scripts/verify-vol.mjs recomputes every
+ *      line (seq, hash chain, dates, windows, values, the rule against the
+ *      rulebook JSON), no line is dated after the runner's clock, none is a
+ *      dry-run line, and only the first carries this decision's inception —
+ *      else refused (exit 2), nothing sent, nothing appended. Then a run that
+ *      can anchor (it has the key) reads the decision's own anchor
+ *      transaction (the ledger's txHash): it must be on chain, successful, a
+ *      zero-value self-send from the signer with calldata qxdec:<the decision
+ *      file's sha256> — else NOT IN FORCE, exit 1, nothing read from Binance,
+ *      nothing written;
  *   2. the last anchor is read again (a run that can anchor): its
  *      transaction must still be on chain and be the signer's self-send of
  *      that line's hash — one that is gone (dropped, as by a reorg) has its
@@ -62,8 +62,8 @@
  *      of these failing is refused (exit 2), nothing sent — and the bars it
  *      records are read again from Binance (the first line: every window
  *      day): other bars, exit 1, nothing sent;
- *   3. before the first new line, the bars of the last line's day are read
- *      again (one more fetch per run): other bars than the line records stop
+ *   3. before the first new line of a run, the bars of the last line's day
+ *      are read again (one more fetch): other bars than the line records stop
  *      the run (exit 1, nothing written, the message names the day and both
  *      sha256) for a person; an anchored line whose day the source changed
  *      later goes on only once a person confirms that change in
@@ -167,10 +167,17 @@
  *
  * Exit codes: 0 = done, nothing to do, not in force, inactive; 1 = data or
  * chain failure (nothing written for the failed day; a line whose anchor
- * failed is written, and the next run anchors it first), or a vault mark that
- * failed after the line was written and anchored; 2 = configuration (bad
- * option, bad rulebook or acceptance file, an anchored inception decision
- * that the files no longer satisfy).
+ * failed is written, and the next run anchors it first) — among them the
+ * source checks (a day read again that differs from its line, a daily
+ * candle that differs from the 1-minute close), a decision whose anchor
+ * transaction is not the signer's, and a receipt that does not come within
+ * RECEIPT_TIMEOUT_MS — or a vault mark that failed or was refused (the
+ * registry's deployment not the keeper's) after the line was written and
+ * anchored; 2 = configuration or a record that is not what the keeper wrote
+ * (bad option, bad rulebook, acceptance or source-check file, an anchored
+ * inception decision that the files no longer satisfy, a record that does
+ * not verify as a whole, an unanchored line before an anchored one, an
+ * anchor entry that does not name its line or is not the keeper's anchor).
  */
 import fs from 'node:fs';
 import os from 'node:os';
