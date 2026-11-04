@@ -1,14 +1,29 @@
 Public word scan of the qVOL branch — 2026-11-04
-code: branch keeper/qvol-2026-11-02 at e0dda23a2cc24f26ff77ea3871e6548d2551246c; base: commit af79c9099170c47f545ed30bcfc9c61380c41508 (main, where the branch last took main in)
-scope: every file the branch adds or changes against the base (163 files) and the author, committer and message of every branch commit after the base (45 commits)
+code: branch keeper/qvol-2026-11-02 at c3db62961e115bd3c50db4bf37b2fa3e51f77221, with the working-tree text of the inception decision and the provenance file (not yet committed; they differ from the committed files only in sha256 values filled in later); base: commit af79c9099170c47f545ed30bcfc9c61380c41508 (main, where the branch last took main in)
+scope: (a) every file the branch adds or changes against the base, with those two files (168 files); (b) every file of the tree (518 files); (c) the author, committer and message of every branch commit after the base (59 commits)
 word lists (kept private; their sha256): words-i (matched ignoring case, 14 patterns) 3231544b4d924c2f82b44c0110953c0946ee36b38ff6291bdae26b27e9d3aa49 · words-c (matched with case, 3 patterns) 6df39ad4e9f334fbf69e6b799b93479ff09d749110c8d211abb9d017aed783cb
 
-$ git diff -z --name-only --diff-filter=AMR af79c9099170c47f545ed30bcfc9c61380c41508 HEAD | xargs -0 grep -IinE -f words-i
-$ git diff -z --name-only --diff-filter=AMR af79c9099170c47f545ed30bcfc9c61380c41508 HEAD | xargs -0 grep -InE -f words-c
+$ { git diff --name-only af79c9099170c47f545ed30bcfc9c61380c41508; git ls-files -m; } | sort -u | tr '\n' '\0' | xargs -0 grep -IinE -f words-i
+$ { git diff --name-only af79c9099170c47f545ed30bcfc9c61380c41508; git ls-files -m; } | sort -u | tr '\n' '\0' | xargs -0 grep -InE -f words-c
+$ git ls-files -z | xargs -0 grep -IilE -f words-i ; git ls-files -z | xargs -0 grep -IlE -f words-c
 $ git log --format='%an <%ae> | %cn <%ce>%n%B' af79c9099170c47f545ed30bcfc9c61380c41508..HEAD | grep -inE -f words-i
 $ git log --format='%an <%ae> | %cn <%ce>%n%B' af79c9099170c47f545ed30bcfc9c61380c41508..HEAD | grep -nE -f words-c
 
-RESULT: no line matched — all four commands print nothing
-authors and committers of the 45 commits: Quadrix <support@quadrix.finance>, every one
+RESULT (a): no line matched in the files the branch adds or changes
+RESULT (b): 12 files of the tree match; none of them is added or changed by the branch — each is byte-identical to the file on main at the base:
+  docs/research/leverage/eth-1p5/README-public.md
+  docs/research/leverage/eth-1p5/evidence/public-word-scan-2026-10-14.txt
+  docs/research/leverage/eth-1p5/results-1.5-public.md
+  keeper/cg-snapshot/cg-category-ai-agents-2026-11-03.json
+  keeper/cg-snapshot/cg-category-artificial-intelligence-2026-11-03.json
+  keeper/rehearse.mjs
+  keeper/supply/README.md
+  keeper/test/anchor-decision-guard.test.mjs
+  package-lock.json
+  trackrecord/decisions/2026-09-01-gap-execution.md
+  trackrecord/decisions/2026-09-01-n1q-live-inception.md
+  trackrecord/decisions/2026-09-29-source-reconciliation.md
+RESULT (c): no line matched in the 59 commit messages
+authors and committers of the 59 commits: Quadrix <support@quadrix.finance>, every one
 
-Not in this scan: this file, and the files that pin it (the inception decision, the provenance file and the gate report). They are scanned the same way before the anchor.
+Not in this scan: this file, and the commits that add it, the gate report and the final sha256 values of the decision and the provenance file. They are scanned the same way before the anchor.
