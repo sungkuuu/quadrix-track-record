@@ -27,7 +27,12 @@
  *      00:00 UTC, is NOT IN FORCE (exit 0, nothing written, no request); a
  *      decision in the ledger that the files no longer satisfy is refused
  *      (exit 2), and so is any of these once the record has a line;
- *   2. a line an earlier run wrote but did not anchor is anchored first;
+ *   2. a line an earlier run wrote but did not anchor is anchored first, never
+ *      on trust: every anchor entry must name a line of the record by seq,
+ *      date and hash, only the last lines may be unanchored, and each is
+ *      recomputed by scripts/verify-vol.mjs (the first line on its own, a
+ *      later one after the line before it) before its anchor is sent — any
+ *      of these failing is refused (exit 2), nothing sent;
  *   3. every closed UTC day since the last line, in order — the first line
  *      is dated inception.date and no day before it is ever written: the
  *      same line a dry run builds (same fields, same order), without
@@ -598,6 +603,30 @@ export function decisionProblem(P, rb, rulebookSha) {
   return { entry };
 }
 
+/**
+ * Which lines of the record carry an anchor (trackrecord/anchors-qvol.jsonl)?
+ * Every anchor entry must name a line of the record by seq, date and hash —
+ * an entry whose line is gone or whose line no longer hashes to the entry's
+ * headHash means the record changed after it was anchored. Only the last
+ * lines can be unanchored: a run anchors unanchored lines first, in order, so
+ * an unanchored line before an anchored one was not left by a run. Any of
+ * these is refused (exit 2) before anything is sent. Returns the index of the
+ * first unanchored line (records.length when every line has an anchor).
+ */
+export function anchorCoverage(series, records, anchors, where) {
+  for (const a of anchors) {
+    const line = records.find((l) => l.seq === a.seq);
+    if (!line) throw refuse(`${series}: ${where} names an anchor of #${a.seq} ${a.date}, a line the record does not hold — the record lost a line after it was anchored; nothing sent. A person restores the record from the repository's history (an anchored line is never removed or edited)`);
+    if (a.headHash !== line.hash || a.date !== line.date) throw refuse(`${series}: the anchor of #${a.seq} in ${where} names ${a.date} with head ${a.headHash}, but line #${line.seq} is ${line.date} with hash ${line.hash} — the line changed after it was anchored; nothing sent. A person restores the record from the repository's history (an anchored line is never removed or edited)`);
+  }
+  const has = records.map((l) => anchors.some((a) => a.seq === l.seq));
+  const first = has.indexOf(false);
+  if (first < 0) return records.length;
+  const later = has.indexOf(true, first);
+  if (later >= 0) throw refuse(`${series}: line #${records[first].seq} ${records[first].date} has no anchor in ${where}, but line #${records[later].seq} after it has one — only the last lines of the record can be unanchored (a run anchors them first, in order); nothing sent`);
+  return first;
+}
+
 /** viem, its local signer and the read-back helpers: loaded only when the in-force path signs (a dry run needs Node built-ins only). */
 let chainModules = null;
 async function chainLib() {
@@ -780,12 +809,23 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
     }
   };
 
-  // 2. a line written by an earlier run but not anchored is anchored first
+  // 2. a line written by an earlier run but not anchored is anchored first — never on trust:
+  //    only the last lines of the record can be unanchored, and each is recomputed by
+  //    scripts/verify-vol.mjs (the first line on its own, a later one after the line before
+  //    it) before its anchor is sent
+  const firstUnanchored = anchorCoverage(L.series, records, readLines(P.anchors), rel(P.anchors));
   if (signer) {
-    const anchors = readLines(P.anchors);
-    for (const line of records) {
-      if (anchors.some((a) => a.seq === line.seq)) continue;
+    for (let k = firstUnanchored; k < records.length; k++) {
+      const line = records[k];
       deps.log(`  #${line.seq} ${line.date} has no anchor — anchoring it first`);
+      const rc = recompute(deps, L.series, records.slice(0, k), line, null, rbPath);
+      if (!rc.ok) {
+        throw refuse(
+          `${L.series}: line #${line.seq} ${line.date} has no anchor, and scripts/verify-vol.mjs rejects it (${k ? `after #${records[k - 1].seq}` : 'on its own'}) — it is not anchored: nothing sent, nothing appended, no mark. ` +
+            `A line the keeper did not write and check is never anchored with its key; a person removes it (and every line after it) by a commit, and the next run writes those days again\n${rc.out}`
+        );
+      }
+      deps.log(`  #${line.seq} ${line.date} recomputed by scripts/verify-vol.mjs before its anchor — agrees`);
       await anchor(line);
     }
   }

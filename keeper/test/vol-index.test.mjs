@@ -1331,3 +1331,74 @@ test('in force T-IF16 a fork rehearsal prints each step\'s result in order — t
   assert.deepEqual([readJsonl(c.frec).length, readJsonl(c.fanc).length, fs.existsSync(c.fmarks)], [1, 1, false]);
   assert.equal(nc.txs.filter((t) => t.to === QVAULT).length, 0);
 });
+
+// ============================== the keeper's guards (red-team run R47, 2026-11-04)
+//
+// T-IF17 … T-IF27: what the keeper checks before it anchors, appends or marks
+// (F1 … F10 of the run, and the daily-candle gate), each case beside a control
+// that passes. Same scratch roots, synthetic bars, fake Binance and fake GIWA
+// node as above.
+
+/** A copy of an in-force root (the same chain: the fake node is shared by the caller). */
+function copyRoot(x) {
+  const root = tmpDir('vol-if-copy');
+  fs.cpSync(x.root, root, { recursive: true });
+  return { ...x, root, rbFile: path.join(root, 'keeper', 'rulebooks', 'qvol.json'), rec: path.join(root, 'trackrecord', REA), anc: path.join(root, 'trackrecord', ANC), marks: path.join(root, 'keeper', 'marks-qvol.jsonl') };
+}
+const writeJsonl = (file, lines) => fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+
+test('in force T-IF17 (F1): a line without an anchor is anchored only after scripts/verify-vol.mjs recomputes it — a hand-appended line it rejects (a date that does not follow, a second line for a day, a changed value, a broken hash) is refused (exit 2) and nothing is sent; an unanchored line before an anchored one, or an anchor entry that names another hash, is refused too; an honest unanchored line is anchored (control)', async () => {
+  const x = inForceRoot();
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  assert.equal((await inForce(x.root, '2099-02-03T00:25:00Z', { key, node })).code, 0);
+  const honest = readJsonl(x.rec);
+  assert.equal(honest.length, 2);
+  // the honest #2: what a run without the key writes on a copy (unanchored)
+  const w = copyRoot(x);
+  assert.equal((await inForce(w.root, '2099-02-04T00:25:00Z', { argv: [] })).code, 0);
+  const L2 = readJsonl(w.rec)[2];
+  assert.deepEqual([L2.seq, L2.date], [2, '2099-02-04']);
+  const sent = node.txs.length;
+  const bad = [
+    ['a date that does not follow #1 (2099-02-10)', rehash({ ...L2, date: '2099-02-10' }), /date 2099-02-10 does not follow 2099-02-03/],
+    ['a second line for 2099-02-03', rehash({ ...honest[1], seq: 2, prevHash: honest[1].hash }), /date 2099-02-03 does not follow 2099-02-03/],
+    ['a value the window does not give (re-hashed)', rehash({ ...L2, value: L2.value * 1.5 }), /value .* vs recomputed/],
+    ['a hash that is not the line\'s', { ...L2, value: L2.value * 1.5 }, /hash does not match the line/],
+  ];
+  for (const [label, line, why] of bad) {
+    const y = copyRoot(x);
+    fs.appendFileSync(y.rec, JSON.stringify(line) + '\n');
+    const before = listAll(y.root);
+    const r = await inForce(y.root, '2099-02-04T00:25:00Z', { key, node });
+    assert.equal(r.code, 2, `${label}: exit ${r.code} ${r.err}`);
+    assert.match(r.err, /scripts\/verify-vol\.mjs rejects/, label);
+    assert.match(r.err, /nothing sent/, label);
+    assert.match(r.err, why, label);
+    assert.equal(node.txs.length, sent, `${label}: a transaction was sent`);
+    assert.deepEqual(listAll(y.root), before, `${label}: a file changed`);
+  }
+  // an unanchored line before an anchored one: refused, nothing sent
+  const g = copyRoot(x);
+  writeJsonl(g.anc, readJsonl(g.anc).filter((a) => a.seq !== 0));
+  const rg = await inForce(g.root, '2099-02-04T00:25:00Z', { key, node });
+  assert.equal(rg.code, 2, rg.err);
+  assert.match(rg.err, /line #0 2099-02-02 has no anchor in trackrecord\/anchors-qvol\.jsonl, but line #1 after it has one — only the last lines of the record can be unanchored/);
+  assert.equal(node.txs.length, sent);
+  // an anchor entry that names another hash (#1 changed after its anchor; verify-vol does not read observedAt)
+  const h = copyRoot(x);
+  writeJsonl(h.rec, [honest[0], rehash({ ...honest[1], observedAt: '2099-02-03T00:26:00.000Z' })]);
+  const rh = await inForce(h.root, '2099-02-04T00:25:00Z', { key, node });
+  assert.equal(rh.code, 2, rh.err);
+  assert.match(rh.err, /the anchor of #1 in trackrecord\/anchors-qvol\.jsonl names 2099-02-03 with head [0-9a-f]{64}, but line #1 is 2099-02-03 with hash [0-9a-f]{64} — the line changed after it was anchored; nothing sent/);
+  assert.equal(node.txs.length, sent);
+  // control: the honest #2, written without the key, is anchored by the next run with the key
+  assert.equal((await inForce(x.root, '2099-02-04T00:25:00Z', { argv: [] })).code, 0);
+  const rc = await inForce(x.root, '2099-02-04T00:30:00Z', { key, node });
+  assert.equal(rc.code, 0, rc.err);
+  assert.match(rc.out, /#2 2099-02-04 has no anchor — anchoring it first/);
+  assert.match(rc.out, /#2 2099-02-04 recomputed by scripts\/verify-vol\.mjs before its anchor — agrees/);
+  assert.deepEqual(readJsonl(x.anc).map((a) => a.seq), [0, 1, 2]);
+  assert.equal(node.txs.length, sent + 1);
+  assert.deepEqual(node.anchorsOf().at(-1), `qxpi-qvol:${readJsonl(x.rec)[2].hash}`);
+});
