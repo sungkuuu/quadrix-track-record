@@ -4,19 +4,19 @@
  "track": "trading-tool",
  "rulebook": {
   "path": "rulebooks/qvol.md",
-  "commit": "f2f719753dc43ccf67b07b3882ddd26399c5364f",
-  "sha256": "d370e537e0f4db8976c4be06a06226636c457229b1b7f6b53313d0ff719ea3ea"
+  "commit": "1a7cf8589d56cfa00c4023076a56ac449688dde9",
+  "sha256": "9d67e3421cbd3306b22d05cdf611f669c63d3860a057d41cba1b6b97a5a468a1"
  },
  "checklistRun": {
   "path": "docs/methodology/checklist-runs/qvol/2026-11-05.json",
-  "sha256": "9c9e8b72288db1355ca7e23252687c3766969c85a6748e73cd61009fff9fe132",
+  "sha256": "613f75becef389ed0ee3fc0c5223b1882acc26611d8b97efac3bb1914db0c611",
   "repo": "site (private)"
  },
  "keeperJson": {
   "path": "keeper/rulebooks/qvol.json",
   "sha256": "7e4d6e38f346fee0f3deb04935b4ef6c93213f1841d0c44656d722cc888a44e8"
  },
- "note": "Covers the rows of appendix P of the rulebook (eleven: P01 to P07, P09, P12, P13, P14). The keeper JSON leaves windowDays and yearDays are cited by P01 and P02; sampling, mean, close, display.unit and source by P03, P04, P06, P07, P09 and P12. Three rows are held outside the JSON: P05 in the code of keeper/vol-realized.mjs (realizedFromWindow), P13 on chain as the vault's depositCap of 0, P14 as the contract constant MAX_NAV_MOVE_BPS, inherited not tested from the redeployment decision of 2026-10-21. display.decimals (2) is an operating value of the page (rulebook appendix O, test O5), not a row: P08 is not used, the record value is not rounded (owner, 2026-11-02). P10 (1,440 bars a day) is arithmetic. No value here was chosen by a test: the one pre-registered test of this line is of reproducibility.",
+ "note": "Covers the rows of appendix P of the rulebook (twelve: P01 to P07, P09, P12, P13, P14, P15). In the keeper JSON, windowDays and yearDays are cited by P01 and P02; sampling, mean, close, display.unit and source by P03, P04, P06, P07, P09 and P12; display.decimals by P15. Three rows are held outside the JSON: P05 in the code of keeper/vol-realized.mjs (realizedFromWindow), P13 on chain as the vault's depositCap of 0, P14 as the contract constant MAX_NAV_MOVE_BPS, inherited not tested from the redeployment decision of 2026-10-21. display.decimals (2) is P15, a measurement convention of display: the page and documents show two decimals, the record value is not rounded (P08 is not used, owner 2026-11-02), and neither the line nor the vault mark reads it (test O5); its three outside documents are listed in conventionSources. P10 (1,440 bars a day) is arithmetic. No value here was chosen by a test: the one pre-registered test of this line is of reproducibility.",
  "params": [
   {
    "id": "P01",
@@ -220,6 +220,44 @@
    "definitionKind": null,
    "inForceSince": "2026-07-21",
    "auditRef": "docs/research/rule-audit/README.md (qvol P14)",
+   "exception": null
+  },
+  {
+   "id": "P15",
+   "jsonPath": "display.decimals",
+   "codeConst": null,
+   "value": 2,
+   "basis": "definition",
+   "tests": [],
+   "study": null,
+   "preregCommit": null,
+   "resultFiles": [],
+   "ruleOutput": null,
+   "selectedBy": null,
+   "decision": "owner 2026-11-02 — 기록:docs/owner/qvol-decisions-2026-11-05.md:29",
+   "definitionKind": "measurement-convention",
+   "conventionSources": [
+    {
+     "title": "Nikkei Stock Average Volatility Index Real-time Version Index Guidebook (effective 2025-01-27)",
+     "url": "https://indexes.nikkei.co.jp/nkave/archives/news/20250120E_2.pdf",
+     "sha256": "3f1248b90e2f6d13ae6323e516e462dc75cf597f83d2acb3cd795e49cba1b5e9",
+     "where": "page 2"
+    },
+    {
+     "title": "CF Benchmarks, CME CF Bitcoin Volatility Index – Real Time, methodology v1.5 (2026-03-09)",
+     "url": "https://docs.cfbenchmarks.com/CF%20Bitcoin%20Volatility%20Index%20Real%20Time%20Methodology.pdf",
+     "sha256": "88344122903df8b401250f55f975c99fd2328748fbea4c8ec01d791cb7843563",
+     "where": "page 11, section 4.6"
+    },
+    {
+     "title": "Cboe, Summary Product Specifications Chart for S&P 500 Variance Futures",
+     "url": "https://cdn.cboe.com/resources/participant_resources/SP_500_Variance_Futures.pdf",
+     "sha256": "326c98fcf5b64a8b1a0b76280527cc4324b0884f9449fac19d62e86feb757817",
+     "where": "page 3, line 13"
+    }
+   ],
+   "inForceSince": null,
+   "auditRef": null,
    "exception": null
   }
  ]
