@@ -32,8 +32,8 @@ written at the time.
 
 ## The rules in force (pinned)
 
-The rulebook is `rulebooks/qvol.md` at commit `1a7cf8589d56cfa00c4023076a56ac449688dde9` of this repository (sha256
-`9d67e3421cbd3306b22d05cdf611f669c63d3860a057d41cba1b6b97a5a468a1`), as implemented in `keeper/rulebooks/qvol.json` (sha256 `7e4d6e38f346fee0f3deb04935b4ef6c93213f1841d0c44656d722cc888a44e8`) and the calculation files of
+The rulebook is `rulebooks/qvol.md` at commit `fcd1966c2cce17f7bb76cfda9f8e395c4b0b77da` of this repository (sha256
+`121174c6b317253f1114884e5f297ed182ec3c6b3fd6cdc355f60fc2965f3fea`), as implemented in `keeper/rulebooks/qvol.json` (sha256 `7e4d6e38f346fee0f3deb04935b4ef6c93213f1841d0c44656d722cc888a44e8`) and the calculation files of
 the registered implementation, each pinned below. In one paragraph:
 
 The close of UTC day d is the close of the latest one-minute bar that opened on that day (at or after
@@ -90,17 +90,20 @@ is the same number.
 
 1. After the reproducibility verdict passed (appendix A of the rulebook): the final review of this decision,
    then the owner's go-ahead, given once for all of the steps below.
-2. Before it, on a GIWA Sepolia fork, the keeper's rehearsal at commit `fc89e887e6a3d15f1804adf71b1b0f9e5ee8b0c6`
-   (fork block 40430399): the deployment with its guardian; two lines written, recomputed, anchored and
-   marked (16 steps from 1.000000, then one); the refusals — a deposit cap above 0, a decision missing or
-   not anchored, `open-deposits`, a registry entry naming another vault; the watchdog — 27 of 27 checks
-   passed (`docs/research/qvol/evidence/fork-rehearsal-2026-11-04.txt`, sha256
-   `1a41dad731693f951a2ee7eb2a84a3ecf4ff5528c84de041066d67c0c8522ad5`). After that commit, `keeper/vol-index.mjs` changed in
-   `5d1e3ab`: the hash of each transaction it sends is computed from the signed bytes, and the recompute of a
-   single line before its anchor was dropped, since the whole-record recompute of the same run covers it. The
-   rehearsal script's step 4d was updated in `2b18523` and is the version run. The whole test suite, the
-   verifier run and the dry-run identity were run again at `8b6c57b75895d7606a203e14d1f7838da8ed79e0`, which holds
-   these changes (below). A rehearsal re-run at the final head is pending: ⟨리허설 재실행 — 최종 머리⟩
+2. Before it, on a GIWA Sepolia fork, the keeper's rehearsal at the final code — the keeper of this decision and
+   the rehearsal script of commit `b66f9b8abe19a41a456b6abf8e259525902bf5ae` — on a fork of block 40317084, the block
+   mined on the stand-in decision's effective day: the deployment with its guardian; two lines written,
+   recomputed, anchored and marked (29.236724503606453, in 16 steps from 1.000000, then 28.47374564801124 in one);
+   the refusals — a deposit cap above 0, a decision missing or not anchored, `open-deposits`, a registry entry
+   naming another vault; `scripts/verify.mjs --series qvol` on the fork, VERIFIED; the watchdog — 27 of 27
+   checks passed, exit 0 (`docs/research/qvol/evidence/fork-rehearsal-2026-11-04.txt`, sha256
+   `8a75b26ac73ad6f27022e1b60a87cc64363276c17a2c4dd9bb7ddd11d4d520b0`). An earlier run at commit `fc89e887e6a3d15f1804adf71b1b0f9e5ee8b0c6`, before the
+   keeper's last change, also passed 27 of 27. That change, in `5d1e3ab`: the hash of each transaction the keeper
+   sends is computed from the signed bytes, and the recompute of a single line before its anchor was dropped,
+   since the whole-record recompute of the same run covers it. The rehearsal script's step 4d was updated in
+   `2b18523`, and its fork block and clock were changed in `b66f9b8` so that the decision's anchor falls on its
+   effective day, as the verifier now requires. The whole test suite, the verifier run and the dry-run identity
+   were run again at `8b6c57b75895d7606a203e14d1f7838da8ed79e0`, which holds the keeper's change (below).
 3. 2026-11-05: this decision is anchored. Until it is in `trackrecord/decisions.jsonl` and pins
    `keeper/rulebooks/qvol.json`, the daily leg writes nothing and exits 0 (NOT IN FORCE).
 4. 2026-11-05, after (3): the deployment above (deposit cap 0) and its read-back, through `mark-vault-setup`
@@ -192,15 +195,15 @@ delay of 72 hours is the redeployment decision's owner decision; this decision d
 ## Tested, and not tested (pinned)
 
 Parameter citation table: appendix P of `rulebooks/qvol.md` (pinned above); keeper provenance
-`keeper/rulebooks/qvol.provenance.json` (sha256 `e581a1e15dc9fa9e0d53444131ccca0f3159c0ea12a0632cbc500e5eaafb1557`). Checklist run record:
-`docs/methodology/checklist-runs/qvol/2026-11-05.json` (site repository, private; sha256 `613f75becef389ed0ee3fc0c5223b1882acc26611d8b97efac3bb1914db0c611`). Every evidence
+`keeper/rulebooks/qvol.provenance.json` (sha256 `93b9def05fd68961f1b672b1a1a0d36af2697a23df245711cf8d55fc42f963d2`). Checklist run record:
+`docs/methodology/checklist-runs/qvol/2026-11-05.json` (site repository, private; sha256 `7c587523564fc6acf31bfebaa23f6a9d53d143ed4a0b614155e706550cc79c7f`). Every evidence
 file the run record pins has a public copy on this branch: the launch evidence and the data checks of R59 are in
 `docs/research/qvol/evidence/`, and the reproducibility results are pinned by their site-repository originals,
 whose copies are below. The raw market data the inputs come from — the one-minute and 15-minute research files and
 their manifest — is left out of the copies for size, with its hashes kept (`MANIFEST-notes.md`, "Left out").
 The owner decisions the run record cites are extracted in
 `docs/owner/qvol-decisions-2026-11-05.md`. Gate report:
-`rulebooks/qvol.gate.json` (sha256 `dc2ecae83b88c247cee5ee74dbe2423f85b96f6701d1f8744dd3a03d2d700cd9`). Track: trading tool (`track` in `keeper/rulebooks/qvol.json`;
+`rulebooks/qvol.gate.json` (sha256 `428c96367787df7d8a524f7c3d79fc7a3ccb4a73a723dbdfd955f2372815f9b7`). Track: trading tool (`track` in `keeper/rulebooks/qvol.json`;
 owner, 2026-10-06), type measurement. The owner decisions this decision cites are quoted in this
 repository at `docs/owner/qvol-decisions-2026-11-05.md` (sha256 `b3337942b9e10568c82e4e601247828b06509938d62081265996aaf064608014`).
 
@@ -259,7 +262,7 @@ Values this decision introduces: every value above except P14 is new. None of th
 or changed value — the vault runs the same bytecode as the redeployed vaults — and, with no deposits, it
 acts on the display only. Arithmetic, not a row: a complete day has 1,440 one-minute bars (24 × 60).
 
-Numbers fixed by convention (shown in the "not tested" side of the page block): 9 — P01 · P02 · P03 · P04 ·
+Values fixed by convention (shown in the "not tested" side of the page block): 9 — P01 · P02 · P03 · P04 ·
 P05 · P06 · P07 · P12 · P15. Each row of appendix P names its outside methodology document and that
 file's sha256 — P01 · P02 · P03 · P04 · P05 · P07 cite documents of Volmex Labs, Coin Metrics and Cboe; P15 cites
 the two-decimal statements of three published methodology documents (Nikkei, CF Benchmarks and Cboe). For the day boundary (P06) and the day close (P12) no direct outside sentence was found; their rows cite indirect documents only (the Binance API document, whose bar requests default to UTC; two documents that define a bar's close as the last trade in the interval). The owner adopted the definition with these two rows as written on 2026-11-02. The gate counts seven of the nine as numeric measurement conventions: P03 and P05 hold no number.
@@ -417,5 +420,5 @@ pins of `scripts/verify.mjs` in earlier decisions stay true of the file at the c
 
 | Repository | HEAD at pinning |
 | --- | --- |
-| quadrix-track-record (rulebook, rulebook JSON, keeper with its calculation files and wiring, verifiers, vault registry entry, deployment tool and artifact, publishable test copies and launch evidence, the provenance file, the gate report and the owner-decision extract, each pinned by sha256 above; this decision is added in the next commit, and the merge into main is recorded in a later dated checklist run record) | `73dd07b40e8e1ed98d77950db12c2cfbdbbf4484` |
-| quadrix (site, private — contract source, checklist run record, registration, page block; the commit the gate report was run on, on the branch `staging/qvol-2026-11-04`, with the run record from main) | `bc9e772937ca79d1eebaa35ff6c81b84ff2805eb` |
+| quadrix-track-record (rulebook, rulebook JSON, keeper with its calculation files and wiring, verifiers, vault registry entry, deployment tool and artifact, publishable test copies and launch evidence, the provenance file, the gate report and the owner-decision extract, each pinned by sha256 above; this decision is added in the next commit, and the merge into main is recorded in a later dated checklist run record) | `8afafb7901da527feb9628c71702fb72622280fc` |
+| quadrix (site, private — contract source, checklist run record, registration, page block; the commit the gate report was run on, on the branch `staging/qvol-2026-11-04`, with the run record from main) | `f5e3aadb4f3bd3c2e6d2c290594d9c6439cbbbc3` |
