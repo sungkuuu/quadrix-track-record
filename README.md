@@ -43,20 +43,34 @@ Exit code 0 means every check passed. `--series <name>` restricts it to one
 
 For the leverage series it also recomputes every line from its own bars and
 binds the rule each line states to `keeper/rulebooks/<index>.json` (the file
-whose sha256 the inception decision contains). What it does not check: that the
-bars are the ones Binance serves (`--refetch-bars` re-fetches them and prints
-`REVISED` for a difference; `--strict-source` makes that a failure), who sent an
-anchor, and the testnet vault marks.
+whose sha256 the inception decision contains). What it does not check for the
+leverage series: that the bars are the ones Binance serves (`--refetch-bars`
+re-fetches them and prints `REVISED` for a difference; `--strict-source` makes
+that a failure), who sent an anchor, and the testnet vault marks.
 
 For the qVOL realized line (`qvol`; "not started" until its inception decision
 is anchored) it recomputes every line with `scripts/verify-vol.mjs`, a second
 implementation of the definition that it runs as a separate process — keep
 that file next to `verify.mjs` — and binds the first line to its inception
-decision, which is effective the day before the first line:
+decision, which is effective the day before the first line. With `--rpc` it
+also checks each anchor's calldata, receipt, block time and sender: every qVOL
+anchor must be a self-send from the address that sent the inception decision's
+anchor. With `--refetch-bars` it fetches every day a line names again from
+Binance (`REVISED` for a difference; `--strict-source` makes that a failure);
+this uses two keeper files (`keeper/vol-sources.mjs`, `keeper/vol-realized.mjs`),
+so run it from a clone of this repository:
 
 ```bash
-node scripts/verify.mjs --dir ./trackrecord --series qvol
+node scripts/verify.mjs --dir ./trackrecord --series qvol --recompute-only
+node scripts/verify.mjs --dir ./trackrecord --series qvol --rpc https://sepolia-rpc.giwa.io
+node scripts/verify.mjs --dir ./trackrecord --series qvol --rpc https://sepolia-rpc.giwa.io --refetch-bars --strict-source
+node scripts/verify.mjs --dir ./trackrecord --series qvol --recompute-only --refetch-bars --strict-source
 ```
+
+The first reads the record alone, with no network (hashes, chain, every value
+recomputed, the decision binding); the second adds each anchor and the
+decision's own anchor; the third adds every day again from Binance; the fourth
+reads Binance without the chain.
 
 To check the copy served by the site instead of this one:
 
