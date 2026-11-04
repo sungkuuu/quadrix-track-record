@@ -1,14 +1,19 @@
 /**
  * Freshness of the daily series that scripts/watchdog.mjs did not watch: the
- * five paper indexes and the leverage levels (run sheet option 18, design
- * checklist D14 "an alarm that catches the job not running at all").
+ * five paper indexes, the leverage levels and the qVOL realized line (run
+ * sheet option 18, design checklist D14 "an alarm that catches the job not
+ * running at all").
  *
  * A job that never starts raises no failure of its own, so this reads only the
  * outputs. For each series it flags three cases:
  *
  *   missing    — the series' latest inception decision in trackrecord/decisions.jsonl
- *                is effective from day I, more than 16 hours have passed since
- *                I 00:00 UTC, and record-<series>.jsonl does not exist or is empty;
+ *                puts its first line on day I, more than 16 hours have passed since
+ *                I 00:00 UTC, and record-<series>.jsonl does not exist or is empty.
+ *                A paper or leverage decision (`<date>-<series>-paper-inception`)
+ *                is effective on I; the qVOL decision (`<date>-qvol-inception`)
+ *                is effective the day before I (it is anchored on its effective
+ *                day and the first line is dated the next UTC day);
  *   stale      — the last line is dated D, more than 40 hours have passed since
  *                D 00:00 UTC, and the line is not a model liquidation (a
  *                liquidated series has ended and writes nothing more);
@@ -35,7 +40,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const SERIES = ['qrev', 'qdefi', 'barbell', 'triens', 'qai', 'qbtc2x', 'qeth2x', 'qeth15'];
+// qvol before the leverage levels: the leverage keeper's own table (keeper/leverage-index.mjs INDEXES) is the last three entries
+export const SERIES = ['qrev', 'qdefi', 'barbell', 'triens', 'qai', 'qvol', 'qbtc2x', 'qeth2x', 'qeth15'];
+/** The inception decision of a series and the day of its first line: qVOL's decision is effective the day before its first line. */
+const INCEPTION = { qvol: { id: /^\d{4}-\d{2}-\d{2}-qvol-inception$/, firstLineAfterDays: 1 } };
+const inceptionSpec = (key) => INCEPTION[key] ?? { id: new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${key}-paper-inception$`), firstLineAfterDays: 0 };
 export const LIMIT_H = 40; // stale: hours after D 00:00 UTC of the last line
 export const LIMIT_MISSING_H = 16; // missing: hours after I 00:00 UTC of the inception
 export const SIMULATE = ['series-missing', 'series-stale', 'series-anchor'];
@@ -60,18 +69,20 @@ export function checkSeries({ dir, now, simulate = null, series = SERIES }) {
   const decisions = readLines(path.join(dir, 'decisions.jsonl')) ?? [];
   let tripped = false;
   for (const key of series) {
-    const inception = decisions.filter((d) => new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${key}-paper-inception$`).test(d.id)).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).at(-1) ?? null;
+    const spec = inceptionSpec(key);
+    const inception = decisions.filter((d) => spec.id.test(d.id)).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).at(-1) ?? null;
     const records = readLines(path.join(dir, `record-${key}.jsonl`));
     const anchors = readLines(path.join(dir, `anchors-${key}.jsonl`)) ?? [];
     if (records === null || records.length === 0) {
       const trip = simulate === 'series-missing' && !tripped;
       if (inception) {
-        const ageH = (now - dayStart(inception.effectiveFrom)) / H;
+        const firstDay = new Date(dayStart(inception.effectiveFrom) + spec.firstLineAfterDays * 24 * H).toISOString().slice(0, 10);
+        const ageH = (now - dayStart(firstDay)) / H;
         if (ageH > LIMIT_MISSING_H || trip) {
-          problems.push(`${key}: no record-${key}.jsonl ${ageH.toFixed(1)}h after its inception ${inception.effectiveFrom} 00:00 UTC (decision ${inception.id}) — the daily job has not written the first line${trip ? ' [simulated]' : ''}`);
+          problems.push(`${key}: no record-${key}.jsonl ${ageH.toFixed(1)}h after ${spec.firstLineAfterDays ? `its first line's day ${firstDay}` : `its inception ${inception.effectiveFrom}`} 00:00 UTC (decision ${inception.id}) — the daily job has not written the first line${trip ? ' [simulated]' : ''}`);
           tripped ||= trip;
         }
-        summary.push(`${key} pending (inception ${inception.effectiveFrom})`);
+        summary.push(`${key} pending (inception ${inception.effectiveFrom}${spec.firstLineAfterDays ? `, first line ${firstDay}` : ''})`);
       } else {
         if (trip) {
           problems.push(`${key}: no record-${key}.jsonl [simulated — as if its inception decision were more than ${LIMIT_MISSING_H}h old]`);

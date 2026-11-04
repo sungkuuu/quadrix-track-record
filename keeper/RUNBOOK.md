@@ -847,6 +847,83 @@ watchdog): it reads only the outputs, so it also catches a job that never ran.
 | a line with `liquidated` | the model's total loss, accepted by a person (`liquidationAccepted` names the entry) | the series has ended: the vault is stepped to its floor (3 units) and, if the keeper is its owner, paused, in the run that wrote the line. Nothing is written after it. No key can raise the vault from its floor. A new series is a new decision. |
 | `REVISED qbtc2x <date>` from `verify.mjs --refetch-bars` | Binance now serves different bars for a recorded day | the line's bars are the record; nothing is rewritten. Note it here; a correction notice is a decision. |
 
+## qVOL — the BTC realized volatility line (not in force until its inception decision is anchored)
+
+`keeper/vol-index.mjs --line realized` writes one line per closed UTC day: the
+annualised volatility of bitcoin over the 30 UTC days before the line's date,
+from the closes of Binance spot BTCUSDT 1-minute bars (definition:
+`docs/vol-index.md`). It is a measurement: nothing is held, there is no fee and
+no starting level. Its rulebook JSON is `keeper/rulebooks/qvol.json`.
+
+**Daily leg.** A step of the `paper-index` workflow after qETH1.5X, with the
+same `KEEPER_PK`, schedule (00:25 UTC) and `keeper-key` group. The step runs
+on node v22.23.1, the runtime of the registered reproducibility test (it sets
+that version up just before the step, checks `node --version`, and sets node 20
+up again for the steps after it). While `inception` is null in the rulebook
+JSON every run prints `NOT IN FORCE` and exits 0, reading and writing nothing.
+The inception decision `<E>-qvol-inception` is effective on the day it is
+anchored, E; the first line is dated E + 1 (`inception.date`) and written by
+the 00:25 UTC run of that day. The leg checks that the decision is in
+`trackrecord/decisions.jsonl`, still hashes to the ledger's value, contains the
+rulebook JSON's sha256 and is effective the day before `inception.date`.
+
+**Order inside a run.** Anchor any line an earlier run left unanchored → for
+each closed day: fetch the day's 1-minute bars twice and compare them → build
+the line → `scripts/verify-vol.mjs` recomputes it (a second implementation) →
+append to `trackrecord/record-qvol.jsonl` → anchor (zero-value self-send,
+calldata `qxpi-qvol:` + the line's hash, `trackrecord/anchors-qvol.jsonl`) →
+after the last anchor, mark the display vault (`keeper/marks-qvol.jsonl`). A
+line D is written only after D 00:00 UTC on the runner's clock and Binance's.
+A day the job missed is written by the next run from the same closed bars and
+marked `late`. No day before the first line is ever written.
+
+**Dry run** (keyless; lines carry `"shadow": true`):
+
+```bash
+node keeper/vol-index.mjs --line realized --dry-run --replay 2026-10-31..2026-11-04   # writes keeper/dryrun/record-qvol.jsonl
+node scripts/verify-vol.mjs --dir keeper/dryrun --line realized --rulebook keeper/rulebooks/qvol.json
+```
+
+or the `qvol-dryrun` workflow (node v22.23.1, `contents: read`, no npm
+install; it prints each line's date, value, variance and the sha256 of the
+day's bars). `--anchor` is refused with `--dry-run`.
+
+**Public check:** `node scripts/verify.mjs --dir ./trackrecord --series qvol`
+(add `--recompute-only` to skip the RPC). It runs `scripts/verify-vol.mjs` on
+the record and checks the first line's decision and the anchors.
+
+**The display vault.** Deployed by `mark-vault-setup` (target `qvol`) with
+deposit cap 0; its address goes to `keeper/leverage-vaults.json`, entry `qvol`
+(mark method `{"mode":"step"}`). `open-deposits` is refused for `qvol` before
+any RPC call. The leg marks it to n6 = floor(value × 1,000,000) (the record
+value cut to the contract's unit, no rounding) as `setNav(step, n6)`, in steps
+within the contract's 25% bound, each read back — only after the day's line is
+anchored, only when the vault's `symbol()` is `qVOL`, its `keeper()` is the key
+and its `depositCap()` is 0. **First mark:** the vault starts at 1.000000, so
+the first run after the deployment takes several steps, one transaction each
+(16 for a value of 28.4); every later day moves it by the day's change only.
+
+### What can go wrong in the qVOL leg
+
+| Symptom | What it means | What to do |
+| --- | --- | --- |
+| `qvol: NOT IN FORCE …`, exit 0 | inception null, the decision not in the ledger yet, or before `inception.date` 00:00 UTC — and no line yet | expected until the decision is anchored and its first day has begun. |
+| `qvol: the inception decision … is anchored, but … — the series cannot start`, exit 2 | the anchored decision does not match the files: the rulebook JSON's sha256 is not in it, the document changed, or its effective date is not the day before `inception.date` | nothing was read or written. Restore `keeper/rulebooks/qvol.json` to the bytes the decision pins; if the pinned bytes are wrong, anchor a postponement decision. Never edit an anchored decision. The missed days are written `late` later. |
+| `qvol: … already holds N line(s), so the series has started — …`, exit 2 | the rulebook JSON or the ledger changed after the first line | nothing was written. Revert the edit: a pinned value changes only by a new decision. |
+| `qvol: Binance (data-api.binance.vision) failed while … — nothing written for D`, exit 1 | Binance unreachable or failing (each call: 3 tries, 30 s each) | nothing written for D or later; the series waits. The next run continues from the last line and writes the missed days `late`. No other source stands in. |
+| `Binance says <day> has not ended …, but the runner's clock is … more than a day later — the source is stuck`, exit 1 | Binance's clock or bars are stuck | nothing written. Check https://data-api.binance.vision/api/v3/time; the next run continues. |
+| `qvol: two fetches of <day> differ`, exit 1 | Binance answered differently twice | nothing written; the next run fetches again. |
+| `qvol: <day> has N of 1440 1-minute bars; missing …` then `… is incomplete and not accepted`, exit 1 | a gap in Binance's bars | the series waits. If the gap is real, add the printed acceptance entry with an `id` to `keeper/vol-index-gaps.json` — a public commit, so an owner confirmation. Bars are never filled. |
+| `qvol: independent recompute (scripts/verify-vol.mjs) rejected line D — nothing appended, nothing anchored, no mark`, exit 1 | the keeper and the verifier disagree | the run refuses: nothing was appended. Read the FAIL lines; if they name the rulebook JSON, it does not match the record's rule. Otherwise stop the step and report — one of the two implementations is wrong. |
+| `qvol: line #N D is written but its anchor failed: … — no mark; the next run anchors it first`, exit 1 | the anchor transaction failed after the line was appended | the line is on disk and committed by "Commit records". The next run anchors every unanchored line first, in order, then writes new lines; the vault is not marked until the last line is anchored. If it repeats, check the key's gas. |
+| `--anchor requested but KEEPER_PK is not set — lines are written unanchored`, exit 0 | the step ran without the key | restore the secret; the next run anchors the lines first. The watchdog reports the unanchored lines. |
+| `qVOL vault marks FAILED after line #N was written and anchored: REFUSED: vault … has deposit cap C, not 0`, exit 1 | the display vault's deposit cap was raised | no mark is sent while the cap is not 0. The inception decision does not allow a cap above 0: the owner sets it back to 0 (a decision if the timelock owns the vault). The next run marks the vault once the cap is 0. |
+| `qVOL vault marks FAILED … is "…", not qVOL` / `keeper is …, not the signer` | the registry entry points at another vault, or the vault's keeper is another key | nothing was marked. Correct `keeper/leverage-vaults.json` from `keeper/mark-vaults.jsonl` (a public commit). |
+| `qVOL vault marks FAILED … the value … is below 0.000001` | n6 = 0 | the vault cannot show it; nothing sent. |
+| `qVOL runs only on node v22.23.1 …`, exit 1 | the step's runtime is not the registered one (setup failed or the version changed) | nothing was run. Fix the step's setup; the next run writes the missed day `late`. |
+| watchdog: `qvol: no record-qvol.jsonl …h after its first line's day …` | 16 h after E + 1 00:00 UTC with no line | read the last `paper-index` run's qVOL step: `NOT IN FORCE` means the decision is not on main; a refusal means the JSON or ledger does not match it. |
+| watchdog: `qvol: stale …` / `qvol: line seq N (D) has no anchor txHash` | no line 40 h after D 00:00 UTC / an unanchored line | as for the leverage leg: read the last run; the next run with the key writes the missed days `late` and anchors the unanchored lines first. |
+
 ## Retired testnet vaults — deposits closed
 
 Two GIWA Sepolia vaults are left out of the redeployment: qDV

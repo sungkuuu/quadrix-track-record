@@ -29,8 +29,8 @@ const inception = (key, date) => ({ id: `${date}-${key}-paper-inception`, file: 
 const lines = (from, n) => Array.from({ length: n }, (_, seq) => ({ seq, date: new Date(at(`${from}T00:00:00Z`) + seq * 86400000).toISOString().slice(0, 10) }));
 const anchorsFor = (recs) => recs.map((r) => ({ date: r.date, seq: r.seq, headHash: 'b'.repeat(64), txHash: TX(100 + r.seq) }));
 
-test('watches the five paper series and the two leverage levels; stale after 40 h, missing after 16 h', () => {
-  assert.deepEqual(SERIES, ['qrev', 'qdefi', 'barbell', 'triens', 'qai', 'qbtc2x', 'qeth2x', 'qeth15']);
+test('watches the five paper series, the leverage levels and the qVOL realized line; stale after 40 h, missing after 16 h', () => {
+  assert.deepEqual(SERIES, ['qrev', 'qdefi', 'barbell', 'triens', 'qai', 'qvol', 'qbtc2x', 'qeth2x', 'qeth15']);
   assert.equal(LIMIT_H, 40);
   assert.equal(LIMIT_MISSING_H, 16);
 });
@@ -127,4 +127,29 @@ test("this repository's own series are clear at a fixed clock of 2026-10-05T12:0
   const r = checkSeries({ dir: path.join(REPO, 'trackrecord'), now: at('2026-10-05T12:00:00Z') });
   assert.deepEqual(r.problems, []);
   assert.equal(r.summary.length, SERIES.length);
+});
+
+test('qVOL: its decision (<date>-qvol-inception) is effective the day before the first line — missing only 16 h after that first day began; then stale and unanchored as the other series', () => {
+  const dec = { id: '2026-11-10-qvol-inception', file: 'decisions/2026-11-10-qvol-inception.md', effectiveFrom: '2026-11-10', sha256: 'a'.repeat(64), txHash: TX(1), anchoredAt: '2026-11-10T09:00:00Z' };
+  // a paper-inception id of another series does not count for qvol, and a qvol decision does not count for the others
+  let dir = folder({ decisions: [inception('qvol', '2026-11-10')] });
+  assert.deepEqual(checkSeries({ dir, now: at('2026-11-20T00:00:00Z'), series: ['qvol'] }).summary, ['qvol not started']);
+  dir = folder({ decisions: [dec] });
+  assert.deepEqual(checkSeries({ dir, now: at('2026-11-20T00:00:00Z'), series: ['qrev'] }).summary, ['qrev not started']);
+  // the first line is dated 2026-11-11: nothing is missing until 2026-11-11T16:00Z
+  for (const t of ['2026-11-10T23:00:00Z', '2026-11-11T15:59:00Z']) {
+    const r = checkSeries({ dir, now: at(t), series: ['qvol'] });
+    assert.deepEqual(r.problems, [], t);
+    assert.deepEqual(r.summary, ['qvol pending (inception 2026-11-10, first line 2026-11-11)']);
+  }
+  const r = checkSeries({ dir, now: at('2026-11-11T16:01:00Z'), series: ['qvol'] });
+  assert.equal(r.problems.length, 1);
+  assert.match(r.problems[0], /^qvol: no record-qvol\.jsonl 16\.0h after its first line's day 2026-11-11 00:00 UTC \(decision 2026-11-10-qvol-inception\) — the daily job has not written the first line$/);
+  // lines: fresh and anchored, then stale, then an unanchored line
+  const recs = lines('2026-11-11', 3);
+  dir = folder({ decisions: [dec], series: { qvol: { records: recs, anchors: anchorsFor(recs) } } });
+  assert.deepEqual(checkSeries({ dir, now: at('2026-11-14T15:00:00Z'), series: ['qvol'] }).problems, []);
+  assert.match(checkSeries({ dir, now: at('2026-11-15T17:00:00Z'), series: ['qvol'] }).problems[0], /^qvol: stale — latest line is 2026-11-13 \(seq 2\)/);
+  dir = folder({ decisions: [dec], series: { qvol: { records: recs, anchors: anchorsFor(recs).slice(0, 2) } } });
+  assert.deepEqual(checkSeries({ dir, now: at('2026-11-13T12:00:00Z'), series: ['qvol'] }).problems, ['qvol: line seq 2 (2026-11-13) has no anchor txHash']);
 });
