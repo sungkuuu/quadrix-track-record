@@ -43,8 +43,8 @@
  *      run from the same closed bars and carries "late": true;
  *   4. the display vault (keeper/leverage-vaults.json, entry qvol; deposit
  *      cap 0) is marked to the last line after that line is anchored, never
- *      before, and only when its symbol() is the rulebook's ticker and its
- *      keeper() is the signer: the share price goes to
+ *      before, and only when its symbol() is the rulebook's ticker, its
+ *      keeper() is the signer and its depositCap() is 0: the share price goes to
  *      n6 = floor(value x 1,000,000) — the record value, unrounded, cut to the
  *      contract's unit of 1e-6 — in setNav steps inside the contract's bound
  *      of 25% per mark (markSteps, keeper/leverage-step.mjs), each step read
@@ -562,6 +562,7 @@ async function chainLib() {
       'function navPerShare() view returns (uint256)',
       'function keeper() view returns (address)',
       'function symbol() view returns (string)',
+      'function depositCap() view returns (uint256)',
     ]);
     chainModules = { viem, accounts, readback, abi };
   }
@@ -614,7 +615,7 @@ export function markUnits(x) {
   return BigInt(Math.floor(x * 1e6));
 }
 
-/** Marks the display vault to the line's value: navPerShare = indexLevel = n6, in steps inside the contract's 25% bound. */
+/** Marks the display vault to the line's value: navPerShare = indexLevel = n6, in steps inside the contract's 25% bound — only a vault with deposit cap 0. */
 async function markDisplayVault({ signer, vault, ticker, gate, line, marksPath, deps }) {
   const { viem, readback, abi } = await chainLib();
   const { pc, wallet, address } = signer;
@@ -627,6 +628,9 @@ async function markDisplayVault({ signer, vault, ticker, gate, line, marksPath, 
   if (symbol !== ticker) throw new Exit(1, `vault ${vault} is ${JSON.stringify(symbol)}, not ${ticker} — keeper/leverage-vaults.json names the wrong vault; no mark sent`);
   const keeper = viem.getAddress(await read('keeper'));
   if (keeper !== viem.getAddress(address)) throw new Exit(1, `vault ${vault} keeper is ${keeper}, not the signer ${address} — no mark sent`);
+  // a display vault takes no deposits (keeper/deploy-mark-vault.mjs DISPLAY_ONLY): a cap other than 0 stops every mark
+  const cap = await read('depositCap');
+  if (cap !== 0n) throw new Exit(1, `REFUSED: vault ${vault} has deposit cap ${cap}, not 0 — a display vault takes no deposits; no mark sent. Raising the cap is not allowed by the inception decision; a person decides`);
   const cur = await read('navPerShare');
   if (gate.mode === 'halt') {
     const move = Number(target) / Number(cur) - 1;
