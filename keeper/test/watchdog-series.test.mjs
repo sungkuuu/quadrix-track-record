@@ -13,7 +13,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkSeries, recomputeSeries, RECOMPUTE, SERIES, SIMULATE, LIMIT_H, LIMIT_MISSING_H } from '../../scripts/watchdog-series.mjs';
-import { honestRecord, copyRoot, writeJsonl, rehash } from './qvol-inforce.mjs';
+import { spawnSync } from 'node:child_process';
+import { honestRecord, copyRoot, writeJsonl, rehash, rechain, OFFLINE } from './qvol-inforce.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const TX = (n) => '0x' + n.toString(16).padStart(64, '0');
@@ -173,6 +174,8 @@ test('qVOL recompute (red team R47 F5): the watchdog runs scripts/verify.mjs --r
   for (const [label, edit, why] of [
     ['edited in place', (ls) => [{ ...ls[0], value: ls[0].value + 1 }, ...ls.slice(1)], /: #0 2099-02-02: stored hash [0-9a-f]{12}… != computed [0-9a-f]{12}…/],
     ['edited and re-hashed', (ls) => [rehash({ ...ls[0], value: ls[0].value + 1 }), ...ls.slice(1)], /: #1 2099-02-03: prevHash does not match record #0 \(chain break\)/],
+    // the whole chain re-hashed consistently: the hashes hold, only the value recompute (scripts/verify-vol.mjs) sees it
+    ['edited, the chain re-hashed', (ls) => rechain([{ ...ls[0], value: ls[0].value + 1 }, ...ls.slice(1)]), /^qvol: the record does not verify — [^|]*verify-vol\.mjs: qvol seq 0: value [0-9.]+ vs recomputed [0-9.]+/],
   ]) {
     const y = copyRoot(x);
     writeJsonl(y.rec, edit(x.lines));
@@ -183,4 +186,22 @@ test('qVOL recompute (red team R47 F5): the watchdog runs scripts/verify.mjs --r
     assert.match(v.problems[0], why, label);
     assert.deepEqual(v.summary, ['qvol does not verify']);
   }
+});
+
+test('scripts/watchdog.mjs check 6: the watchdog itself runs the qVOL recompute and a record that does not verify is one of its problems (run offline in a scratch checkout: the gas check fails for want of a network, the rest is the scratch files)', async () => {
+  const x = await honestRecord(3);
+  // the files watchdog.mjs reads besides the series: one LIVE record with its anchor, one NAV mark
+  fs.writeFileSync(path.join(x.tr, 'record-live.jsonl'), JSON.stringify({ seq: 0, date: '2099-02-01' }) + '\n');
+  fs.writeFileSync(path.join(x.tr, 'anchors-live.jsonl'), JSON.stringify({ seq: 0, txHash: TX(7) }) + '\n');
+  fs.writeFileSync(path.join(x.root, 'keeper', 'nav-marks.jsonl'), JSON.stringify({ postedAt: new Date().toISOString() }) + '\n');
+  const watchdog = (root) => spawnSync(process.execPath, ['--import', OFFLINE, path.join(REPO, 'scripts', 'watchdog.mjs')], { cwd: root, encoding: 'utf8', env: { PATH: process.env.PATH } });
+  let r = watchdog(x.root);
+  assert.equal(r.status, 1, r.stdout + r.stderr); // the gas check cannot reach the RPC offline
+  assert.match(r.stdout, /qvol verifies \(verify\.mjs --recompute-only: QVOL 3 records 2099-02-02 → 2099-02-04\)/);
+  assert.doesNotMatch(r.stdout, /- qvol: the record does not verify/);
+  const y = copyRoot(x);
+  writeJsonl(y.rec, rechain([{ ...x.lines[0], value: x.lines[0].value + 1 }, ...x.lines.slice(1)]));
+  r = watchdog(y.root);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /\n- qvol: the record does not verify — scripts\/verify\.mjs --recompute-only --series qvol exited 1: .*verify-vol\.mjs: qvol seq 0: value/);
 });
