@@ -608,11 +608,11 @@ const runChild = (args) =>
     c.on('close', (code) => resolve({ code, out, err }));
   });
 
-function inForceRoot({ effective = E, first = D1, pin = true, vaults = null, ledger = true } = {}) {
+function inForceRoot({ effective = E, first = D1, pin = true, vaults = null, ledger = true, id: decisionId = null } = {}) {
   const root = tmpDir('vol-inforce');
   const rb = JSON.parse(fs.readFileSync(rulebookPath('realized'), 'utf8'));
   rb.status = 'TEST ONLY — a stand-in inception for the in-force tests; not a decision';
-  rb.inception = { date: first, decision: `${effective}-qvol-inception` };
+  rb.inception = { date: first, decision: decisionId ?? `${effective}-qvol-inception` };
   rb.pendingOwner = [];
   fs.mkdirSync(path.join(root, 'keeper', 'rulebooks'), { recursive: true });
   fs.mkdirSync(path.join(root, 'trackrecord', 'decisions'), { recursive: true });
@@ -620,7 +620,7 @@ function inForceRoot({ effective = E, first = D1, pin = true, vaults = null, led
   fs.writeFileSync(path.join(root, 'keeper', 'rulebooks', 'qvol.json'), rbBytes);
   fs.writeFileSync(path.join(root, 'keeper', 'vol-index-gaps.json'), '[]\n');
   if (vaults) fs.writeFileSync(path.join(root, 'keeper', 'leverage-vaults.json'), JSON.stringify(vaults, null, 2) + '\n');
-  const id = `${effective}-qvol-inception`;
+  const id = decisionId ?? `${effective}-qvol-inception`;
   const doc = `# TEST ONLY — stand-in decision\n\nPins keeper/rulebooks/qvol.json sha256 ${pin ? H(rbBytes) : '0'.repeat(64)}.\n`;
   fs.writeFileSync(path.join(root, 'trackrecord', 'decisions', `${id}.md`), doc);
   const entry = { id, file: `decisions/${id}.md`, effectiveFrom: effective, sha256: H(Buffer.from(doc)), txHash: `0x${'d'.repeat(64)}`, anchoredAt: `${effective}T09:00:00.000Z` };
@@ -630,21 +630,69 @@ function inForceRoot({ effective = E, first = D1, pin = true, vaults = null, led
 const qvolVaults = (gate = { mode: 'step' }, address = QVAULT) => ({ qvol: { chainId: 91342, address, gate, deployTx: null, block: null } });
 
 const DEPOSIT_CAP = toFunctionSelector('function depositCap()');
+const hexN = (n) => `0x${BigInt(n).toString(16)}`;
+/** A transaction as eth_getTransactionByHash answers it. */
+const rpcTx = ({ hash, from, to = null, input = '0x', block = null }) => ({
+  hash, from, to, input, value: '0x0', nonce: '0x0', gas: '0xea60', type: '0x2', chainId: hexN(91342), maxFeePerGas: '0x77359400', maxPriorityFeePerGas: '0x1',
+  accessList: [], v: '0x0', r: '0x1', s: '0x1', yParity: '0x0', transactionIndex: block == null ? null : '0x0',
+  blockNumber: block == null ? null : hexN(block), blockHash: block == null ? null : `0x${BigInt(block).toString(16).padStart(64, '0')}`,
+});
+/**
+ * What GIWA would answer for transactions the fake node did not see, stand-ins
+ * read from a scratch root: the inception decision's anchor (the ledger's
+ * txHash: a self-send from `from` with calldata qxdec:<sha256>, as
+ * scripts/anchor-decision.mjs sends it) and the display vault's deployment
+ * (the registry's deployTx: a contract creation by `from` whose receipt names
+ * the registry's address). hash → {from, to, input, block, contractAddress}.
+ */
+function chainExtras(root, from, { fork = false } = {}) {
+  const m = new Map();
+  if (!root || !from) return m;
+  for (const e of readJsonl(path.join(root, 'trackrecord', 'decisions.jsonl'))) {
+    if (/^0x[0-9a-fA-F]{64}$/.test(e.txHash ?? '')) m.set(e.txHash.toLowerCase(), { from, to: from, input: toHex(`qxdec:${e.sha256}`), block: 50 });
+  }
+  return m;
+}
+/**
+ * eth_getTransactionByHash (which the fake node does not answer) for the
+ * node's own transactions and the stand-ins of chainExtras, and
+ * eth_getTransactionReceipt for the stand-ins; a hash in `forget` is unknown
+ * (a reorg dropped it). undefined: the node answers the request itself.
+ */
+function txView(node, req, { root = null, from = null, fork = false, forget = null } = {}) {
+  if (req.method !== 'eth_getTransactionByHash' && req.method !== 'eth_getTransactionReceipt') return undefined;
+  const h = String(req.params?.[0] ?? '').toLowerCase();
+  if (forget?.has(h)) return null;
+  const own = node.txs.find((t) => t.hash.toLowerCase() === h);
+  const x = own ? null : chainExtras(root, from, { fork }).get(h);
+  if (req.method === 'eth_getTransactionByHash') return own ? rpcTx({ ...own, input: own.data }) : x ? rpcTx({ hash: h, ...x }) : null;
+  if (!x) return undefined;
+  return {
+    transactionHash: h, blockNumber: hexN(x.block), blockHash: `0x${BigInt(x.block).toString(16).padStart(64, '0')}`, transactionIndex: '0x0', status: x.status ?? '0x1', gasUsed: '0x5208',
+    cumulativeGasUsed: '0x5208', effectiveGasPrice: '0x3b9aca01', logs: [], logsBloom: `0x${'0'.repeat(512)}`, type: '0x2', contractAddress: x.contractAddress ?? null, from: x.from, to: x.to,
+  };
+}
 /**
  * The fake node as viem's transport, without retries. viem first asks a node to
  * fill a transaction (eth_fillTransaction); the fake node, like a node without
  * that method, refuses it, and viem then fills it itself — answered here at once
  * as "method not found" instead of after viem's retry delays. The vault's
  * depositCap() (which the fake node does not model) answers `cap` (0 unless a
- * test sets it). `refuse(req)` may throw for a request (an injected failure).
+ * test sets it). `refuse(req)` may throw for a request (an injected failure);
+ * `answer(req)` may answer one itself. Transactions are looked up through
+ * txView (`chain`: {root, from, fork, forget}).
  */
-const quick = (node, refuse = null, { cap = 0n } = {}) =>
+const quick = (node, refuse = null, { cap = 0n, answer = null, ...chain } = {}) =>
   custom(
     {
       async request(req) {
         if (req.method === 'eth_fillTransaction') throw Object.assign(new Error('the method eth_fillTransaction does not exist'), { code: -32601 });
         if (req.method === 'eth_call' && String(req.params?.[0]?.data ?? '').startsWith(DEPOSIT_CAP)) return `0x${cap.toString(16).padStart(64, '0')}`;
         if (refuse) refuse(req);
+        const given = answer?.(req); // a test's own answer to a request (undefined: none)
+        if (given !== undefined) return given;
+        const seen = txView(node, req, chain);
+        if (seen !== undefined) return seen;
         return node.transport({ retryCount: 0 }).request(req);
       },
     },
@@ -692,9 +740,10 @@ function dailyKlines(days, { daily = null, from = -Infinity, to = Infinity, serv
 async function inForce(root, iso, { key = null, node = null, transport = null, argv = ['--anchor'], extra = {}, bars = BARS, tamper = null, daily = null } = {}) {
   const now = Date.parse(iso);
   const bin = withDaily(fakeBinance(bars, now + 300_000, tamper ? { tamper } : {}), bars, now + 300_000, { daily });
+  const from = key ? privateKeyToAccount(key).address : null;
   const r = await cli(run, ['--line', 'realized', ...argv], {
     root, now: () => now, fetch: bin.fetch, env: key ? { KEEPER_PK: key } : {},
-    transport: transport ? () => transport : node ? () => quick(node) : () => { throw new Error('no chain call expected'); },
+    transport: transport ? () => transport : node ? () => quick(node, null, { root, from }) : () => { throw new Error('no chain call expected'); },
     pollingInterval: 5, readTiming: { waitMs: 50, stepMs: 1 }, ...extra,
   });
   return { ...r, binanceCalls: bin.calls.length, calls: bin.calls };
@@ -895,7 +944,7 @@ test('in force T-IF6: no mark before the anchor — a line whose anchor fails st
   const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
   const refusing = quick(node, (req) => {
     if (req.method === 'eth_sendRawTransaction' && getAddress(parseTransaction(req.params[0]).to) !== QVAULT) throw new Error('injected: the node refused the anchor');
-  });
+  }, { root: x.root, from: address });
   const r1 = await inForce(x.root, '2099-02-03T00:25:00Z', { key, transport: refusing });
   assert.equal(r1.code, 1);
   assert.match(r1.err, new RegExp(`line #0 ${D1} is written but its anchor failed: .* — no mark; the next run anchors it first`));
@@ -1062,7 +1111,7 @@ test('in force T-IF12 cap invariant: a display vault whose depositCap() is not 0
   const x = inForceRoot({ vaults: qvolVaults() });
   const { key, address } = keyed();
   const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
-  const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, transport: quick(node, null, { cap: 1n }) });
+  const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, transport: quick(node, null, { cap: 1n, root: x.root, from: address }) });
   assert.equal(r.code, 1);
   assert.match(r.err, /qVOL vault marks FAILED after line #0 was written and anchored: REFUSED: vault .* has deposit cap 1, not 0 — a display vault takes no deposits; no mark sent/);
   assert.equal(readJsonl(x.rec).length, 1);
@@ -1183,7 +1232,7 @@ const FORK_RPC = 'http://127.0.0.1:8599';
  * account. `calls` lists every method the keeper asked this node for (before a
  * send becomes a signed transaction); depositCap() answers `cap`.
  */
-function forkNode(node, unlocked, { cap = 0n } = {}) {
+function forkNode(node, unlocked, { cap = 0n, root = null } = {}) {
   const calls = [];
   const account = privateKeyToAccount(unlocked.key);
   const inner = node.transport({ retryCount: 0 });
@@ -1193,6 +1242,8 @@ function forkNode(node, unlocked, { cap = 0n } = {}) {
         calls.push(req.method);
         if (req.method === 'eth_fillTransaction') throw Object.assign(new Error('the method eth_fillTransaction does not exist'), { code: -32601 });
         if (req.method === 'eth_call' && String(req.params?.[0]?.data ?? '').startsWith(DEPOSIT_CAP)) return `0x${cap.toString(16).padStart(64, '0')}`;
+        const seen = txView(node, req, { root, from: unlocked.address, fork: true });
+        if (seen !== undefined) return seen;
         if (req.method === 'eth_sendTransaction') {
           const [tx] = req.params;
           if (getAddress(tx.from) !== account.address) throw Object.assign(new Error('unknown account'), { code: -32000 });
@@ -1262,7 +1313,7 @@ test('in force T-IF15 a fork rehearsal never writes the record or registry of th
   const unlocked = keyed();
   const live = keyed();
   const node = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qVOL' });
-  const fork = forkNode(node, unlocked);
+  const fork = forkNode(node, unlocked, { root: x.root });
   const urls = [];
   const trBefore = listAll(path.join(x.root, 'trackrecord'));
   const regBefore = fs.readFileSync(x.realReg);
@@ -1298,7 +1349,7 @@ test('in force T-IF15 a fork rehearsal never writes the record or registry of th
   // a node that does not hold --from unlocked (as GIWA Sepolia's public endpoint): no anchor, nothing signed here — the line stays written, exit 1
   const y = forkRoot();
   const stranger = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qVOL' });
-  const ry = await inForce(y.root, `${D1}T00:25:00Z`, { argv: ['--anchor', '--rpc', FORK_RPC, '--from', unlocked.address], extra: { env: { KEEPER_PK: live.key }, transport: () => quick(stranger) } });
+  const ry = await inForce(y.root, `${D1}T00:25:00Z`, { argv: ['--anchor', '--rpc', FORK_RPC, '--from', unlocked.address], extra: { env: { KEEPER_PK: live.key }, transport: () => quick(stranger, null, { root: y.root, from: unlocked.address, fork: true }) } });
   assert.equal(ry.code, 1);
   assert.match(ry.err, new RegExp(`line #0 ${D1} is written but its anchor failed: .* — no mark; the next run anchors it first`));
   assert.equal(stranger.txs.length, 0);
@@ -1311,7 +1362,7 @@ test('in force T-IF16 a fork rehearsal prints each step\'s result in order — t
   const x = forkRoot();
   const unlocked = keyed();
   const node = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qVOL' });
-  const fork = forkNode(node, unlocked);
+  const fork = forkNode(node, unlocked, { root: x.root });
   const r1 = await forkRun(x, `${D1}T00:25:00Z`, { unlocked, fork });
   assert.equal(r1.code, 0, r1.err);
   const [L0] = readJsonl(x.frec);
@@ -1346,7 +1397,7 @@ test('in force T-IF16 a fork rehearsal prints each step\'s result in order — t
   // (a) the decision is not anchored (not in the ledger): NOT IN FORCE, exit 0, no line, no request
   const a = forkRoot({ ledger: false });
   const na = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qVOL' });
-  const ra = await forkRun(a, `${D1}T00:25:00Z`, { unlocked, fork: forkNode(na, unlocked) });
+  const ra = await forkRun(a, `${D1}T00:25:00Z`, { unlocked, fork: forkNode(na, unlocked, { root: a.root }) });
   assert.equal(ra.code, 0, ra.err);
   assert.match(ra.out, /qvol: FORK REHEARSAL — /);
   assert.match(ra.out, new RegExp(`qvol: NOT IN FORCE: decision not anchored or does not pin this rulebook \\(${DECISION} is not in trackrecord/decisions\\.jsonl\\)`));
@@ -1356,7 +1407,7 @@ test('in force T-IF16 a fork rehearsal prints each step\'s result in order — t
   // (b) a deposit cap above 0: the line written, recomputed and anchored, no setNav, exit 1
   const b = forkRoot();
   const nb = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qVOL' });
-  const rb = await forkRun(b, `${D1}T00:25:00Z`, { unlocked, fork: forkNode(nb, unlocked, { cap: 1_000_000_000_000n }) });
+  const rb = await forkRun(b, `${D1}T00:25:00Z`, { unlocked, fork: forkNode(nb, unlocked, { cap: 1_000_000_000_000n, root: b.root }) });
   assert.equal(rb.code, 1);
   assert.match(rb.out, /  #0 2099-02-02 recomputed by scripts\/verify-vol\.mjs before it was appended — agrees/);
   assert.match(rb.out, /  anchored #0 2099-02-02 in 0x/);
@@ -1367,7 +1418,7 @@ test('in force T-IF16 a fork rehearsal prints each step\'s result in order — t
   // (c) the fork registry names a vault whose symbol is not qVOL: the line written and anchored, no setNav, exit 1
   const c = forkRoot();
   const nc = fakeNode({ vault: QVAULT, keeper: unlocked.address, symbol: 'qBTC2X' });
-  const rc = await forkRun(c, `${D1}T00:25:00Z`, { unlocked, fork: forkNode(nc, unlocked) });
+  const rc = await forkRun(c, `${D1}T00:25:00Z`, { unlocked, fork: forkNode(nc, unlocked, { root: c.root }) });
   assert.equal(rc.code, 1);
   assert.match(rc.err, /vault .* is "qBTC2X", not qVOL — keeper\/dryrun\/leverage-vaults\.json names the wrong vault; no mark sent/);
   assert.deepEqual([readJsonl(c.frec).length, readJsonl(c.fanc).length, fs.existsSync(c.fmarks)], [1, 1, false]);
@@ -1681,4 +1732,83 @@ test('in force T-IF20 (F4): once per run, before anything is sent or appended, s
   assert.match(ok.out, /trackrecord\/record-qvol\.jsonl: 3 line\(s\) recomputed as a whole by scripts\/verify-vol\.mjs — agrees/);
   assert.equal(readJsonl(x.rec).length, 4);
   assert.equal(node.txs.length, sent + 1);
+});
+
+test('in force T-IF21 (F6): only an inception decision of this series starts it — a rulebook naming another series\' decision that quotes this rulebook\'s sha256 (…-qeth15-paper-inception), or an id not of the form <YYYY-MM-DD>-qvol-inception, is NOT IN FORCE (exit 0, nothing read or written, no request); a ledger entry effective on another day than its id\'s date is refused (exit 2); the series\' own decision starts it (control)', async () => {
+  for (const id of ['2099-02-01-qeth15-paper-inception', 'qvol-inception', '2099-02-01-qvol-inception-2', '2099-02-30-qvol-inception']) {
+    const x = inForceRoot({ id });
+    const doc = fs.readFileSync(path.join(x.root, 'trackrecord', 'decisions', `${id}.md`), 'utf8');
+    assert.ok(doc.includes(H(fs.readFileSync(x.rbFile))), `${id}: the stand-in quotes the rulebook's sha256`);
+    const { key, address } = keyed();
+    const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+    const before = listAll(x.root);
+    const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, node });
+    assert.equal(r.code, 0, `${id}: ${r.err}`);
+    assert.match(r.out, new RegExp(`qvol: NOT IN FORCE: inception\\.decision "${id}" is not an inception decision of this series \\(an id <YYYY-MM-DD>-qvol-inception\\)`), id);
+    assert.deepEqual(listAll(x.root), before, `${id}: a file changed`);
+    assert.equal(r.binanceCalls, 0, id);
+    assert.equal(node.methods.length, 0, id);
+  }
+  // the id's date and the ledger's effective date differ: an anchored decision the files do not satisfy
+  const y = inForceRoot({ effective: '2099-01-31', first: E, id: `${E}-qvol-inception` });
+  const ry = await inForce(y.root, `${E}T00:25:00Z`);
+  assert.equal(ry.code, 2, ry.err);
+  assert.match(ry.err, new RegExp(`decision ${E}-qvol-inception is effective from 2099-01-31 in the ledger, not on the date in its id — the series cannot start`));
+  // control: the series' own decision
+  const x = inForceRoot();
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const ok = await inForce(x.root, `${D1}T00:25:00Z`, { key, node });
+  assert.equal(ok.code, 0, ok.err);
+  assert.equal(readJsonl(x.rec).length, 1);
+});
+
+test('in force T-IF22 (F7): a run that can anchor first reads the inception decision\'s own anchor transaction (the ledger\'s txHash) — not on chain, sent by another key, not a self-send, carrying other calldata, reverted, or unreadable: NOT IN FORCE / a chain failure (exit 1), nothing read from Binance, nothing written or sent; the signer\'s self-send of qxdec:<the decision\'s sha256> lets the series go on (control); a run without the key reads no chain', async () => {
+  const x0 = inForceRoot();
+  const tx = x0.entry.txHash.toLowerCase();
+  const byHash = (f) => (req) => (req.method === 'eth_getTransactionByHash' && String(req.params[0]).toLowerCase() === tx ? f() : undefined);
+  const rcOf = (status) => (req) => (req.method === 'eth_getTransactionReceipt' && String(req.params[0]).toLowerCase() === tx ? { transactionHash: tx, blockNumber: '0x32', blockHash: `0x${'32'.padStart(64, '0')}`, transactionIndex: '0x0', status, gasUsed: '0x5208', cumulativeGasUsed: '0x5208', effectiveGasPrice: '0x1', logs: [], logsBloom: `0x${'0'.repeat(512)}`, type: '0x2', contractAddress: null, from: getAddress(`0x${'1'.repeat(40)}`), to: getAddress(`0x${'1'.repeat(40)}`) } : undefined);
+  const { key, address } = keyed();
+  const other = keyed().address;
+  const cases = [
+    ['not on chain', (x) => ({ root: x.root, from: address, forget: new Set([tx]) }), /its anchor transaction 0x[d]{64} is not on chain/],
+    ['sent by another key', (x) => ({ root: x.root, from: other }), new RegExp(`its anchor transaction 0x[d]{64} was sent by ${other}, not by the signer ${address}`)],
+    ['not a self-send', (x) => ({ root: x.root, from: address, answer: byHash(() => rpcTx({ hash: tx, from: address, to: other, input: toHex(`qxdec:${x.entry.sha256}`), block: 50 })) }), new RegExp(`is not a self-send \\(to ${other}\\)`)],
+    ['other calldata', (x) => ({ root: x.root, from: address, answer: byHash(() => rpcTx({ hash: tx, from: address, to: address, input: toHex(`qxdec:${'0'.repeat(64)}`), block: 50 })) }), new RegExp(`does not carry qxdec:${x0.entry.sha256}`)],
+    ['reverted', (x) => ({ root: x.root, from: address, answer: (req) => rcOf('0x0')(req) }), /did not succeed \(receipt status reverted\)/],
+  ];
+  for (const [label, chain, why] of cases) {
+    const x = inForceRoot();
+    const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+    const before = listAll(x.root);
+    const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, transport: quick(node, null, chain(x)) });
+    assert.equal(r.code, 1, `${label}: ${r.err}`);
+    assert.match(r.err, new RegExp(`qvol: NOT IN FORCE: the inception decision ${DECISION} is in trackrecord/decisions\\.jsonl, but its anchor transaction`), label);
+    assert.match(r.err, why, label);
+    assert.match(r.err, /nothing read from Binance, nothing written, nothing sent/, label);
+    assert.deepEqual(listAll(x.root), before, `${label}: a file changed`);
+    assert.equal(r.binanceCalls, 0, `${label}: Binance was called`);
+    assert.equal(node.txs.length, 0, `${label}: a transaction was sent`);
+  }
+  // the node fails to answer: a chain failure, nothing read or written
+  const z = inForceRoot();
+  const nz = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const rz = await inForce(z.root, `${D1}T00:25:00Z`, { key, transport: quick(nz, (req) => { if (req.method === 'eth_getTransactionByHash') throw new Error('injected: the node is down'); }, { root: z.root, from: address }) });
+  assert.equal(rz.code, 1);
+  assert.match(rz.err, new RegExp(`the chain failed while reading the inception decision's anchor 0x[d]{64}: .*injected: the node is down.* — nothing read from Binance, nothing written, nothing sent; the next run reads it again`));
+  assert.equal(rz.binanceCalls, 0);
+  // control: the signer's own self-send of qxdec:<sha256>
+  const x = inForceRoot();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const ok = await inForce(x.root, `${D1}T00:25:00Z`, { key, node });
+  assert.equal(ok.code, 0, ok.err);
+  assert.match(ok.out, new RegExp(`decision ${DECISION}: anchored in 0x[d]{64} \\(block 50\\) — the signer's self-send of qxdec:<its sha256>`));
+  assert.equal(readJsonl(x.rec).length, 1);
+  assert.equal(node.txs.length, 1, 'the line\'s anchor');
+  // without the key: the chain is not read (lines are written unanchored; the next run with the key reads the decision's anchor first)
+  const k = inForceRoot();
+  const rk = await inForce(k.root, `${D1}T00:25:00Z`, { argv: ['--anchor'] });
+  assert.equal(rk.code, 0, rk.err);
+  assert.equal(readJsonl(k.rec).length, 1);
+  assert.doesNotMatch(rk.out, /decision .* anchored in/);
 });

@@ -24,15 +24,21 @@
  * `--line realized --anchor` with KEEPER_PK in its environment):
  *   1. in force? With inception.date null in keeper/rulebooks/qvol.json:
  *      NOT IN FORCE, exit 0, nothing else read, nothing written. Otherwise
- *      inception.decision must be in trackrecord/decisions.jsonl (the ledger
- *      the decision anchor appends to), its file must still hash to the
+ *      inception.decision must be an id <YYYY-MM-DD>-qvol-inception, be in
+ *      trackrecord/decisions.jsonl (the ledger the decision anchor appends
+ *      to) effective on the date in its id, its file must still hash to the
  *      ledger's value and carry this rulebook's sha256, and it must be
  *      effective on the day before inception.date: the decision is effective
  *      on the day it is anchored and the first line is dated the next UTC
- *      day. A decision not in the ledger yet, or a run before inception.date
- *      00:00 UTC, is NOT IN FORCE (exit 0, nothing written, no request); a
- *      decision in the ledger that the files no longer satisfy is refused
- *      (exit 2), and so is any of these once the record has a line. Then the
+ *      day. An id of another form, a decision not in the ledger yet, or a
+ *      run before inception.date 00:00 UTC, is NOT IN FORCE (exit 0, nothing
+ *      written, no request); a decision in the ledger that the files no
+ *      longer satisfy is refused (exit 2), and so is any of these once the
+ *      record has a line. A run that can anchor (it has the key) then reads
+ *      the decision's own anchor transaction (the ledger's txHash): it must
+ *      be on chain, successful, a zero-value self-send from the signer with
+ *      calldata qxdec:<the decision file's sha256> — else NOT IN FORCE,
+ *      exit 1, nothing read from Binance, nothing written. Then the
  *      record as a whole, once per run before anything is sent or appended:
  *      scripts/verify-vol.mjs recomputes every line (seq, hash chain, dates,
  *      windows, values, the rule against the rulebook JSON), no line is dated
@@ -789,7 +795,9 @@ export function inForcePaths(root, series, fork = false) {
 
 /**
  * Is the realized line in force? Returns {entry} when its inception decision
- * is, else {msg, anchored}. The same checks as keeper/leverage-index.mjs
+ * is, else {msg, anchored}. The id must be <YYYY-MM-DD>-<series>-inception
+ * (a decision of another series is never this one's) and the ledger must date
+ * it on the date in its id. The same checks as keeper/leverage-index.mjs
  * (the decision is in the ledger the decision anchor appends to, its file
  * still hashes to the ledger's value and contains the rulebook's sha256),
  * with one difference: this decision is effective on the day it is anchored
@@ -802,6 +810,9 @@ export function inForcePaths(root, series, fork = false) {
 export function decisionProblem(P, rb, rulebookSha) {
   const id = rb.inception?.decision;
   if (!rb.inception?.date || !id) return { anchored: false, msg: 'NOT IN FORCE: inception.date / inception.decision are null' };
+  // only an inception decision of this series starts it: <YYYY-MM-DD>-qvol-inception
+  const form = new RegExp(`^(\\d{4}-\\d{2}-\\d{2})-${rb.series}-inception$`).exec(String(id));
+  if (!form || !isDate(form[1])) return { anchored: false, msg: `NOT IN FORCE: inception.decision ${JSON.stringify(id)} is not an inception decision of this series (an id <YYYY-MM-DD>-${rb.series}-inception)` };
   const entry = readLines(P.ledger).find((d) => d.id === id);
   if (!entry) return { anchored: false, msg: `NOT IN FORCE: decision not anchored or does not pin this rulebook (${id} is not in trackrecord/decisions.jsonl)` };
   const broken = (why) => ({ anchored: true, msg: `NOT IN FORCE: ${why}` });
@@ -811,6 +822,7 @@ export function decisionProblem(P, rb, rulebookSha) {
   if (sha256(bytes) !== entry.sha256) return broken(`${entry.file} no longer hashes to the ledger's value`);
   if (!bytes.toString('utf8').includes(rulebookSha)) return broken(`${id} does not contain the rulebook sha256 ${rulebookSha}`);
   if (!isDate(entry.effectiveFrom)) return broken(`decision ${id} has no effective date in the ledger (effectiveFrom ${JSON.stringify(entry.effectiveFrom)})`);
+  if (entry.effectiveFrom !== form[1]) return broken(`decision ${id} is effective from ${entry.effectiveFrom} in the ledger, not on the date in its id`);
   const firstLine = addDays(entry.effectiveFrom, 1);
   if (firstLine !== rb.inception.date) return broken(`decision ${id} is effective from ${entry.effectiveFrom}, so the first line is dated ${firstLine}, but the rulebook's inception.date is ${rb.inception.date}`);
   return { entry };
@@ -910,6 +922,60 @@ async function forkSigner(o, deps) {
   const address = viem.getAddress(o.from);
   const pc = viem.createPublicClient({ chain, transport: transport(o.rpc), pollingInterval: deps.pollingInterval ?? 1000 });
   return { pc, wallet: viem.createWalletClient({ account: address, chain, transport: transport(o.rpc) }), address };
+}
+
+const NOT_FOUND = new Set(['TransactionNotFoundError', 'TransactionReceiptNotFoundError']);
+const notFound = (e) => {
+  for (let c = e, i = 0; c && i < 10; c = c.cause, i++) if (NOT_FOUND.has(c.name)) return true;
+  return false;
+};
+/** A chain error in one line: viem's short message, with the node's own words when it gives them. */
+const shortError = (e) => {
+  const head = (e?.shortMessage ?? e?.message ?? String(e)).split('\n')[0];
+  const details = typeof e?.details === 'string' ? e.details.split('\n')[0] : '';
+  return details && !head.includes(details) ? `${head} (${details})` : head;
+};
+
+/**
+ * A transaction and its receipt, read through the signer's node. A node
+ * that does not know the hash is asked again within the read-back time
+ * (keeper/readback.mjs, 30 s); null when it still does not — the transaction
+ * is not on chain (never sent, or dropped by a reorg). Other errors throw.
+ */
+async function readTx(signer, hash, deps) {
+  const { readback } = await chainLib();
+  try {
+    const { value } = await readback.retryRead(async () => ({ tx: await signer.pc.getTransaction({ hash }), rc: await signer.pc.getTransactionReceipt({ hash }) }), {
+      what: `transaction ${hash}`,
+      retryIf: notFound,
+      ...(deps.readTiming ?? {}),
+    });
+    return value;
+  } catch (e) {
+    if (e instanceof readback.ReadTimeout) return null;
+    throw e;
+  }
+}
+
+/**
+ * Is `hash` a successful zero-value self-send from the signer whose calldata
+ * is `calldata` (the form of every anchor: scripts/anchor-decision.mjs sends
+ * `qxdec:` + a decision's sha256, this keeper `qxpi-qvol:` + a line's hash)?
+ * {problem: why not | null, missing: not on chain, block}.
+ */
+async function selfSendCheck(signer, hash, calldata, deps) {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(String(hash))) return { problem: `is not a transaction hash (${JSON.stringify(hash)})`, missing: false };
+  const { viem } = await chainLib();
+  const t = await readTx(signer, hash, deps);
+  if (!t) return { problem: 'is not on chain', missing: true };
+  const me = viem.getAddress(signer.address);
+  let problem = null;
+  if (t.rc.status !== 'success' || t.rc.blockNumber == null) problem = `did not succeed (receipt status ${t.rc.status})`;
+  else if (viem.getAddress(t.tx.from) !== me) problem = `was sent by ${t.tx.from}, not by the signer ${me}`;
+  else if (!t.tx.to || viem.getAddress(t.tx.to) !== me) problem = `is not a self-send (to ${t.tx.to ?? 'no address: a contract creation'})`;
+  else if (t.tx.value != null && t.tx.value !== 0n) problem = `carries a value of ${t.tx.value} wei`;
+  else if (String(t.tx.input).toLowerCase() !== viem.toHex(calldata).toLowerCase()) problem = `does not carry ${calldata}`;
+  return { problem, missing: false, block: t.rc.blockNumber };
 }
 
 async function sendNonceSafe(fn, wait) {
@@ -1053,6 +1119,17 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
   const signer = o.anchor ? (o.fork ? await forkSigner(o, deps) : await makeSigner(deps)) : null;
   if (o.anchor && !signer) deps.log('--anchor requested but KEEPER_PK is not set — lines are written unanchored; the next run with the key anchors them first');
   if (!o.anchor) deps.log('--anchor not passed — no on-chain anchor attempted for this run.');
+  // the decision's own anchor, read once per run by every run that can anchor: a ledger line alone does not start the series
+  if (signer) {
+    let c;
+    try {
+      c = await selfSendCheck(signer, d.entry.txHash, `qxdec:${d.entry.sha256}`, deps);
+    } catch (e) {
+      throw new Exit(1, `${L.series}: the chain failed while reading the inception decision's anchor ${d.entry.txHash}: ${shortError(e)} — nothing read from Binance, nothing written, nothing sent; the next run reads it again`);
+    }
+    if (c.problem) throw new Exit(1, `${L.series}: NOT IN FORCE: the inception decision ${d.entry.id} is in trackrecord/decisions.jsonl, but its anchor transaction ${d.entry.txHash} ${c.problem} — the decision anchor is a self-send from the keeper key with calldata qxdec:<the decision file's sha256>; nothing read from Binance, nothing written, nothing sent`);
+    deps.log(`  decision ${d.entry.id}: anchored in ${d.entry.txHash} (block ${c.block}) — the signer's self-send of qxdec:<its sha256>`);
+  }
   /** A line on disk whose anchor fails stays written: the next run anchors it first. Nothing is marked. */
   const anchor = async (line) => {
     try {
