@@ -1,11 +1,12 @@
-The dry run of keeper/vol-index.mjs at e9dce9787fca410e3df09c8cdeb7ce30b9252626 against the registered file (b8769aa) — 2026-11-04
-$ node docs/research/qvol/evidence/dryrun-identity.mjs b8769aa      (node v22.23.1, exit 0)
+The dry run of keeper/vol-index.mjs at 7e6213f9cb6b94e9cb94b43ec53866d31b14f317 against the registered file (b8769aa) — 2026-11-04
+$ node docs/research/qvol/evidence/dryrun-identity.mjs b8769aa      (v22.23.1, exit 0)
 
 SAME  1-offline-replay: exit 0 / 0 · 10 line(s) · record sha256 3ba5fe87056539697d2ef7a3b4b2208053c159d62d17a94150b90329a2197eba / 3ba5fe87056539697d2ef7a3b4b2208053c159d62d17a94150b90329a2197eba · printed lines equal (11)
 SAME  2-continued: exit 0 / 0 · 12 line(s) · record sha256 f9fff0fc50b42f916b92ce52ea756d61e853baa352208a23c2a423c597af7466 / f9fff0fc50b42f916b92ce52ea756d61e853baa352208a23c2a423c597af7466 · printed lines equal (8)
 SAME  3-rest-fake-binance: exit 0 / 0 · 10 line(s) · record sha256 47f781d89474b88c819f75aa633ded86552c54effa5e2834a2f7a2390bc51979 / 47f781d89474b88c819f75aa633ded86552c54effa5e2834a2f7a2390bc51979 · printed lines equal (11)
 SAME  4-append-existing: exit 0 / 0 · 11 line(s) · record sha256 2c089133f29f112560e9db55433ac58252b3c545fd17007aaf66192c272bc9af / 2c089133f29f112560e9db55433ac58252b3c545fd17007aaf66192c272bc9af · printed lines equal (7)
 keeper/vol-index.mjs registered (b8769aa) sha256 1fe6fc44340fbfdb3e4d2bb2d628d119cd38b25ef067dffb23a428d7ca34b9df
-keeper/vol-index.mjs this tree          sha256 525562cd645ff475d8407cc6487d9d9dbbeb4e87eda8d7cfadbea37e05926cf4
-the other 7 files the dry run reads: byte-identical in the two roots
+keeper/vol-index.mjs this tree          sha256 77a480f78ea9d56599c3dd33ccebd9796d98dbdecadf1394cf672770e976ed57
+the other 7 files the dry run reads: byte-identical in the two roots (the rulebook JSON: the registered bytes in both)
+keeper/rulebooks/qvol.json in this tree differs from the registered one in: status, asOf, inception, pendingOwner — only keys the dry run does not use
 DRY RUN UNCHANGED — byte-identical records and printed lines in all four cases
