@@ -3,7 +3,10 @@
  * data only: the six "cannot compute" reasons (T12), hash chain and key order
  * (T13), the not-in-force path (T14), no key in the new files (T15), Deribit
  * failures (T17), --collect-only (T18), and agreement with the independent
- * scripts/verify-vol.mjs (T19).
+ * scripts/verify-vol.mjs (T19). The last section tests the realized line in
+ * force (a stand-in inception decision in a scratch ledger, a fake GIWA node,
+ * a key generated here): the decision check, the line, the verifier, the
+ * anchor, the display vault's mark and the refusal of open-deposits for qvol.
  *
  *   node --test keeper/test/vol-index.test.mjs
  */
@@ -13,10 +16,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { run, parseArgs, rulebookProblem } from '../vol-index.mjs';
+import http from 'node:http';
+import { spawn, spawnSync } from 'node:child_process';
+import { custom, decodeFunctionData, getAddress, parseTransaction } from 'viem';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { run, parseArgs, rulebookProblem, markUnits } from '../vol-index.mjs';
+import { markSteps } from '../leverage-step.mjs';
+import { VAULT_ABI } from '../leverage-index.mjs';
+import { NAMES, DISPLAY_ONLY } from '../deploy-mark-vault.mjs';
+import { fakeNode } from './leverage-helpers.mjs';
 import { quotesSha256 } from '../vol-implied.mjs';
-import { handTable, syntheticTable, syntheticDays, writeOffline, writeSnapshot, fakeDeribit, tmpDir, readJsonl, cli, KEEPER, REPO, addDays, rulebookPath, impliedOnRoot } from './vol-helpers.mjs';
+import { handTable, syntheticTable, syntheticDays, writeOffline, writeSnapshot, fakeDeribit, fakeBinance, timeless, tmpDir, readJsonl, cli, KEEPER, REPO, addDays, rulebookPath, impliedOnRoot } from './vol-helpers.mjs';
 
 const IMP = 'record-volbtc-implied.jsonl';
 const REA = 'record-qvol.jsonl';
@@ -172,7 +182,9 @@ test('configuration refusals exit 2 before anything is read from the network', a
     ['--line', 'implied', '--collect-only', '--dry-run'],
     ['--line', 'both'],
     ['--line', 'realized', '--dry-run', '--replay', '2019-03-31..2019-03-04'],
-    ['--line', 'realized', '--anchor'],
+    ['--line', 'realized', '--dry-run', '--anchor'], // a dry run never anchors
+    ['--line', 'implied', '--anchor'], // the implied line has no in-force path
+    ['--line', 'realized', '--anchor', '--anchor'],
   ];
   for (const argv of bad) {
     let calls = 0;
@@ -246,10 +258,11 @@ test('rulebook shape: what the code does not implement is refused (exit 2)', asy
 });
 
 // ---------------------------------------------------------------------- T15
-test('T15 no key: the new files read no signing key and import no wallet client', () => {
+test('T15 no key: the calculation files, the verifier and the test helpers read no signing key and import no wallet client; keeper/vol-index.mjs reads KEEPER_PK only in the signer of its in-force path and loads viem only there', () => {
+  // keeper/vol-index.mjs (the CLI, with the in-force path) and this file (which tests that path with a key generated here) are not in the list
   const files = [
-    ...fs.readdirSync(KEEPER).filter((f) => /^vol-.*\.mjs$/.test(f)).map((f) => path.join(KEEPER, f)),
-    ...fs.readdirSync(path.join(KEEPER, 'test')).filter((f) => /^vol-.*\.mjs$/.test(f)).map((f) => path.join(KEEPER, 'test', f)),
+    ...fs.readdirSync(KEEPER).filter((f) => /^vol-.*\.mjs$/.test(f) && f !== 'vol-index.mjs').map((f) => path.join(KEEPER, f)),
+    ...fs.readdirSync(path.join(KEEPER, 'test')).filter((f) => /^vol-.*\.mjs$/.test(f) && f !== 'vol-index.test.mjs').map((f) => path.join(KEEPER, 'test', f)),
     VERIFY,
   ];
   assert.ok(files.length >= 8, files.join(','));
@@ -258,6 +271,17 @@ test('T15 no key: the new files read no signing key and import no wallet client'
     const src = fs.readFileSync(f, 'utf8');
     for (const n of needles) assert.ok(!src.includes(n), `${path.basename(f)} contains ${n}`);
   }
+  // keeper/vol-index.mjs: the key only through deps.env, in makeSigner, called once (in the in-force path);
+  // no static import of viem — a dry run loads Node built-ins and local modules only
+  const cliSrc = fs.readFileSync(path.join(KEEPER, 'vol-index.mjs'), 'utf8');
+  assert.ok(!cliSrc.includes('process.env.KEE' + 'PER'));
+  assert.equal(cliSrc.split('deps.env.KEEPER' + '_PK').length - 1, 1);
+  const signerFn = cliSrc.slice(cliSrc.indexOf('async function makeSigner('), cliSrc.indexOf('async function sendNonceSafe('));
+  assert.ok(signerFn.includes('deps.env.KEEPER' + '_PK'));
+  assert.equal(cliSrc.split('makeSigner(deps)').length - 1, 2, 'makeSigner: its definition and one call');
+  const inForce = cliSrc.slice(cliSrc.indexOf('async function runRealizedInForce('));
+  assert.ok(inForce.includes('await makeSigner(deps)'));
+  assert.ok(!/^import [^;]*from 'vi[e]m/m.test(cliSrc), 'no static import of viem');
 });
 
 // ---------------------------------------------------------------------- T17
@@ -550,4 +574,439 @@ test('fetch time-out: each attempt gets an abort signal; a time-out is retried, 
   } finally {
     clearInterval(hold);
   }
+});
+
+// =================================================== the realized line in force
+//
+// A scratch repository root holds the realized rulebook with a stand-in
+// inception (THROWAWAY: the decision below is not a decision and was never
+// anchored; the values of the rule are the repository's), an empty gap
+// acceptance file, a ledger line and a decision file that pins the rulebook's
+// sha256. Bars are SYNTHETIC (syntheticDays), served by the fake Binance of
+// vol-helpers; the chain is the fake GIWA node of leverage-helpers (raw signed
+// transactions only, one QuadrixIndexVault with the ±25% bound); the key is
+// generated here and holds nothing anywhere.
+
+const E = '2099-02-01'; // the stand-in decision's effective (anchor) day
+const D1 = '2099-02-02'; // its first line: the next UTC day = inception.date
+const DECISION = `${E}-qvol-inception`;
+const QVAULT = getAddress('0x00000000000000000000000000000000000beef5');
+const BARS = syntheticDays('2099-01-01', 45).days; // closes for 2098-12-31 … 2099-02-14
+const ANC = 'anchors-qvol.jsonl';
+const readJsonlText = (buf) => buf.toString('utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+/** A child process, without blocking this process (a local server answers meanwhile). */
+const runChild = (args) =>
+  new Promise((resolve) => {
+    const c = spawn(process.execPath, args, { env: { PATH: process.env.PATH } });
+    let out = '';
+    let err = '';
+    c.stdout.on('data', (d) => (out += d));
+    c.stderr.on('data', (d) => (err += d));
+    c.on('close', (code) => resolve({ code, out, err }));
+  });
+
+function inForceRoot({ effective = E, first = D1, pin = true, vaults = null, ledger = true } = {}) {
+  const root = tmpDir('vol-inforce');
+  const rb = JSON.parse(fs.readFileSync(rulebookPath('realized'), 'utf8'));
+  rb.status = 'TEST ONLY — a stand-in inception for the in-force tests; not a decision';
+  rb.inception = { date: first, decision: `${effective}-qvol-inception` };
+  rb.pendingOwner = [];
+  fs.mkdirSync(path.join(root, 'keeper', 'rulebooks'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'trackrecord', 'decisions'), { recursive: true });
+  const rbBytes = Buffer.from(JSON.stringify(rb, null, 2) + '\n');
+  fs.writeFileSync(path.join(root, 'keeper', 'rulebooks', 'qvol.json'), rbBytes);
+  fs.writeFileSync(path.join(root, 'keeper', 'vol-index-gaps.json'), '[]\n');
+  if (vaults) fs.writeFileSync(path.join(root, 'keeper', 'leverage-vaults.json'), JSON.stringify(vaults, null, 2) + '\n');
+  const id = `${effective}-qvol-inception`;
+  const doc = `# TEST ONLY — stand-in decision\n\nPins keeper/rulebooks/qvol.json sha256 ${pin ? H(rbBytes) : '0'.repeat(64)}.\n`;
+  fs.writeFileSync(path.join(root, 'trackrecord', 'decisions', `${id}.md`), doc);
+  const entry = { id, file: `decisions/${id}.md`, effectiveFrom: effective, sha256: H(Buffer.from(doc)), txHash: `0x${'d'.repeat(64)}`, anchoredAt: `${effective}T09:00:00.000Z` };
+  fs.writeFileSync(path.join(root, 'trackrecord', 'decisions.jsonl'), ledger ? JSON.stringify(entry) + '\n' : '');
+  return { root, rbFile: path.join(root, 'keeper', 'rulebooks', 'qvol.json'), entry, rec: path.join(root, 'trackrecord', REA), anc: path.join(root, 'trackrecord', ANC), marks: path.join(root, 'keeper', 'marks-qvol.jsonl') };
+}
+const qvolVaults = (gate = { mode: 'step' }, address = QVAULT) => ({ qvol: { chainId: 91342, address, gate, deployTx: null, block: null } });
+
+/**
+ * The fake node as viem's transport, without retries. viem first asks a node to
+ * fill a transaction (eth_fillTransaction); the fake node, like a node without
+ * that method, refuses it, and viem then fills it itself — answered here at once
+ * as "method not found" instead of after viem's retry delays. `refuse(req)`
+ * may throw for a request (an injected failure).
+ */
+const quick = (node, refuse = null) =>
+  custom(
+    {
+      async request(req) {
+        if (req.method === 'eth_fillTransaction') throw Object.assign(new Error('the method eth_fillTransaction does not exist'), { code: -32601 });
+        if (refuse) refuse(req);
+        return node.transport({ retryCount: 0 }).request(req);
+      },
+    },
+    { retryCount: 0 }
+  );
+
+/** One in-force run at `iso` (the runner's clock; the fake Binance's server time is 5 minutes later). */
+async function inForce(root, iso, { key = null, node = null, transport = null, argv = ['--anchor'], extra = {} } = {}) {
+  const now = Date.parse(iso);
+  const bin = fakeBinance(BARS, now + 300_000);
+  const r = await cli(run, ['--line', 'realized', ...argv], {
+    root, now: () => now, fetch: bin.fetch, env: key ? { KEEPER_PK: key } : {},
+    transport: transport ? () => transport : node ? () => quick(node) : () => { throw new Error('no chain call expected'); },
+    pollingInterval: 5, readTiming: { waitMs: 50, stepMs: 1 }, ...extra,
+  });
+  return { ...r, binanceCalls: bin.calls.length };
+}
+const listAll = (dir) => {
+  const out = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else out.push([path.relative(dir, p), fs.readFileSync(p, 'utf8')]);
+    }
+  };
+  walk(dir);
+  return out.sort();
+};
+const keyed = () => {
+  const key = generatePrivateKey();
+  return { key, address: privateKeyToAccount(key).address };
+};
+
+test('in force T-IF1: NOT IN FORCE while inception is null, while the decision is not in the ledger, and before inception.date 00:00 UTC — exit 0, nothing written, no request to Binance or the chain, the key not read', async () => {
+  // the repository's rulebook (inception null), as the daily step runs it before the anchor
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  let calls = 0;
+  const r0 = await cli(run, ['--line', 'realized', '--anchor'], { env: { KEEPER_PK: key }, fetch: async () => (calls++, new Response('[]')), transport: () => node.transport });
+  assert.equal(r0.code, 0, r0.err);
+  assert.match(r0.out, /qvol: NOT IN FORCE \(keeper\/rulebooks\/qvol\.json inception is null\) — nothing read, nothing written/);
+  assert.equal(calls, 0);
+  assert.equal(node.methods.length, 0);
+  // the rulebook names its decision, which is not in the ledger yet (between the push and the anchor)
+  const a = inForceRoot({ ledger: false });
+  const before = listAll(a.root);
+  const r1 = await inForce(a.root, `${D1}T00:25:00Z`, { key, node });
+  assert.equal(r1.code, 0, r1.err);
+  assert.match(r1.out, new RegExp(`NOT IN FORCE: decision not anchored or does not pin this rulebook \\(${DECISION} is not in trackrecord/decisions\\.jsonl\\)`));
+  assert.deepEqual(listAll(a.root), before);
+  assert.equal(r1.binanceCalls, 0);
+  assert.equal(node.methods.length, 0);
+  // anchored on E: the 00:25 run of E itself is before the first line's day
+  const b = inForceRoot();
+  const before2 = listAll(b.root);
+  const r2 = await inForce(b.root, `${E}T23:59:00Z`, { key, node });
+  assert.equal(r2.code, 0, r2.err);
+  assert.match(r2.out, new RegExp(`NOT IN FORCE: the first line is dated ${D1} \\(inception\\.date\\) and is not written before ${D1}T00:00Z`));
+  assert.deepEqual(listAll(b.root), before2);
+  assert.equal(r2.binanceCalls, 0);
+  assert.equal(node.methods.length, 0);
+});
+
+test('in force T-IF2: an anchored decision that the files do not satisfy is refused (exit 2) — no rulebook sha256 in it, a changed decision file, an effective date other than the day before inception.date; once the record has a line, a missing decision is refused too', async () => {
+  const cases = [
+    ['the decision does not carry the rulebook sha256', () => inForceRoot({ pin: false }), /does not contain the rulebook sha256 [0-9a-f]{64}/],
+    ['the decision file changed after its anchor', () => {
+      const x = inForceRoot();
+      fs.appendFileSync(path.join(x.root, 'trackrecord', 'decisions', `${DECISION}.md`), 'edited\n');
+      return x;
+    }, /no longer hashes to the ledger's value/],
+    ['effective on the first line\'s day (inception.date = effectiveFrom)', () => inForceRoot({ effective: D1, first: D1 }), new RegExp(`is effective from ${D1}, so the first line is dated 2099-02-03, but the rulebook's inception\\.date is ${D1}`)],
+    ['effective two days before the first line', () => inForceRoot({ effective: '2099-01-31', first: D1 }), /so the first line is dated 2099-02-01, but the rulebook's inception\.date is 2099-02-02/],
+  ];
+  for (const [label, make, why] of cases) {
+    const x = make();
+    const before = listAll(x.root);
+    const r = await inForce(x.root, '2099-02-03T00:25:00Z');
+    assert.equal(r.code, 2, `${label}: exit ${r.code} ${r.err}`);
+    assert.match(r.err, /the series cannot start/, label);
+    assert.match(r.err, why, label);
+    assert.deepEqual(listAll(x.root), before, `${label}: a file changed`);
+    assert.equal(r.binanceCalls, 0, `${label}: Binance was called`);
+  }
+  // started: the record has a line, then the ledger loses the decision — a refusal, not a quiet exit 0
+  const s = inForceRoot();
+  assert.equal((await inForce(s.root, `${D1}T00:25:00Z`, { argv: [] })).code, 0);
+  fs.writeFileSync(path.join(s.root, 'trackrecord', 'decisions.jsonl'), '');
+  const r = await inForce(s.root, '2099-02-03T00:25:00Z', { argv: [] });
+  assert.equal(r.code, 2);
+  assert.match(r.err, /already holds 1 line\(s\), so the series has started — NOT IN FORCE: decision not anchored/);
+  assert.equal(readJsonl(s.rec).length, 1);
+  // --out is for a dry run
+  const o = await cli(run, ['--line', 'realized', '--out', tmpDir('vol-if-out')], { root: inForceRoot().root, now: () => Date.parse(`${D1}T00:25:00Z`) });
+  assert.equal(o.code, 2);
+  assert.match(o.err, /--out is for --dry-run and --collect-only/);
+});
+
+test('in force T-IF3: the first line is dated inception.date (the day after the decision\'s effective date) and written at 00:25 UTC that day without "late"; it carries inception {decision, decisionSha256} and no "shadow", and otherwise the dry run\'s fields, values and order; scripts/verify-vol.mjs agrees; it is anchored with calldata qxpi-qvol:<line hash>, signed here and sent raw', async () => {
+  const x = inForceRoot();
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, node });
+  assert.equal(r.code, 0, r.err);
+  const lines = readJsonl(x.rec);
+  assert.equal(lines.length, 1);
+  const L0 = lines[0];
+  assert.equal(L0.date, D1);
+  assert.equal(L0.seq, 0);
+  assert.equal(L0.observedAt, `${D1}T00:25:00.000Z`);
+  assert.ok(!('late' in L0) && !('shadow' in L0));
+  assert.deepEqual(L0.inception, { decision: DECISION, decisionSha256: x.entry.sha256 });
+  assert.deepEqual(Object.keys(L0), ['seq', 'date', 'observedAt', 'index', 'value', 'variance', 'window', 'returns', 'source', 'sources', 'rule', 'keeper', 'inception', 'prevHash', 'hash']);
+  assert.equal(L0.rule.rulebookSha256, H(fs.readFileSync(x.rbFile)));
+  assert.equal(L0.keeper.lagSeconds, 25 * 60);
+  // the same day as a dry run from the same bars: the same values and fields
+  const dry = tmpDir('vol-if-dry');
+  const d = await cli(run, ['--line', 'realized', '--dry-run', '--out', dry, '--replay', `${D1}..${D1}`], { root: x.root, now: () => Date.parse(`${D1}T00:25:00Z`), fetch: fakeBinance(BARS, Date.parse(`${D1}T00:30:00Z`)).fetch });
+  assert.equal(d.code, 0, d.err);
+  const [dl] = readJsonl(path.join(dry, REA));
+  const { inception: _i, ...a } = timeless(L0);
+  const { shadow: _s, ...b } = timeless(dl);
+  assert.deepEqual(a, b);
+  assert.equal(L0.value, dl.value);
+  // no line for the decision's own day or before it
+  assert.ok(!lines.some((l) => l.date <= E));
+  // scripts/verify-vol.mjs on the record, the rule against the rulebook JSON
+  const v = verify(path.join(x.root, 'trackrecord'), '--line', 'realized', '--rulebook', x.rbFile);
+  assert.equal(v.status, 0, v.stdout + v.stderr);
+  // the anchor
+  const anchors = readJsonl(x.anc);
+  assert.deepEqual(anchors.map((y) => [y.date, y.seq, y.headHash]), [[D1, 0, L0.hash]]);
+  assert.deepEqual(node.anchorsOf(), [`qxpi-qvol:${L0.hash}`]);
+  assert.ok(node.txs.every((t) => t.from === address && t.to === address));
+  assert.ok(!node.methods.includes('eth_sendTransaction') && !node.methods.includes('wallet_sendTransaction'), node.methods.join(','));
+  assert.equal(anchors[0].txHash, node.txs[0].hash);
+  // no vault in the registry: no mark
+  assert.match(r.out, /qvol: no vault — marks skipped/);
+  assert.equal(fs.existsSync(x.marks), false);
+  // the same minute again: nothing new, nothing sent
+  const again = await inForce(x.root, `${D1}T00:26:00Z`, { key, node });
+  assert.equal(again.code, 0, again.err);
+  assert.equal(readJsonl(x.rec).length, 1);
+  assert.equal(node.txs.length, 1);
+});
+
+test('in force T-IF4 late: a day the earlier runs missed is written by a later run from the same closed bars and carries "late": true, the day of the run does not; days before the first line are never written; line D is not written before D 00:00 UTC', async () => {
+  const x = inForceRoot();
+  assert.equal((await inForce(x.root, `${D1}T00:25:00Z`, { argv: [] })).code, 0);
+  // two scheduled runs missed; the run of 2099-02-05 writes 02-03 and 02-04 late, then 02-05 on time
+  const r = await inForce(x.root, '2099-02-05T00:25:00Z', { argv: [] });
+  assert.equal(r.code, 0, r.err);
+  const lines = readJsonl(x.rec);
+  assert.deepEqual(lines.map((l) => [l.date, l.late === true]), [[D1, false], ['2099-02-03', true], ['2099-02-04', true], ['2099-02-05', false]]);
+  assert.match(r.out, /qvol #1 2099-02-03 .* \(late\)/);
+  // the late values are those of the same days computed from the same bars (a dry-run replay)
+  const dry = tmpDir('vol-if-late');
+  const d = await cli(run, ['--line', 'realized', '--dry-run', '--out', dry, '--replay', `${D1}..2099-02-05`], { root: x.root, now: () => Date.parse('2099-03-01T00:00:00Z'), fetch: fakeBinance(BARS, Date.parse('2099-02-05T00:30:00Z')).fetch });
+  assert.equal(d.code, 0, d.err);
+  assert.deepEqual(lines.map((l) => [l.value, l.variance]), readJsonl(path.join(dry, REA)).map((l) => [l.value, l.variance]));
+  assert.equal(verify(path.join(x.root, 'trackrecord'), '--line', 'realized', '--rulebook', x.rbFile).status, 0);
+  // the runner's clock before the next day: nothing written for it
+  const early = await inForce(x.root, '2099-02-05T23:59:00Z', { argv: [] });
+  assert.equal(early.code, 0, early.err);
+  assert.match(early.out, /line 2099-02-06 not written: the runner's clock .* is before 2099-02-06T00:00Z/);
+  assert.equal(readJsonl(x.rec).length, 4);
+  // a source that still calls the day open a full day later is stuck: exit 1, nothing written
+  const stuck = await cli(run, ['--line', 'realized'], { root: x.root, now: () => Date.parse('2099-02-07T01:00:00Z'), fetch: fakeBinance(BARS, Date.parse('2099-02-05T23:00:00Z')).fetch });
+  assert.equal(stuck.code, 1);
+  assert.match(stuck.err, /the source is stuck; nothing written for 2099-02-06/);
+  assert.equal(readJsonl(x.rec).length, 4);
+});
+
+test('in force T-IF5: when scripts/verify-vol.mjs rejects the new line, nothing is appended, anchored or marked (exit 1)', async () => {
+  const failing = path.join(tmpDir('vol-if-v'), 'verify-fails.mjs');
+  fs.writeFileSync(failing, "console.log('FAIL injected'); process.exit(1);\n");
+  const x = inForceRoot({ vaults: qvolVaults() });
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, node, extra: { verifyScript: failing } });
+  assert.equal(r.code, 1);
+  assert.match(r.err, new RegExp(`independent recompute \\(scripts/verify-vol\\.mjs\\) rejected line ${D1} — nothing appended, nothing anchored, no mark`));
+  assert.equal(readJsonl(x.rec).length, 0);
+  assert.equal(node.txs.length, 0);
+  assert.equal(fs.existsSync(x.marks), false);
+  // with a line on the record: the next line is rejected, the record keeps its line and nothing more is sent
+  assert.equal((await inForce(x.root, `${D1}T00:25:00Z`, { key, node })).code, 0);
+  const sent = node.txs.length;
+  const r2 = await inForce(x.root, '2099-02-03T00:25:00Z', { key, node, extra: { verifyScript: failing } });
+  assert.equal(r2.code, 1);
+  assert.equal(readJsonl(x.rec).length, 1);
+  assert.equal(node.txs.length, sent);
+});
+
+test('in force T-IF6: no mark before the anchor — a line whose anchor fails stays written (exit 1, nothing marked) and the next run anchors it first, then marks; without the key lines are written unanchored and nothing is marked', async () => {
+  const { key, address } = keyed();
+  // without the key: written, not anchored, no mark
+  const x = inForceRoot({ vaults: qvolVaults() });
+  const r0 = await inForce(x.root, `${D1}T00:25:00Z`, { argv: ['--anchor'] });
+  assert.equal(r0.code, 0, r0.err);
+  assert.match(r0.out, /--anchor requested but KEEPER_PK is not set — lines are written unanchored/);
+  assert.match(r0.out, /qvol: no signer — marks skipped/);
+  assert.equal(readJsonl(x.rec).length, 1);
+  assert.equal(fs.existsSync(x.anc), false);
+  // the node refuses the anchor: the line stays written, nothing is marked
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const refusing = quick(node, (req) => {
+    if (req.method === 'eth_sendRawTransaction' && getAddress(parseTransaction(req.params[0]).to) !== QVAULT) throw new Error('injected: the node refused the anchor');
+  });
+  const r1 = await inForce(x.root, '2099-02-03T00:25:00Z', { key, transport: refusing });
+  assert.equal(r1.code, 1);
+  assert.match(r1.err, new RegExp(`line #0 ${D1} is written but its anchor failed: .* — no mark; the next run anchors it first`));
+  assert.equal(readJsonl(x.rec).length, 1, 'the run stops at the first anchor: no new line after it');
+  assert.equal(node.txs.filter((t) => t.to === QVAULT).length, 0, 'no setNav');
+  assert.equal(fs.existsSync(x.marks), false);
+  // the next run with a working node: the unanchored line first, then the new line and its anchor, then the mark
+  const r2 = await inForce(x.root, '2099-02-03T00:25:00Z', { key, node });
+  assert.equal(r2.code, 0, r2.err);
+  const out = r2.out.split('\n');
+  const first = out.findIndex((l) => /#0 2099-02-02 has no anchor — anchoring it first/.test(l));
+  const newLine = out.findIndex((l) => /^qvol #1 2099-02-03 /.test(l));
+  const mark = out.findIndex((l) => /vault .*: navPerShare 1000000 → target/.test(l));
+  assert.ok(first >= 0 && first < newLine && newLine < mark, r2.out);
+  const lines = readJsonl(x.rec);
+  assert.deepEqual(readJsonl(x.anc).map((a) => a.seq), [0, 1]);
+  assert.deepEqual(node.anchorsOf(), lines.map((l) => `qxpi-qvol:${l.hash}`));
+  const kinds = node.txs.map((t) => (t.to === t.from ? 'anchor' : 'mark'));
+  assert.ok(kinds.lastIndexOf('anchor') < kinds.indexOf('mark'), kinds.join(','));
+});
+
+test('in force T-IF7 mark: after the anchor the display vault is marked to n6 = floor(value x 1e6) — navPerShare and indexLevel both n6 — in setNav steps within the contract\'s 25% bound (markSteps); a vault whose symbol() is not the rulebook\'s ticker gets no mark (exit 1); no address or no gate: no mark', async () => {
+  for (const [label, vaults, expect] of [['no address', qvolVaults({ mode: 'step' }, null), /qvol: no vault — marks skipped/], ['no gate', qvolVaults(null), /qvol: mark gate not set — marks skipped/]]) {
+    const x = inForceRoot({ vaults });
+    const { key, address } = keyed();
+    const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+    const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, node });
+    assert.equal(r.code, 0, `${label}: ${r.err}`);
+    assert.match(r.out, expect, label);
+    assert.equal(node.txs.filter((t) => t.to === QVAULT).length, 0, label);
+  }
+  const x = inForceRoot({ vaults: qvolVaults() });
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, node });
+  assert.equal(r.code, 0, r.err);
+  const [L0] = readJsonl(x.rec);
+  const n6 = BigInt(Math.floor(L0.value * 1e6));
+  assert.equal(n6, markUnits(L0.value));
+  assert.equal(node.state.nav, n6);
+  const marks = readJsonl(x.marks);
+  assert.deepEqual(marks.map((m) => BigInt(m.nav)), markSteps(1_000_000n, n6));
+  assert.ok(marks.length >= 2, `from 1.000000 to ${n6} needs steps (${marks.length})`);
+  let cur = 1_000_000n;
+  for (const m of marks) {
+    const next = BigInt(m.nav);
+    const dlt = (cur * 2500n) / 10000n;
+    assert.ok(next >= cur - dlt && next <= cur + dlt, `${cur} → ${next}`);
+    assert.equal(m.indexLevel, Number(n6));
+    assert.equal(m.of, marks.length);
+    assert.deepEqual([m.date, m.seq], [D1, 0]);
+    cur = next;
+  }
+  // every setNav carries (step, n6), after the anchor
+  const setNavs = node.txs.filter((t) => t.to === QVAULT).map((t) => decodeFunctionData({ abi: VAULT_ABI, data: t.data }));
+  assert.ok(setNavs.every((c) => c.functionName === 'setNav' && c.args[1] === n6));
+  assert.deepEqual(setNavs.map((c) => c.args[0]), markSteps(1_000_000n, n6));
+  const kinds = node.txs.map((t) => (t.to === t.from ? 'anchor' : 'mark'));
+  assert.ok(kinds.lastIndexOf('anchor') < kinds.indexOf('mark'));
+  // a run the next minute sends nothing more
+  const n0 = node.txs.length;
+  assert.equal((await inForce(x.root, `${D1}T00:26:00Z`, { key, node })).code, 0);
+  assert.equal(node.txs.length, n0);
+  // another vault's symbol: the line is written and anchored, no setNav is sent, exit 1
+  const y = inForceRoot({ vaults: qvolVaults() });
+  const other = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qETH1.5X' });
+  const ry = await inForce(y.root, `${D1}T00:25:00Z`, { key, node: other });
+  assert.equal(ry.code, 1);
+  assert.match(ry.err, /qVOL vault marks FAILED after line #0 was written and anchored: vault .* is "qETH1\.5X", not qVOL — keeper\/leverage-vaults\.json names the wrong vault; no mark sent/);
+  assert.equal(readJsonl(y.rec).length, 1);
+  assert.equal(readJsonl(y.anc).length, 1);
+  assert.equal(other.txs.filter((t) => t.to === QVAULT).length, 0);
+  // a vault whose keeper is not the signer: no setNav either
+  const z = inForceRoot({ vaults: qvolVaults() });
+  const notMine = fakeNode({ vault: QVAULT, keeper: keyed().address, symbol: 'qVOL' });
+  const rz = await inForce(z.root, `${D1}T00:25:00Z`, { key, node: notMine });
+  assert.equal(rz.code, 1);
+  assert.match(rz.err, /keeper is .*, not the signer .* — no mark sent/);
+  assert.equal(notMine.txs.filter((t) => t.to === QVAULT).length, 0);
+});
+
+test('in force T-IF8 mark steps: n6 = floor(x x 1e6) cuts and never rounds; markSteps (keeper/leverage-step.mjs) keeps every step inside the contract bound, up from 1.000000 and back down', () => {
+  assert.equal(markUnits(28.423831824760406), 28_423_831n);
+  assert.equal(markUnits(12.3456789999), 12_345_678n);
+  assert.equal(markUnits(43.80731634522769), 43_807_316n);
+  assert.equal(markUnits(0.0000009), 0n);
+  assert.equal(markUnits(0), 0n);
+  for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY, '28.4', null]) assert.throws(() => markUnits(bad), /not a finite number >= 0/);
+  for (const [from, to] of [[1_000_000n, 28_423_831n], [1_000_000n, 150_000_000n], [150_000_000n, 9_000_000n], [28_423_831n, 28_423_831n], [5_000_000n, 4_000_000n]]) {
+    const steps = markSteps(from, to);
+    let cur = from;
+    for (const s of steps) {
+      const dlt = (cur * 2500n) / 10000n;
+      assert.ok(s >= cur - dlt && s <= cur + dlt, `${cur} → ${s}`);
+      cur = s;
+    }
+    assert.equal(steps.length ? steps.at(-1) : from, to);
+  }
+  assert.equal(markSteps(1_000_000n, 28_423_831n).length, 16); // 15 steps of +25% reach 28,421,691; the 16th reaches the target
+});
+
+test('in force T-IF9 the mark method does not change the record: gate {"mode":"step"} and {"mode":"halt","pct":15} write byte-identical lines; the halt only stops the mark (exit 1, no setNav)', async () => {
+  const res = [];
+  for (const gate of [{ mode: 'step' }, { mode: 'halt', pct: 15 }]) {
+    const x = inForceRoot({ vaults: qvolVaults(gate) });
+    const { key, address } = keyed();
+    const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+    const r1 = await inForce(x.root, `${D1}T00:25:00Z`, { key, node });
+    const r2 = await inForce(x.root, '2099-02-04T00:25:00Z', { key, node });
+    res.push({ gate, codes: [r1.code, r2.code], file: fs.readFileSync(x.rec), setNavs: node.txs.filter((t) => t.to === QVAULT).length, err: r1.err });
+  }
+  assert.deepEqual(res[0].codes, [0, 0]);
+  assert.ok(res[0].setNavs > 0);
+  assert.deepEqual(res[1].codes, [1, 1]);
+  assert.match(res[1].err, /MARK HALTED: the value moves the vault .* beyond the ±15% gate — nothing sent/);
+  assert.equal(res[1].setNavs, 0);
+  assert.ok(res[0].file.equals(res[1].file), 'the record lines differ between the two mark methods');
+  assert.equal(readJsonlText(res[0].file).length, 3);
+});
+
+test('in force T-IF10 DISPLAY_ONLY: keeper/deploy-mark-vault.mjs refuses open-deposits for qvol before any RPC call (exit 2); qvol is the display vault "Quadrix BTC Realized Volatility Vault" whose symbol is the rulebook ticker; its registry entry has no address yet and the mark method step', async () => {
+  const rb = JSON.parse(fs.readFileSync(rulebookPath('realized'), 'utf8'));
+  assert.deepEqual(NAMES.qvol, ['Quadrix BTC Realized Volatility Vault', rb.ticker]);
+  assert.equal(rb.ticker, 'qVOL');
+  assert.ok(DISPLAY_ONLY.has('qvol'));
+  const reg = JSON.parse(fs.readFileSync(path.join(KEEPER, 'leverage-vaults.json'), 'utf8'));
+  assert.deepEqual(reg.qvol, { chainId: 91342, address: null, gate: { mode: 'step' }, deployTx: null, block: null });
+  // an RPC that counts every request
+  let requests = 0;
+  const srv = http.createServer((req, res) => {
+    requests++;
+    res.end('{}');
+  });
+  await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${srv.address().port}`;
+  try {
+    for (const extra of [[], ['--live', '--confirm', 'EXECUTE', '--from', '0x0000000000000000000000000000000000000001']]) {
+      const r = await runChild([path.join(KEEPER, 'deploy-mark-vault.mjs'), '--index', 'qvol', '--action', 'open-deposits', '--cap', '1', '--rpc', url, ...extra]);
+      assert.equal(r.code, 2, r.out + r.err);
+      assert.match(r.err, /REFUSED: qvol is a display vault: it takes no deposits by definition \(deposit cap 0\)/);
+    }
+  } finally {
+    srv.close();
+  }
+  assert.equal(requests, 0, 'the refusal comes before any RPC call');
+});
+
+test('in force T-IF11: a dry run reads no key and sends nothing even with KEEPER_PK in its environment — its lines carry "shadow" and no inception, and no anchors file is written', async () => {
+  const x = inForceRoot({ vaults: qvolVaults() });
+  const out = tmpDir('vol-if-nokey');
+  const r = await cli(run, ['--line', 'realized', '--dry-run', '--out', out, '--replay', `${D1}..2099-02-03`], {
+    root: x.root, now: () => Date.parse('2099-02-03T00:25:00Z'), fetch: fakeBinance(BARS, Date.parse('2099-02-03T00:30:00Z')).fetch,
+    env: { KEEPER_PK: generatePrivateKey() }, transport: () => { throw new Error('a dry run must not reach the chain'); },
+  });
+  assert.equal(r.code, 0, r.err);
+  const lines = readJsonl(path.join(out, REA));
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every((l) => l.shadow === true && !('inception' in l)));
+  assert.deepEqual(fs.readdirSync(out).sort(), [REA]);
+  assert.equal(fs.existsSync(x.rec), false);
 });

@@ -15,6 +15,11 @@ The realized line has no switch: it is in force only through its
 `inception.date`.
 Its code and tests stay. Whether the realized line starts first is open.
 
+The keeper has the realized line's in-force path ("The realized line in
+force", below). It does nothing until the line's inception decision is
+anchored: with `inception` null in `keeper/rulebooks/qvol.json` every run
+prints NOT IN FORCE and exits 0.
+
 ## What it is
 
 Two numbers, one line each per UTC day, both in annualised volatility points
@@ -31,6 +36,8 @@ them to agree.
 ## What it is not
 
 - It holds nothing. It is not a vault: no assets, no deposits, no redemptions.
+  Once in force, a testnet display vault shows the realized value as its
+  share price; that vault takes no deposits (deposit cap 0) and holds nothing.
 - It cannot be bought. Holding something that follows this number takes
   derivatives, and that is not this index.
 - It has no fee and no return. A higher level is nobody's gain. There is no
@@ -153,6 +160,55 @@ minutes, not days; with no expiry at or under 30 days there is no value
 (Cboe would use the nearest); every listed expiry is a candidate; a quote with
 ask <= bid is counted as invalid in the walk.
 
+## The realized line in force
+
+The daily paper-index workflow runs `node keeper/vol-index.mjs --line realized
+--anchor` with the keeper key. One run:
+
+1. **In force?** With `inception` null: NOT IN FORCE, exit 0, nothing else
+   read, nothing written. Otherwise `inception.decision` must be in
+   `trackrecord/decisions.jsonl` (the ledger the decision anchor appends to),
+   the decision file must still hash to the ledger's value and contain the
+   sha256 of `keeper/rulebooks/qvol.json`, and the decision must be effective
+   on the day before `inception.date`: the decision is effective on the day it
+   is anchored, and the first line is dated the next UTC day. A decision not
+   in the ledger yet, or a run before `inception.date` 00:00 UTC, is NOT IN
+   FORCE (exit 0, nothing written, no request). A decision in the ledger that
+   the files no longer satisfy is refused (exit 2), and so is any of these once
+   the record has a line.
+2. A line that an earlier run wrote but did not anchor is anchored first.
+3. **Lines.** Every closed UTC day since the last line, in order. The first
+   line is dated `inception.date`; no day before it is ever written. Each line
+   is the line a dry run builds from the same bars (same fields, same order,
+   same values), without `shadow`, and the first line carries
+   `inception: {decision, decisionSha256}`. `scripts/verify-vol.mjs`
+   recomputes it before it is appended (a mismatch: exit 1, nothing appended,
+   anchored or marked). It is appended to `trackrecord/record-qvol.jsonl` and
+   anchored on GIWA Sepolia like the other daily series: a zero-value
+   transfer to the keeper's own address whose calldata is `qxpi-qvol:` and the
+   line's hash, signed locally (`trackrecord/anchors-qvol.jsonl`). Line D is
+   never written before D 00:00 UTC on the runner's clock; a source that
+   still calls the day open a full day after that is a failure (exit 1). A
+   day that earlier runs missed is written by a later run from the same
+   closed bars and carries `"late": true`. Without `--anchor` or without the
+   key, lines are written unanchored and the next run with the key anchors
+   them first.
+4. **The display vault** (`keeper/leverage-vaults.json`, entry `qvol`; deposit
+   cap 0) is marked to the last line after that line is anchored, never
+   before: share price n6 = floor(value x 1,000,000) in the contract's unit of
+   1e-6 (the unrounded record value, cut; no decimal rounding), sent as
+   `setNav(step, n6)` in steps inside the contract's bound of 25% per mark,
+   each step read back (`keeper/marks-qvol.jsonl`). It marks only a vault
+   whose `symbol()` is the rulebook's ticker (qVOL) and whose `keeper()` is
+   the signer. No address or no mark method in the registry, no key, or an
+   unanchored last line: no mark. The keeper sends that vault nothing but
+   `setNav`, and `keeper/deploy-mark-vault.mjs` refuses `open-deposits` for
+   `qvol` before any RPC call. A failed mark leaves the line written and
+   anchored and exits 1.
+
+A dry run never reads a key, never anchors and never marks, and loads no
+chain library: `--anchor` is refused with `--dry-run`.
+
 ## Line formats
 
 Both files are hash-chained like the other series:
@@ -198,8 +254,9 @@ published is open (terms of use not checked); `--quotes hash` writes
 ## Running it
 
 ```bash
-# not in force: prints NOT IN FORCE, exits 0, reads and writes nothing
-node keeper/vol-index.mjs --line realized
+# the daily step (KEEPER_PK in the environment); while not in force it prints
+# NOT IN FORCE, exits 0, reads and writes nothing
+node keeper/vol-index.mjs --line realized --anchor
 
 # realized dry run over a past window (lines go under --out, each with "shadow": true)
 node keeper/vol-index.mjs --line realized --dry-run --replay 2019-03-04..2019-03-31 --out keeper/dryrun
@@ -218,9 +275,12 @@ node scripts/verify-vol.mjs --dir keeper/dryrun
 #                                           (once per line; the file's "line" key says which)
 ```
 
-Exit codes: 0 = done, nothing to do, not in force, or inactive (implied); 1 = data failure
-(nothing written for the failed day); 2 = configuration (bad option, bad
-rulebook, bad acceptance file). Retries: at most 3 attempts per call, 2 s then
+Exit codes: 0 = done, nothing to do, not in force, or inactive (implied); 1 = data or
+chain failure (nothing written for the failed day; a line whose anchor failed
+is written, and the next run anchors it first), or a mark that failed after
+the line was written and anchored; 2 = configuration (bad option, bad
+rulebook, bad acceptance file, an anchored inception decision that the files
+no longer satisfy). Retries: at most 3 attempts per call, 2 s then
 4 s apart, on a network error, a time-out (30 s per attempt), HTTP 429 or 5xx;
 Binance calls at least 250 ms apart. The verifier recomputes the realized
 `variance` and `value` from the window and accepts each within a relative
@@ -245,9 +305,17 @@ folder that holds `record-qvol.jsonl`, C7, C11, C12 and C13 also run on that
 record; without it that test is skipped. Two tests need private inputs and
 are skipped without `VOL_FIXTURE_DIR`; no market data, no other firm's index
 values and no table copied from a methodology document are committed here.
+The tests named "in force T-IF1" … "T-IF11" in `keeper/test/vol-index.test.mjs`
+run the in-force path against a stand-in decision in a scratch ledger, a fake
+Binance and a fake GIWA node, with a key generated by the test.
 
 ## Later wiring (not done in this build)
 
+Done for the realized line: the in-force path of `keeper/vol-index.mjs`
+(the decision check, the anchor and the display vault's mark, above), its
+step in `.github/workflows/paper-index.yml` (the record, anchor and mark files
+in `git add`, the failure alert), the registry entry `qvol` and the
+`keeper/deploy-mark-vault.mjs` target `qvol`. The rows below are not done.
 To become daily series these existing files change, after the files they
 share with other work have settled; the verifier first, an inception line
 last:
@@ -256,8 +324,8 @@ last:
 |---|---|
 | `scripts/verify.mjs` | the two series in its series list (record and anchor files, anchor prefix, no decision check before inception: "not started" is not a failure); the recomputation of `scripts/verify-vol.mjs` moved in; implied: missing days allowed and counted; every line's rule checked against the rulebook JSON whose sha256 the inception decision fixes (the `--rulebook` check), not only against the first line |
 | `keeper/vol-realized.mjs` and the other keeper that reads Binance 1-minute bars | one shared module for the bar functions (parsing klines, the canonical 1-minute text, the day-end test), so the same day gives the same sha256 by construction rather than by two copies of the same code |
-| `keeper/vol-index.mjs` | an anchor step like the other series (zero-value self-transfer, calldata = prefix + line hash, local signing, only with `--anchor` and a key); an in-force check (the decision id is in the decision log and the decision text carries the rulebook sha256) |
-| `.github/workflows/paper-index.yml` | two steps (realized, implied), the new record and anchor files in `git add`, a failure alert; no new key, schedule or concurrency group; whether the implied snapshot runs early in the daily job |
+| `keeper/vol-index.mjs` | the implied line's in-force path (decision check, anchor) |
+| `.github/workflows/paper-index.yml` | the implied step; whether its snapshot runs early in the daily job |
 | `scripts/watchdog.mjs` | freshness of both series and missing anchors |
 | `keeper/RUNBOOK.md`, `docs/paper-index.md`, `README.md` | the series, its failure states (missing bars, Deribit down, cannot compute, revised bars), "what it is not" |
 | `rulebooks/qvol.md` (realized line), a rulebook of its own for the implied line, `rulebooks/README.md` | the public rulebooks and their list entries |
