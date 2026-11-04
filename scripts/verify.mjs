@@ -100,13 +100,26 @@
  *                    keeper's own function (keeper/vol-sources.mjs,
  *                    keeper/vol-realized.mjs — imported, not repeated: run
  *                    from a clone of the repository), and the text's sha256
- *                    and the day's close are compared with the line. A
- *                    difference prints REVISED (not a failure unless
- *                    --strict-source — a line's own bars or closes are the
- *                    record). A qVOL line whose sha256 Binance still serves
- *                    but whose close or row count is not those bars' fails
- *                    always: the line contradicts the bars it names.
+ *                    and the day's close are compared with the line.
+ *                    Leverage: a difference prints REVISED (not a failure
+ *                    unless --strict-source — a line's own bars are the
+ *                    record). qVOL: a difference FAILS (a sha256 the source
+ *                    never served is how a forged line looks); with
+ *                    --allow-source-revision it prints REVISED instead. A
+ *                    qVOL line whose sha256 Binance still serves but whose
+ *                    close or row count is not those bars' fails always: the
+ *                    line contradicts the bars it names.
  *   --strict-source  with --refetch-bars: a REVISED day is a failure.
+ *   --allow-source-revision  qVOL with --refetch-bars: a day Binance now serves
+ *                    differently prints REVISED instead of failing.
+ *   --keeper <address>  qVOL with an RPC: the keeper key, from outside this
+ *                    repository (the address printed on the decision page).
+ *                    The decision's anchor and every line anchor must be sent
+ *                    by it. Without it, the address is taken from the
+ *                    decision's anchor named in this repository (a notice on
+ *                    stderr says so). Either way the decision's anchor must be
+ *                    in a block no later than the end of its effective day and
+ *                    before the first line's anchor.
  *   --allow-rehearsal accept leverage lines marked "rehearsal" and qVOL lines marked
  *                    "shadow" (keeper/dryrun/ output). Without it such a line fails.
  *
@@ -134,6 +147,12 @@ const RECOMPUTE_ONLY = args.includes('--recompute-only');
 const REFETCH_BARS = args.includes('--refetch-bars');
 const STRICT_SOURCE = args.includes('--strict-source');
 const ALLOW_REHEARSAL = args.includes('--allow-rehearsal');
+const ALLOW_SOURCE_REVISION = args.includes('--allow-source-revision');
+const KEEPER = args.includes('--keeper') ? String(opt('--keeper', '')).toLowerCase() : null;
+if (KEEPER !== null && !/^0x[0-9a-f]{40}$/.test(KEEPER)) {
+  console.error(`--keeper must be a 20-byte 0x address (got ${opt('--keeper', '(nothing)')})`);
+  process.exit(2);
+}
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
@@ -382,6 +401,11 @@ async function verifySeries(key) {
       }
       if (signer.address && from !== signer.address) {
         fail(`anchor seq ${a.seq} ${a.date} (${a.txHash.slice(0, 14)}…): sent by ${from}, not by ${signer.address}, ${signer.label}`);
+        continue;
+      }
+      // the decision came first: its anchor is in an earlier block than the first line's (a re-anchored decision is not)
+      if (a.seq === records[0].seq && signer.block !== null && !(parseInt(receipt.blockNumber, 16) > signer.block)) {
+        fail(`anchor seq ${a.seq} ${a.date} (${a.txHash.slice(0, 14)}…): block ${parseInt(receipt.blockNumber, 16)} is not after the decision's anchor (block ${signer.block}) — the decision is anchored before the first line`);
         continue;
       }
       by = `, self-send from ${from}`;
@@ -739,23 +763,43 @@ const ADDRESS = /^0x[0-9a-f]{40}$/;
  * an answer that names no sender).
  */
 async function volSigner(f, records) {
+  // --keeper pins the key from outside this repository; without it the key is the one this repository's ledger points at
+  const pinned = (address, label, block) => (KEEPER ? { address: KEEPER, label: 'the keeper key given with --keeper', block } : { address, label, block });
   const id = records[0]?.inception?.decision;
   const d = decisions.find((x) => x.id === id);
   if (!d) {
     fail(`${f.label}: the anchors' sender cannot be checked — the first line's decision ${id} is not in decisions.jsonl`);
-    return { address: null, label: `the sender of decision ${id}'s anchor (unknown)` };
+    return pinned(null, `the sender of decision ${id}'s anchor (unknown)`, null);
   }
   const label = `the sender of decision ${d.id}'s anchor ${String(d.txHash).slice(0, 14)}…`;
+  if (!KEEPER) console.error(`notice: ${f.label}: the keeper address is taken from the anchor of decision ${d.id} named in this repository's decisions.jsonl; pass --keeper <the address printed on the decision page> to pin it`);
   try {
     const tx = await rpc('eth_getTransactionByHash', [d.txHash]);
     const from = String(tx?.from ?? '').toLowerCase();
-    if (!tx) fail(`${f.label}: decision ${d.id}: anchor tx ${d.txHash} not found on chain — the anchors' sender cannot be checked`);
-    else if (!ADDRESS.test(from)) fail(`${f.label}: decision ${d.id}: the answer for ${d.txHash} names no sender — the anchors' sender cannot be checked`);
-    else return { address: from, label };
+    if (!tx) {
+      fail(`${f.label}: decision ${d.id}: anchor tx ${d.txHash} not found on chain — the anchors' sender cannot be checked`);
+      return pinned(null, `${label} (unknown)`, null);
+    }
+    if (!ADDRESS.test(from)) {
+      fail(`${f.label}: decision ${d.id}: the answer for ${d.txHash} names no sender — the anchors' sender cannot be checked`);
+      return pinned(null, `${label} (unknown)`, null);
+    }
+    if (KEEPER && from !== KEEPER) fail(`${f.label}: decision ${d.id}: its anchor ${d.txHash} was sent by ${from}, not by the keeper ${KEEPER} given with --keeper`);
+    // when: no later than the end of the decision's effective day (the decision anchored again later is not the decision)
+    let block = null;
+    const receipt = await rpc('eth_getTransactionReceipt', [d.txHash]);
+    const head = receipt ? await rpc('eth_getBlockByNumber', [receipt.blockNumber, false]) : null;
+    if (!receipt || receipt.status !== '0x1' || !head) fail(`${f.label}: decision ${d.id}: anchor tx ${d.txHash} not confirmed — its time cannot be checked`);
+    else {
+      block = parseInt(receipt.blockNumber, 16);
+      const at = parseInt(head.timestamp, 16) * 1000;
+      if (!(at < lev.day0(d.effectiveFrom) + lev.DAY)) fail(`${f.label}: decision ${d.id}: its anchor is in block ${block} at ${new Date(at).toISOString()}, after its effective day ${d.effectiveFrom} ended — a decision is anchored on or before its effective day`);
+    }
+    return pinned(from, label, block);
   } catch (e) {
     fail(`${f.label}: decision ${d.id}: rpc unavailable — ${e.message}`);
   }
-  return { address: null, label: `${label} (unknown)` };
+  return pinned(null, `${label} (unknown)`, null);
 }
 
 /**
@@ -825,7 +869,7 @@ async function refetchVol(f, records, bad) {
     }
     totals.revised = (totals.revised ?? 0) + 1;
     console.log(`  REVISED ${V.series} #${rec.seq} ${rec.date}: ${where} ${day} — Binance now serves ${got.rows} row(s), close ${got.close}, sha256 ${got.sha}; the line records ${want.rows} row(s), close ${want.close}, sha256 ${want.sha} — the line's closes stand`);
-    if (STRICT_SOURCE) bad(rec, `${where} ${day} revised (--strict-source): Binance now serves sha256 ${got.sha}, the line records ${want.sha}`);
+    if (STRICT_SOURCE || !ALLOW_SOURCE_REVISION) bad(rec, `${where} ${day} revised: Binance now serves sha256 ${got.sha}, the line records ${want.sha}${STRICT_SOURCE ? ' (--strict-source)' : ' (a failure for qVOL unless --allow-source-revision)'}`);
   };
   for (const rec of records) {
     const win = Array.isArray(rec.window) ? rec.window : [];
@@ -885,7 +929,7 @@ async function verifyVol(f, records) {
     }
   }
   if (REFETCH_BARS) await refetchVol(f, records, bad);
-  if (g.shadow !== undefined) return; // a dry run has no decision
+  if (g.shadow === true) return; // a dry run has no decision (any other first line is bound to its decision and rulebook)
   // the first line and its decision
   const rule = g.rule ?? {};
   const inc = g.inception ?? {};

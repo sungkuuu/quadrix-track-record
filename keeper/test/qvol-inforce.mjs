@@ -40,6 +40,13 @@ export const rehash = (line) => {
   return { ...rest, hash: H(JSON.stringify(rest)) };
 };
 
+/** Lines re-chained after an edit: each prevHash set to the line before's new hash, each line re-hashed (a forger's consistent chain). */
+export const rechain = (lines) => {
+  const out = [];
+  for (const l of lines) out.push(rehash({ ...l, prevHash: out.length ? out.at(-1).hash : null }));
+  return out;
+};
+
 /**
  * A scratch repository root: the repository's realized rulebook with the stand-in inception
  * (`mutate(rb)` may change that copy further), an empty gap acceptance file, a ledger line and a
