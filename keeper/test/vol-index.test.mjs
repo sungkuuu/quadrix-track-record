@@ -20,9 +20,9 @@ import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
-import { custom, decodeFunctionData, getAddress, parseTransaction, toFunctionSelector, toHex } from 'viem';
+import { custom, decodeFunctionData, getAddress, hexToString, parseTransaction, toFunctionSelector, toHex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { run, parseArgs, rulebookProblem, markUnits, isLocalRpc, GIWA_RPC } from '../vol-index.mjs';
+import { run, parseArgs, rulebookProblem, markUnits, isLocalRpc, GIWA_RPC, RECEIPT_TIMEOUT_MS } from '../vol-index.mjs';
 import { markSteps } from '../leverage-step.mjs';
 import { VAULT_ABI } from '../leverage-index.mjs';
 import { NAMES, DISPLAY_ONLY } from '../deploy-mark-vault.mjs';
@@ -737,13 +737,13 @@ function dailyKlines(days, { daily = null, from = -Infinity, to = Infinity, serv
 }
 
 /** One in-force run at `iso` (the runner's clock; the fake Binance's server time is 5 minutes later). */
-async function inForce(root, iso, { key = null, node = null, transport = null, argv = ['--anchor'], extra = {}, bars = BARS, tamper = null, daily = null } = {}) {
+async function inForce(root, iso, { key = null, node = null, transport = null, argv = ['--anchor'], extra = {}, bars = BARS, tamper = null, daily = null, chain = {} } = {}) {
   const now = Date.parse(iso);
   const bin = withDaily(fakeBinance(bars, now + 300_000, tamper ? { tamper } : {}), bars, now + 300_000, { daily });
   const from = key ? privateKeyToAccount(key).address : null;
   const r = await cli(run, ['--line', 'realized', ...argv], {
     root, now: () => now, fetch: bin.fetch, env: key ? { KEEPER_PK: key } : {},
-    transport: transport ? () => transport : node ? () => quick(node, null, { root, from }) : () => { throw new Error('no chain call expected'); },
+    transport: transport ? () => transport : node ? () => quick(node, null, { root, from, ...chain }) : () => { throw new Error('no chain call expected'); },
     pollingInterval: 5, readTiming: { waitMs: 50, stepMs: 1 }, ...extra,
   });
   return { ...r, binanceCalls: bin.calls.length, calls: bin.calls };
@@ -1811,4 +1811,105 @@ test('in force T-IF22 (F7): a run that can anchor first reads the inception deci
   assert.equal(rk.code, 0, rk.err);
   assert.equal(readJsonl(k.rec).length, 1);
   assert.doesNotMatch(rk.out, /decision .* anchored in/);
+});
+
+test('in force T-IF23 (F8): each run that can anchor reads the last anchor again — a transaction no longer on chain (dropped, as by a reorg) has its line anchored again first (one new transaction, the same calldata), then the run goes on; an entry whose transaction is not the keeper\'s anchor of that line (another key, other calldata) is refused (exit 2), nothing sent; an anchor still on chain lets the run go on with no new anchor of old lines (control)', async () => {
+  const x = inForceRoot();
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  assert.equal((await inForce(x.root, `${D1}T00:25:00Z`, { key, node })).code, 0);
+  const [L0] = readJsonl(x.rec);
+  const [A0] = readJsonl(x.anc);
+  // control: the anchor is on chain — read again, nothing re-sent, the next line written and anchored
+  const c = copyRoot(x);
+  const n0 = node.txs.length;
+  const ok = await inForce(c.root, '2099-02-03T00:25:00Z', { key, node });
+  assert.equal(ok.code, 0, ok.err);
+  assert.match(ok.out, new RegExp(`last anchor: #0 ${D1} in ${A0.txHash} \\(block \\d+\\) — on chain, the signer's self-send of this line's hash`));
+  assert.doesNotMatch(ok.out, /anchoring it first/);
+  assert.equal(node.txs.length, n0 + 1);
+  // the node forgets #0's anchor: #0 is anchored again first (one more transaction, the same calldata), then #1
+  const y = copyRoot(x);
+  const forget = new Set([A0.txHash.toLowerCase()]);
+  const n1 = node.txs.length;
+  const r = await inForce(y.root, '2099-02-03T00:25:00Z', { key, node, chain: { forget } });
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, new RegExp(`the anchor of #0 ${D1} \\(${A0.txHash}\\) is not on chain any more \\(dropped, as by a reorg\\) — #0 is anchored again`));
+  assert.match(r.out, new RegExp(`#0 ${D1} has no anchor on chain — anchoring it first`));
+  const ay = readJsonl(y.anc);
+  assert.deepEqual(ay.map((a) => [a.seq, a.headHash]), [[0, L0.hash], [0, L0.hash], [1, readJsonl(y.rec)[1].hash]]);
+  assert.notEqual(ay[1].txHash, A0.txHash);
+  const sent = node.txs.slice(n1);
+  assert.equal(sent.length, 2, 'one new anchor of #0, one of #1');
+  assert.equal(hexToString(sent[0].data), `qxpi-qvol:${L0.hash}`);
+  // two anchors dropped: both lines anchored again, in order
+  const z = copyRoot(y);
+  const az = readJsonl(z.anc);
+  const n2 = node.txs.length;
+  const rz = await inForce(z.root, '2099-02-04T00:25:00Z', { key, node, chain: { forget: new Set([...forget, az[1].txHash.toLowerCase(), az[2].txHash.toLowerCase()]) } });
+  assert.equal(rz.code, 0, rz.err);
+  assert.deepEqual(node.txs.slice(n2).map((t) => hexToString(t.data)), [...readJsonl(z.rec).map((l) => `qxpi-qvol:${l.hash}`)]);
+  // an entry naming a transaction that is not the keeper's anchor of the line: refused, nothing sent
+  const other = keyed().address;
+  for (const [label, edit, chain, why] of [
+    ['the decision\'s anchor named as #0\'s', (a) => [{ ...a[0], txHash: x.entry.txHash }], {}, new RegExp(`does not carry qxpi-qvol:${L0.hash}`)],
+    ['a transaction from another key', (a) => a, { answer: (req) => (req.method === 'eth_getTransactionByHash' && String(req.params[0]).toLowerCase() === A0.txHash.toLowerCase() ? rpcTx({ hash: A0.txHash, from: other, to: other, input: toHex(`qxpi-qvol:${L0.hash}`), block: 101 }) : undefined) }, new RegExp(`was sent by ${other}, not by the signer ${address}`)],
+  ]) {
+    const w = copyRoot(x);
+    writeJsonl(w.anc, edit(readJsonl(w.anc)));
+    const before = listAll(w.root);
+    const n = node.txs.length;
+    const rw = await inForce(w.root, '2099-02-03T00:25:00Z', { key, node, chain });
+    assert.equal(rw.code, 2, `${label}: ${rw.err}`);
+    assert.match(rw.err, new RegExp(`the anchor of #0 ${D1} in trackrecord/anchors-qvol\\.jsonl \\(0x[0-9a-f]{64}\\) .* — it is not the keeper's anchor of that line; nothing sent`), label);
+    assert.match(rw.err, why, label);
+    assert.deepEqual(listAll(w.root), before, `${label}: a file changed`);
+    assert.equal(node.txs.length, n, `${label}: a transaction was sent`);
+    assert.equal(rw.binanceCalls, 0, `${label}: Binance was called`);
+  }
+});
+
+test('in force T-IF24 (F9): the keeper waits for a receipt at most RECEIPT_TIMEOUT_MS (5 minutes; a few hundred ms here) — an anchor whose receipt never comes: exit 1 within that limit, the line stays on disk without an anchor entry, nothing marked, and the next run anchors it first (a second transaction with the same calldata, harmless); a setNav step whose receipt never comes: exit 1 after the line\'s anchor, and the next run goes on from the vault\'s value', async () => {
+  assert.equal(RECEIPT_TIMEOUT_MS, 300_000);
+  const x = inForceRoot({ vaults: qvolVaults() });
+  const { key, address } = keyed();
+  const node = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const ownTx = (req) => node.txs.some((t) => t.hash.toLowerCase() === String(req.params?.[0]).toLowerCase());
+  const noReceipt = (pick) => ({ answer: (req) => (req.method === 'eth_getTransactionReceipt' && ownTx(req) && pick(req) ? null : undefined) });
+  const t0 = Date.now();
+  const r = await inForce(x.root, `${D1}T00:25:00Z`, { key, node, chain: noReceipt(() => true), extra: { receiptTimeoutMs: 300 } });
+  const took = Date.now() - t0;
+  assert.equal(r.code, 1, r.err);
+  assert.match(r.err, new RegExp(`qvol: line #0 ${D1} is written but its anchor failed: no receipt for the anchor of #0 0x[0-9a-f]{64} within 0\\.3 s — no mark; the next run anchors it first \\(if that transaction is mined later, the line has two anchor transactions with the same calldata: harmless, the anchors file names the later one\\)`));
+  assert.ok(took < 20_000, `took ${took} ms`);
+  assert.equal(readJsonl(x.rec).length, 1);
+  assert.equal(fs.existsSync(x.anc), false);
+  assert.equal(fs.existsSync(x.marks), false);
+  assert.equal(node.txs.filter((t) => t.to === QVAULT).length, 0);
+  // the next run: anchored again (the first transaction was mined: two with the same calldata), then marked
+  const [L0] = readJsonl(x.rec);
+  const r2 = await inForce(x.root, `${D1}T00:40:00Z`, { key, node });
+  assert.equal(r2.code, 0, r2.err);
+  assert.deepEqual(node.anchorsOf(), [`qxpi-qvol:${L0.hash}`, `qxpi-qvol:${L0.hash}`]);
+  assert.deepEqual(readJsonl(x.anc).map((a) => a.txHash), [node.txs.filter((t) => t.to === t.from)[1].hash]);
+  assert.equal(node.state.nav, markUnits(L0.value));
+  // a setNav step whose receipt never comes: the line written and anchored, the mark stops (exit 1); the next run goes on from the vault
+  const y = inForceRoot({ vaults: qvolVaults() });
+  const ny = fakeNode({ vault: QVAULT, keeper: address, symbol: 'qVOL' });
+  const setNav = (req) => getAddress(ny.txs.find((t) => t.hash.toLowerCase() === String(req.params[0]).toLowerCase()).to) === QVAULT;
+  const ownY = (req) => ny.txs.some((t) => t.hash.toLowerCase() === String(req.params?.[0]).toLowerCase());
+  const ry = await inForce(y.root, `${D1}T00:25:00Z`, { key, transport: quick(ny, null, { root: y.root, from: address, answer: (req) => (req.method === 'eth_getTransactionReceipt' && ownY(req) && setNav(req) ? null : undefined) }), extra: { receiptTimeoutMs: 300 } });
+  assert.equal(ry.code, 1, ry.err);
+  assert.match(ry.err, /qVOL vault marks FAILED after line #0 was written and anchored: no receipt for setNav step 1\/\d+ 0x[0-9a-f]{64} within 0\.3 s/);
+  assert.equal(readJsonl(y.anc).length, 1);
+  assert.equal(fs.existsSync(y.marks), false, 'no mark line without its receipt');
+  const navAfter = ny.state.nav; // the step was mined
+  assert.notEqual(navAfter, 1_000_000n);
+  const ry2 = await inForce(y.root, `${D1}T00:40:00Z`, { key, node: ny });
+  assert.equal(ry2.code, 0, ry2.err);
+  const [Y0] = readJsonl(y.rec);
+  assert.equal(ny.state.nav, markUnits(Y0.value));
+  const navs = ny.txs.filter((t) => t.to === QVAULT).map((t) => decodeFunctionData({ abi: VAULT_ABI, data: t.data }).args[0]);
+  assert.equal(new Set(navs).size, navs.length, 'no setNav step sent twice');
+  assert.deepEqual(navs.slice(1), markSteps(navAfter, markUnits(Y0.value)));
 });

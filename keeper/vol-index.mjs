@@ -45,7 +45,16 @@
  *      after the runner's clock, none is a dry-run line, and only the first
  *      carries this decision's inception — else refused (exit 2), nothing
  *      sent, nothing appended;
- *   2. a line an earlier run wrote but did not anchor is anchored first, never
+ *   2. the last anchor is read again (a run that can anchor): its
+ *      transaction must still be on chain and be the signer's self-send of
+ *      that line's hash — one that is gone (dropped, as by a reorg) has its
+ *      line anchored again here (and the anchor before it is read the same
+ *      way); one that is another key's or carries other calldata is refused
+ *      (exit 2), nothing sent. Every transaction's receipt is waited for at
+ *      most RECEIPT_TIMEOUT_MS (5 minutes): past it, exit 1 with the line left
+ *      on disk without an anchor entry (the next run anchors it first; a
+ *      second anchor transaction with the same calldata is harmless).
+ *      A line an earlier run wrote but did not anchor is anchored first, never
  *      on trust: every anchor entry must name a line of the record by seq,
  *      date and hash, only the last lines may be unanchored, and each is
  *      recomputed by scripts/verify-vol.mjs (the first line on its own, a
@@ -770,6 +779,8 @@ async function runRealized(o, L, rulebookSha256, out, deps, rbPath) {
 export const GIWA_RPC = 'https://sepolia-rpc.giwa.io';
 export const GIWA_CHAIN_ID = 91342;
 const ANCHOR_GAS = 60_000n; // as the other daily series (keeper/leverage-index.mjs)
+/** How long the keeper waits for one transaction's receipt (an anchor, a setNav step) before it gives up: exit 1, the line stays on disk. */
+export const RECEIPT_TIMEOUT_MS = 300_000;
 const SETNAV_GAS = 120_000n; // as keeper/leverage-index.mjs (setNav measured at 36,137 gas)
 
 /**
@@ -989,6 +1000,20 @@ async function sendNonceSafe(fn, wait) {
   }
 }
 
+/**
+ * A transaction's receipt, waited for at most RECEIPT_TIMEOUT_MS (deps.receiptTimeoutMs
+ * in tests): past it, Exit(1) — the transaction may still be mined later.
+ */
+async function receiptOf(pc, hash, what, deps) {
+  const ms = deps.receiptTimeoutMs ?? RECEIPT_TIMEOUT_MS;
+  try {
+    return await pc.waitForTransactionReceipt({ hash, timeout: ms });
+  } catch (e) {
+    if (e?.name === 'WaitForTransactionReceiptTimeoutError') throw new Exit(1, `no receipt for ${what} ${hash} within ${ms / 1000} s`);
+    throw e;
+  }
+}
+
 /** The anchor of one line: a zero-value self-send, calldata `qxpi-<series>:` + the line's hash (as keeper/leverage-index.mjs). */
 async function anchorLine(signer, series, line, anchorsPath, deps) {
   const { viem } = await chainLib();
@@ -996,7 +1021,7 @@ async function anchorLine(signer, series, line, anchorsPath, deps) {
     () => signer.wallet.sendTransaction({ to: signer.address, value: 0n, data: viem.toHex(`qxpi-${series}:` + line.hash), gas: ANCHOR_GAS }),
     deps.wait
   );
-  const rc = await signer.pc.waitForTransactionReceipt({ hash });
+  const rc = await receiptOf(signer.pc, hash, `the anchor of #${line.seq}`, deps);
   if (rc.status !== 'success') throw new Exit(1, `anchor of #${line.seq} ${line.date} reverted (${hash})`);
   appendLine(anchorsPath, { date: line.date, seq: line.seq, headHash: line.hash, txHash: hash });
   deps.log(`  anchored #${line.seq} ${line.date} in ${hash} (block ${rc.blockNumber})`);
@@ -1059,7 +1084,7 @@ async function markDisplayVault({ signer, vault, ticker, gate, line, marksPath, 
     const data = viem.encodeFunctionData({ abi, functionName: 'setNav', args: [next, indexLevel] });
     await simulate(data, `setNav step ${k + 1}/${steps.length}`); // a revert stops here, before anything is sent
     const tx = await sendNonceSafe(() => wallet.sendTransaction({ to: vault, data, gas: SETNAV_GAS }), deps.wait);
-    const rc = await pc.waitForTransactionReceipt({ hash: tx });
+    const rc = await receiptOf(pc, tx, `setNav step ${k + 1}/${steps.length}`, deps);
     if (rc.status !== 'success') throw new Exit(1, `setNav step ${k + 1}/${steps.length} reverted (${tx})`);
     floor = rc.blockNumber;
     appendLine(marksPath, { date: line.date, seq: line.seq, step: k + 1, of: steps.length, nav: Number(next), indexLevel: Number(indexLevel), tx, block: Number(rc.blockNumber) });
@@ -1135,8 +1160,9 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
     try {
       await anchorLine(signer, L.series, line, P.anchors, deps);
     } catch (e) {
-      const msg = e instanceof Exit ? e.message : (e?.shortMessage ?? e?.message ?? String(e)).split('\n')[0];
-      throw new Exit(1, `${L.series}: line #${line.seq} ${line.date} is written but its anchor failed: ${msg} — no mark; the next run anchors it first`);
+      const msg = e instanceof Exit ? e.message : shortError(e);
+      const late = /^no receipt for /.test(msg) ? ' (if that transaction is mined later, the line has two anchor transactions with the same calldata: harmless, the anchors file names the later one)' : '';
+      throw new Exit(1, `${L.series}: line #${line.seq} ${line.date} is written but its anchor failed: ${msg} — no mark; the next run anchors it first${late}`);
     }
   };
 
@@ -1213,11 +1239,41 @@ async function runRealizedInForce(o, L, rulebookSha256, deps, rbPath, rbRel) {
   //    scripts/verify-vol.mjs (the first line on its own, a later one after the line before
   //    it), and the bars it records are read again from Binance (the first line: every day
   //    of its window), before its anchor is sent
-  const firstUnanchored = anchorCoverage(L.series, records, readLines(P.anchors), rel(P.anchors));
+  const anchors = readLines(P.anchors);
+  let firstUnanchored = anchorCoverage(L.series, records, anchors, rel(P.anchors));
+  // F8: the last anchor is read again — still on chain (a reorg can drop it: that line is then
+  // anchored again, with the lines after it) and the keeper's anchor of that very line
+  const dropped = new Set();
+  if (signer) {
+    for (let k = firstUnanchored - 1; k >= 0; k--) {
+      const line = records[k];
+      const a = anchors.filter((x) => x.seq === line.seq).at(-1); // the anchor the file names last for that line
+      let c;
+      try {
+        c = await selfSendCheck(signer, a.txHash, `qxpi-${L.series}:${line.hash}`, deps);
+      } catch (e) {
+        throw new Exit(1, `${L.series}: the chain failed while reading the anchor of #${line.seq} ${line.date} (${a.txHash}): ${shortError(e)} — nothing written, nothing sent; the next run reads it again`);
+      }
+      if (c.missing) {
+        deps.log(`  the anchor of #${line.seq} ${line.date} (${a.txHash}) is not on chain any more (dropped, as by a reorg) — #${line.seq} is anchored again`);
+        dropped.add(line.seq);
+        firstUnanchored = k;
+        continue;
+      }
+      if (c.problem) {
+        throw refuse(
+          `${L.series}: the anchor of #${line.seq} ${line.date} in ${rel(P.anchors)} (${a.txHash}) ${c.problem} — it is not the keeper's anchor of that line; nothing sent. ` +
+            'An anchor entry is written only by the keeper, after its transaction\'s receipt: a person checks who wrote this one'
+        );
+      }
+      deps.log(`  last anchor: #${line.seq} ${line.date} in ${a.txHash} (block ${c.block}) — on chain, the signer's self-send of this line's hash`);
+      break;
+    }
+  }
   if (signer) {
     for (let k = firstUnanchored; k < records.length; k++) {
       const line = records[k];
-      deps.log(`  #${line.seq} ${line.date} has no anchor — anchoring it first`);
+      deps.log(`  #${line.seq} ${line.date} has no anchor${dropped.has(line.seq) ? ' on chain' : ''} — anchoring it first`);
       const rc = recompute(deps, L.series, records.slice(0, k), line, null, rbPath);
       if (!rc.ok) {
         throw refuse(
