@@ -1169,7 +1169,7 @@ test('in force T-IF13 scripts/verify.mjs --series qvol: not started, pending, th
       const { id, method, params } = JSON.parse(body);
       const t = txs.get(params?.[0]);
       let result = null;
-      if (method === 'eth_getTransactionByHash' && t) result = { input: t.input, blockNumber: `0x${t.block.toString(16)}` };
+      if (method === 'eth_getTransactionByHash' && t) result = { input: t.input, blockNumber: `0x${t.block.toString(16)}`, from: address, to: address };
       if (method === 'eth_getTransactionReceipt' && t) result = { status: '0x1', blockNumber: `0x${t.block.toString(16)}` };
       if (method === 'eth_getBlockByNumber') {
         const n = parseInt(params[0], 16);
