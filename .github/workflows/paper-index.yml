@@ -183,9 +183,19 @@ jobs:
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
 
+      # qVOL runs on node v22.23.1, the runtime of its registered reproducibility test. That version is set up
+      # just before the step and node 20 again just after it, so no other step changes its runtime.
+      - name: qVOL — node v22.23.1 (the registered runtime)
+        id: qvolnode
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.1'
+          check-latest: false
+
       - name: qVOL — compute the closed UTC days since the last line, anchor, mark
         id: qvol
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.qvolnode.outcome == 'success' }}
         # As qETH1.5X: a step time limit fails only this step, and "Commit records" below still runs. Until the
         # inception decision named in keeper/rulebooks/qvol.json is anchored and pins that file, the leg writes
         # nothing and exits 0 (NOT IN FORCE). The first line is dated inception.date of that file, the day after
@@ -195,9 +205,18 @@ jobs:
         timeout-minutes: 20
         run: |
           set -o pipefail
-          node keeper/vol-index.mjs --line realized --anchor 2>&1 | tee pi-qvol.log
+          echo "node $(node --version)" | tee pi-qvol.log
+          if [ "$(node --version)" != "v22.23.1" ]; then echo "::error::qVOL runs only on node v22.23.1 (the registered runtime), not $(node --version)" | tee -a pi-qvol.log; exit 1; fi
+          node keeper/vol-index.mjs --line realized --anchor 2>&1 | tee -a pi-qvol.log
         env:
           KEEPER_PK: ${{ secrets.KEEPER_PK }}
+
+      - name: Node 20 again for the steps after qVOL
+        id: node20
+        if: ${{ !cancelled() && steps.qvolnode.outcome != 'skipped' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: qX20 — mark the basket vault from keeper/state.json (no record append)
         id: qx20
@@ -300,7 +319,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           PUSH_OUTCOME: ${{ steps.commit.outcome }}
-          OTHER_FAILED: ${{ steps.deps.outcome == 'failure' || steps.qrev.outcome == 'failure' || steps.qdefi.outcome == 'failure' || steps.barbell.outcome == 'failure' || steps.triens.outcome == 'failure' || steps.qai.outcome == 'failure' || steps.qbtc2x.outcome == 'failure' || steps.qeth15.outcome == 'failure' || steps.qvol.outcome == 'failure' || steps.qx20.outcome == 'failure' || steps.qx20daily.outcome == 'failure' }}
+          OTHER_FAILED: ${{ steps.deps.outcome == 'failure' || steps.qrev.outcome == 'failure' || steps.qdefi.outcome == 'failure' || steps.barbell.outcome == 'failure' || steps.triens.outcome == 'failure' || steps.qai.outcome == 'failure' || steps.qbtc2x.outcome == 'failure' || steps.qeth15.outcome == 'failure' || steps.qvolnode.outcome == 'failure' || steps.qvol.outcome == 'failure' || steps.node20.outcome == 'failure' || steps.qx20.outcome == 'failure' || steps.qx20daily.outcome == 'failure' }}
         run: |
           set -uo pipefail
           # The record push failed: the lines this run computed (and anchored,
