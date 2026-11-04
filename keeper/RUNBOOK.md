@@ -873,7 +873,7 @@ record (and no line after the runner's clock, no dry-run line) → with the key:
 the decision's own anchor transaction (the signer's self-send of `qxdec:` + its
 sha256) and the last line anchor again (on chain, the signer's, this line's
 hash; one dropped by a reorg is sent again) → anchor any line an earlier run
-left unanchored, each after its recompute and a fetch of the bars it records →
+left unanchored, each after a fetch of the bars it records (the whole record was recomputed first) →
 before the first new line, the last line's day once more (the same bars as the
 line records) → for each closed day: fetch the day's 1-minute bars twice and
 compare them → build the line → Binance's daily candle of the day must close
@@ -959,8 +959,9 @@ mode writes under `keeper/dryrun/` only and is refused without both `--rpc`
 | `qvol: DAILY CLOSE DIFFERS — the 1-minute bars close <day> at X, Binance's daily candle closes it at Y …`, exit 1; the entry `{"series":"qvol","day":…,"check":"daily-close","minuteClose":X,"dailyClose":Y}` on stderr | Binance's two forms of the same day disagree (or no closed daily candle) | nothing written. Compare both at the source (`interval=1m` and `interval=1d`). If the 1-minute bars are right: add the printed entry with `id`, `note`, `confirmedAt` to `keeper/vol-index-source-checks.json`; the next run writes the line from the 1-minute bars, as the definition says. Otherwise the series waits. |
 | `qvol: the record does not verify: … — nothing sent, nothing appended, no mark`, exit 2 | `scripts/verify-vol.mjs` rejects the record as a whole, or a line is dated after the runner's clock, is a dry-run line, or names another decision | read the FAIL lines and `git log -p trackrecord/record-qvol.jsonl`. Restore the file from history: an anchored line is never edited or removed; a line that is not anchored and not the keeper's is removed by a commit. The next run continues and writes missed days `late`. |
 | `qvol: line #N … has no anchor in trackrecord/anchors-qvol.jsonl, but line #M after it has one`, `the anchor of #N … names … but line #N is … — the line changed after it was anchored`, `… names an anchor of #N …, a line the record does not hold`, exit 2 | the record and the anchors file no longer agree | nothing sent. Restore both files from the repository's history; the keeper writes an anchor entry only after its transaction's receipt. |
-| `qvol: line #N D has no anchor, and scripts/verify-vol.mjs rejects it …`, exit 2 | a line without an anchor that the verifier rejects | nothing sent. Remove the line (and every line after it) by a commit; the next run writes those days again. |
 | `qvol: the anchor of #N D in trackrecord/anchors-qvol.jsonl (0x…) was sent by … / does not carry qxpi-qvol:… — it is not the keeper's anchor of that line`, exit 2 | the anchors file names a transaction the keeper did not send for that line | nothing sent. Find who wrote the entry; restore the file from history. A transaction that is simply gone (a reorg) is not a refusal: the keeper anchors that line again and goes on. |
+| `the anchor of #N D (0x…) is not on chain any more (dropped, as by a reorg) — #N is anchored again`, exit 0 | the node no longer knows the anchor transaction; the keeper sent a new one and appended a second entry for the line | the run goes on, but the old entry stays in `trackrecord/anchors-qvol.jsonl` and every reader's `scripts/verify.mjs --series qvol --rpc` fails on it ("not found on chain"). See "A dropped anchor" below the table. |
+| `qvol: … its anchor failed: the node answered the transaction hash …, but the signed transaction hashes to …` / `the receipt for … names the transaction …`, exit 1 | the node's answer does not name the transaction the keeper signed | no anchor entry, nothing marked. Use another endpoint if it repeats; the next run anchors the line again (if the signed transaction was mined, a second one with the same calldata is harmless). |
 | `qvol: NOT IN FORCE: the inception decision … is in trackrecord/decisions.jsonl, but its anchor transaction … is not on chain / was sent by … / is not a self-send / does not carry qxdec:… / did not succeed`, exit 1 | the ledger line is not backed by the keeper key's decision anchor | nothing read from Binance, nothing written. Look the transaction up on the explorer and read the ledger's history. A ledger line without its anchor is removed; the decision is anchored with the `anchor-decision` workflow. |
 | `qvol: NOT IN FORCE: inception.decision "…" is not an inception decision of this series`, exit 0 (exit 2 once the record has a line) / `decision … is effective from X in the ledger, not on the date in its id`, exit 2 | the rulebook names a decision of another form, or the ledger line was edited | nothing written. Correct the inception commit so the rulebook names the series' own anchored decision; restore the ledger from history. |
 | `qvol: the chain failed while reading …`, exit 1 | the GIWA endpoint did not answer a transaction lookup | nothing written. The next run reads it again. |
@@ -973,6 +974,24 @@ mode writes under `keeper/dryrun/` only and is refused without both `--rpc`
 | `qVOL runs only on node v22.23.1 …`, exit 1 | the step's runtime is not the registered one (setup failed or the version changed) | nothing was run. Fix the step's setup; the next run writes the missed day `late`. |
 | watchdog: `qvol: no record-qvol.jsonl …h after its first line's day …` | 16 h after E + 1 00:00 UTC with no line | read the last `paper-index` run's qVOL step: `NOT IN FORCE` means the decision is not on main; a refusal means the JSON or ledger does not match it. |
 | watchdog: `qvol: stale …` / `qvol: line seq N (D) has no anchor txHash` | no line 40 h after D 00:00 UTC / an unanchored line | as for the leverage leg: read the last run; the next run with the key writes the missed days `late` and anchors the unanchored lines first. |
+
+**A dropped anchor (reorg).** The keeper handles the chain side by itself; a
+person handles the file:
+
+1. Do nothing before the keeper's next run. That run logs `the anchor of #N D
+   (0x<old>) is not on chain any more … — #N is anchored again`, sends a new
+   anchor and appends a second entry for line N (`0x<new>`).
+2. Check on the GIWA Sepolia explorer that `0x<old>` is not on the chain and
+   that `0x<new>` is the keeper's self-send with calldata `qxpi-qvol:` and line
+   N's hash.
+3. Remove the entry with `0x<old>` from `trackrecord/anchors-qvol.jsonl` in one
+   commit whose message is the dated record: the date, `qvol #N D`, the
+   dropped hash `0x<old>`, the new hash `0x<new>`, and "dropped by a reorg,
+   anchored again by the keeper". Change nothing else in that commit. The
+   keeper accepts the file afterwards: every entry still names its line.
+4. Run `node scripts/verify.mjs --dir ./trackrecord --series qvol --rpc
+   https://sepolia-rpc.giwa.io`: it passes again. Until step 3 every reader's
+   `--rpc` check fails on the dead entry.
 
 ## Retired testnet vaults — deposits closed
 

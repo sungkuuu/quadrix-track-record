@@ -203,13 +203,15 @@ One run:
    transaction again: one no longer on chain (dropped, as by a reorg) has its
    line anchored again first (and the anchor before it is read the same way);
    one sent by another key or carrying other calldata is refused (exit 2).
-   A line without an anchor is anchored only after `scripts/verify-vol.mjs`
-   recomputes it (the first line on its own, a later line after the line
-   before it; a failure: exit 2) and the bars it records are fetched again from
+   A line without an anchor is anchored only after the record as a whole
+   passed step 2 in this run and the bars it records are fetched again from
    Binance (the first line: every window day) and match it — the sha256 of
    their canonical text, the row count, the last bar and the close (other
    bars: exit 1, nothing sent). A line the keeper cannot confirm is never
-   anchored with its key.
+   anchored with its key. A run without the key skips the decision's anchor
+   (step 3), the reading of the last anchor and the fetch of an unanchored
+   line's bars: it writes lines unanchored, and the run with the key makes
+   these checks before it anchors them.
 5. **Lines.** Before the first new line of a run, the bars of the last line's
    day are fetched again (one more fetch) and must match the line as above;
    other bars stop the run (exit 1, nothing written, the message names the day
@@ -258,6 +260,16 @@ One run:
    and anchored and exits 1; the next run goes on from the vault's value
    (no step is sent twice).
 
+Every transaction is signed by the keeper itself: its hash is computed from
+the signed bytes, and the node's answer and the receipt must name that hash
+(else exit 1, no anchor entry; the next run anchors the line again).
+
+**What these checks cannot see.** The keeper checks the 1-minute bars against
+the exchange's daily candle; if both reach the runner falsified to the same
+close, the line is written and anchored with a wrong value, and only a
+re-fetch of the bars from another network path (`scripts/verify.mjs
+--refetch-bars --strict-source`) or another venue's prices reveals it.
+
 **Halts and how the series resumes.** Each stop below leaves the record as it
 was; the message names what stopped. Two of them can be passed once a person
 confirms what they found, in `keeper/vol-index-source-checks.json` (absent
@@ -265,7 +277,10 @@ until needed; a public commit, so an owner confirmation, like the gap
 acceptance file). The halt prints the entry to add; the person adds an `id`,
 a `note` and `confirmedAt`. An entry is used only when every value in it
 matches what the run reads, and never makes the keeper anchor a line it did
-not write.
+not write. Every use of the file is a commit in this public repository, and
+that commit is the only trace: the line written after it carries no mark of
+the entry. A reader who checks a line therefore reads the history of
+`keeper/vol-index-source-checks.json` too.
 
 | Halt (exit) | What a person checks | How the series resumes |
 |---|---|---|
@@ -274,11 +289,11 @@ not write.
 | `DAILY CLOSE DIFFERS — the 1-minute bars close <day> at X, Binance's daily candle closes it at Y` (1) | both at the source (`interval=1m` and `interval=1d`) | if the 1-minute bars are right: the printed entry `{series, day, check: "daily-close", minuteClose: X, dailyClose: Y}` goes into the file and the next run writes the line from the 1-minute bars, as the definition says; otherwise the series waits |
 | `the record does not verify: …` (2) | the repository's history of `trackrecord/record-qvol.jsonl` | the file is restored from history (an anchored line is never edited or removed; a line that is not anchored and not the keeper's is removed by a commit); the next run continues |
 | `line #N has no anchor …, but line #M after it has one`, `the anchor of #N … names … but line #N is … — the line changed after it was anchored`, `… names an anchor of #N …, a line the record does not hold` (2) | the history of the record and of `trackrecord/anchors-qvol.jsonl` | both files are restored from history; the next run continues |
-| `line #N D has no anchor, and scripts/verify-vol.mjs rejects it` (2) | who committed the line | the line (and every line after it) is removed by a commit; the next run writes those days again |
 | `the anchor of #N D in trackrecord/anchors-qvol.jsonl (tx) … — it is not the keeper's anchor of that line` (2) | who wrote that entry; the transaction on the explorer | the anchors file is restored from history; the next run continues |
 | `NOT IN FORCE: inception.decision "…" is not an inception decision of this series` (0 before the first line, 2 after) | the rulebook's `inception.decision` | the inception commit is corrected: the rulebook names the series' own anchored decision |
 | `decision … is effective from X in the ledger, not on the date in its id` (2) | the history of `trackrecord/decisions.jsonl` (the decision anchor writes `effectiveFrom` from the id) | the ledger is restored from history |
 | `NOT IN FORCE: the inception decision … is in trackrecord/decisions.jsonl, but its anchor transaction … is not on chain / was sent by … / is not a self-send / does not carry qxdec:… / did not succeed` (1) | the transaction on the explorer; the history of the ledger | a ledger line without its anchor is removed and the decision is anchored with `scripts/anchor-decision.mjs`; nothing was written meanwhile |
+| `the anchor of #N D (0x…) is not on chain any more (dropped, as by a reorg) — #N is anchored again` (0; not a halt) | the old and the new transaction on the explorer | the keeper has anchored the line again; the old entry stays in the anchors file and fails every reader's `--rpc` check until a person removes it in a dated commit (`keeper/RUNBOOK.md`, "A dropped anchor") |
 | `the chain failed while reading …` (1) | the GIWA endpoint | nothing to do: the next run reads it again |
 | `line #N D is written but its anchor failed: no receipt for … within 300 s` (1); `vault marks FAILED … no receipt for setNav step k/n … within 300 s` (1) | the transaction on the explorer | nothing to do: the next run anchors the line again first / goes on from the vault's value |
 | `vault marks FAILED … REFUSED: keeper/leverage-vaults.json qvol names …, but its deployTx …` (1) | the entry against `keeper/mark-vaults.jsonl` and the explorer | the entry is corrected to the keeper's own deployment (a public commit); the next run marks |
