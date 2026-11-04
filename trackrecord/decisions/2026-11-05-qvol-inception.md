@@ -32,15 +32,15 @@ written at the time.
 
 ## The rules in force (pinned)
 
-The rulebook is `rulebooks/qvol.md` at commit `f2f719753dc43ccf67b07b3882ddd26399c5364f` of this repository (sha256
-`d370e537e0f4db8976c4be06a06226636c457229b1b7f6b53313d0ff719ea3ea`), as implemented in `keeper/rulebooks/qvol.json` (sha256 `7e4d6e38f346fee0f3deb04935b4ef6c93213f1841d0c44656d722cc888a44e8`) and the calculation files of
+The rulebook is `rulebooks/qvol.md` at commit `1a7cf8589d56cfa00c4023076a56ac449688dde9` of this repository (sha256
+`9d67e3421cbd3306b22d05cdf611f669c63d3860a057d41cba1b6b97a5a468a1`), as implemented in `keeper/rulebooks/qvol.json` (sha256 `7e4d6e38f346fee0f3deb04935b4ef6c93213f1841d0c44656d722cc888a44e8`) and the calculation files of
 the registered implementation, each pinned below. In one paragraph:
 
 The close of UTC day d is the close of the latest one-minute bar that opened on that day (at or after
 d 00:00 and before d+1 00:00 UTC). The return of day d is ln(C_d ÷ C_{d−1}). The line dated D uses the
 31 closes of days D−31 … D−1 and their 30 returns; its variance is (365 ÷ 30) × the sum of the squared
 returns, with no mean subtracted; its value is 100 × √variance, recorded as computed, with no decimal rounding;
-the page shows it to two decimals (an operating value, appendix O). All arithmetic is IEEE 754 binary64, in the
+the page shows it to two decimals (P15, a measurement convention of display; neither the line nor the vault reads it). All arithmetic is IEEE 754 binary64, in the
 order of the rulebook. A line is written only after the first one-minute bar opened at or after D 00:00
 UTC has closed. A day with other than 1,440 one-minute bars halts the series until a person accepts that
 exact set of bars (by its sha256); bars are never filled. On an accepted day with no bar at all, that
@@ -56,6 +56,11 @@ them into `keeper/leverage-vaults.json`, entry `qvol`, and into its deployment l
 run record of the deployment day. This differs from the qETH1.5X mark vault, which was deployed before its
 decision was anchored (decision `2026-10-22-qeth15-mark-vault`): here the owner confirms once, the anchored
 text and its sha256 must be final at that confirmation, so this decision fixes the parameters, not the address.
+It also differs from the registration: its order (§0) puts the deployment before the anchor of a decision that
+holds the vault's address, and its §9 lets lines be written from the effective date. Here the anchor comes
+first and the deployment follows on the same day (owner, 2026-11-04; the order is worker decision
+W-20261104-43), and the first line is dated the effective date + 1 (`inception.date` in the rulebook JSON,
+enforced by the keeper, T-IF2). Neither change touches a computed value.
 
 - Contract: `QuadrixIndexVault`, the contract of the testnet vaults redeployed on 2026-10-21 (decision
   `2026-10-21-testnet-vaults-redeployment`), the same code as the qBTC2X and qETH1.5X mark vaults; that
@@ -90,7 +95,12 @@ is the same number.
    marked (16 steps from 1.000000, then one); the refusals — a deposit cap above 0, a decision missing or
    not anchored, `open-deposits`, a registry entry naming another vault; the watchdog — 27 of 27 checks
    passed (`docs/research/qvol/evidence/fork-rehearsal-2026-11-04.txt`, sha256
-   `1a41dad731693f951a2ee7eb2a84a3ecf4ff5528c84de041066d67c0c8522ad5`). The keeper files have not changed since that commit.
+   `1a41dad731693f951a2ee7eb2a84a3ecf4ff5528c84de041066d67c0c8522ad5`). After that commit, `keeper/vol-index.mjs` changed in
+   `5d1e3ab`: the hash of each transaction it sends is computed from the signed bytes, and the recompute of a
+   single line before its anchor was dropped, since the whole-record recompute of the same run covers it. The
+   rehearsal script's step 4d was updated in `2b18523` and is the version run. The whole test suite, the
+   verifier run and the dry-run identity were run again at `8b6c57b75895d7606a203e14d1f7838da8ed79e0`, which holds
+   these changes (below). A rehearsal re-run at the final head is pending: ⟨리허설 재실행 — 최종 머리⟩
 3. 2026-11-05: this decision is anchored. Until it is in `trackrecord/decisions.jsonl` and pins
    `keeper/rulebooks/qvol.json`, the daily leg writes nothing and exits 0 (NOT IN FORCE).
 4. 2026-11-05, after (3): the deployment above (deposit cap 0) and its read-back, through `mark-vault-setup`
@@ -128,11 +138,30 @@ matches what the run reads; it never passes a line without an anchor and never m
 line it did not write — such a line is removed by a commit and its days are written again (`late`). The
 file is committed to this public record, so every use of it is visible.
 
-The keeper also recomputes the whole record once per run before it sends or appends anything, recomputes
-an unanchored line before it anchors it, reads the decision's own anchor transaction and the last anchor
-again, waits at most 300 seconds for each receipt, and marks only a vault whose registry `deployTx` is its
-own creation of that address. Each stop and how the series resumes are in sections 9 and 9A of the
-rulebook and in `keeper/RUNBOOK.md`.
+The keeper also recomputes the whole record once per run before it sends or appends anything, anchors a
+line left without an anchor only after that recomputation and a new fetch of the line's bars (the first
+line: every window day), reads the decision's own anchor transaction and the last anchor again, waits at
+most 300 seconds for each receipt, and marks only a vault whose registry `deployTx` is its own creation of
+that address. It computes the hash of each transaction it sends from the bytes it signed; a node answer or
+a receipt that names another hash is a failed anchor (exit 1, no anchor entry, nothing marked; T-IF31).
+Each stop and how the series resumes are in sections 9 and 9A of the rulebook and in `keeper/RUNBOOK.md`;
+how the series is closed is in section 10.
+
+A dropped anchor. If a reorganisation of the chain drops a line's anchor, the keeper's next run anchors the
+line again and goes on; the old entry stays in `trackrecord/anchors-qvol.jsonl`, and every reader's `--rpc`
+check fails on it. A person checks on the explorer that the old transaction is gone and the new one is the
+keeper's anchor, then removes only the old entry in one commit. The message of that commit is the dated
+record — the date, the line, the old and the new hash and the reason; no new decision is written
+(`keeper/RUNBOOK.md`, "A dropped anchor"; worker decision W-20261104-49). The verifier does not skip a
+replaced entry: until that commit, readers see FAIL.
+
+A reader checks the series from a clone of this repository:
+`node scripts/verify.mjs --dir ./trackrecord --series qvol --rpc https://sepolia-rpc.giwa.io --keeper 0x8c23D05Ea268a9c183Ee033Cf07cFEc38d0f7902 --refetch-bars --strict-source`.
+`--keeper` pins the anchoring key from outside the repository: the decision's anchor and every line's
+anchor must be its self-sends, and the decision's anchor must be in a block no later than the end of its
+effective day (UTC) and before the first line's anchor. `--refetch-bars` fetches every day a line names
+again from Binance; for this series a source that now serves other bars is a failure unless
+`--allow-source-revision` is given.
 
 ## Marks
 
@@ -144,7 +173,7 @@ vault takes no deposits, so the share price between two steps settles nothing: t
 effect. A day the series halts on has no new line and the vault keeps its last mark. The mark code is placed
 in `keeper/vol-index.mjs`; it takes the steps from `markSteps` of `keeper/leverage-step.mjs`, which this
 decision does not change. Launch conditions, met before this anchor with tests in
-`keeper/test/vol-index.test.mjs` (sha256 `d13fc356f6f341264c82c10d04df393048d86f81e366ea560f5f4aec9265e504`): the keeper does not mark a vault whose symbol is not the rulebook JSON's ticker (T-IF7),
+`keeper/test/vol-index.test.mjs` (sha256 `7fd32af6b3c5f85639e32806090d8507a476ce227c8ff3125b41aaae2e628a28`): the keeper does not mark a vault whose symbol is not the rulebook JSON's ticker (T-IF7),
 it does not mark before the day's line is anchored (T-IF6), and it does not mark a vault whose deposit cap is
 not 0 — the line stays written and anchored, and the run exits 1 (T-IF12). It also does not mark when the
 registry has no address (T-IF7) or when the entry's deployment transaction is not its own (T-IF25).
@@ -163,10 +192,15 @@ delay of 72 hours is the redeployment decision's owner decision; this decision d
 ## Tested, and not tested (pinned)
 
 Parameter citation table: appendix P of `rulebooks/qvol.md` (pinned above); keeper provenance
-`keeper/rulebooks/qvol.provenance.json` (sha256 `12c0ec6086ef35ace29820ace2e01f78e52674828eafe482c918e8502d744737`). Checklist run record:
-`docs/methodology/checklist-runs/qvol/2026-11-05.json` (site repository, private; sha256 `9c9e8b72288db1355ca7e23252687c3766969c85a6748e73cd61009fff9fe132`). Every evidence
-file it pins can be published; the launch evidence is in this repository, `docs/research/qvol/evidence/`, and the reproducibility results are pinned by their site-repository originals, whose copies are below; the run record names no internal file. Gate report:
-`rulebooks/qvol.gate.json` (sha256 `1777605b7df6a4061f90b01c3c9c9838671577a76e5c39325394f9e62f63e9fe`). Track: trading tool (`track` in `keeper/rulebooks/qvol.json`;
+`keeper/rulebooks/qvol.provenance.json` (sha256 `e581a1e15dc9fa9e0d53444131ccca0f3159c0ea12a0632cbc500e5eaafb1557`). Checklist run record:
+`docs/methodology/checklist-runs/qvol/2026-11-05.json` (site repository, private; sha256 `613f75becef389ed0ee3fc0c5223b1882acc26611d8b97efac3bb1914db0c611`). Every evidence
+file the run record pins has a public copy on this branch: the launch evidence and the data checks of R59 are in
+`docs/research/qvol/evidence/`, and the reproducibility results are pinned by their site-repository originals,
+whose copies are below. The raw market data the inputs come from — the one-minute and 15-minute research files and
+their manifest — is left out of the copies for size, with its hashes kept (`MANIFEST-notes.md`, "Left out").
+The owner decisions the run record cites are extracted in
+`docs/owner/qvol-decisions-2026-11-05.md`. Gate report:
+`rulebooks/qvol.gate.json` (sha256 `dc2ecae83b88c247cee5ee74dbe2423f85b96f6701d1f8744dd3a03d2d700cd9`). Track: trading tool (`track` in `keeper/rulebooks/qvol.json`;
 owner, 2026-10-06), type measurement. The owner decisions this decision cites are quoted in this
 repository at `docs/owner/qvol-decisions-2026-11-05.md` (sha256 `b3337942b9e10568c82e4e601247828b06509938d62081265996aaf064608014`).
 
@@ -211,23 +245,24 @@ script, the inputs and the ranges are the same in both.
 | Tested — pre-registered backtest and Monte Carlo | 0 | — |
 | Partly tested — backtest only, or run without pre-registration | 0 | — |
 | Definition | 2 | P09 price source, Binance spot BTCUSDT minute bars (public REST, interval `source.interval`), closed bars only, no fallback · P13 deposits: none — the display vault holds no asset (its encoding in the contract is a deposit cap of 0; the gate's check of numeric definitions does not apply, the value is not a number) |
-| Definition — measurement convention (a number fixed by a published standard; P06 · P12: indirect documents only) | 8 | P01 window 30 days · P02 year of 365 days · P03 daily return interval · P04 mean zero · P05 a day with no bar · P06 day boundary 00:00 UTC · P07 σ × 100 · P12 day close = the latest one-minute bar opened that day |
+| Definition — measurement convention (a number fixed by a published standard; P06 · P12: indirect documents only) | 9 | P01 window 30 days · P02 year of 365 days · P03 daily return interval · P04 mean zero · P05 a day with no bar · P06 day boundary 00:00 UTC · P07 σ × 100 · P12 day close = the latest one-minute bar opened that day · P15 two decimals shown on the page and in documents (display only: the record value is not rounded, and neither the line nor the vault mark reads it) |
 | Price | 0 | — (nothing is held, so there is no fee) |
 | Exposure limit — set from a stated loss tolerance, not by a test | 0 | — |
 | Exception — not tested, decided by the owner, disclosed with its reason and expiry (trading-tool track only) | 0 | — |
 | Reference — a contract constant set by another document | 1 | P14 the vault's bound of 25% per mark (decision `2026-10-21-testnet-vaults-redeployment`) — inherited not tested: that decision lists it as not tested |
 | Not tested — listed in the rule audit | 0 | — |
 
-Operating values, not rows of appendix P: the vault's mark unit, n6 = floor(x × 1,000,000), a truncation to the contract's 1e-6 unit; the vault's mark method, steps within the contract's bound (appendix O of the rulebook, with the test that the record lines do not change); the two decimals the page shows (appendix O: the keeper refuses any value but 2 in the rulebook JSON, and neither the line nor the mark reads it — test O5 in `keeper/test/qvol-operating-values.test.mjs`); the request retries, spacing and time limit, the two fetches of a day and the 300-second receipt limit (appendix O, tests O1–O3, T7 and T-IF24). P08 is not used: the record keeps the value without rounding (owner, 2026-11-02).
+Operating values, not rows of appendix P: the vault's mark unit, n6 = floor(x × 1,000,000), a truncation to the contract's 1e-6 unit; the vault's mark method, steps within the contract's bound (appendix O of the rulebook, with the test that the record lines do not change); the request retries, spacing and time limit, the two fetches of a day and the 300-second receipt limit (appendix O, tests O1–O3, T7 and T-IF24). P08 is not used: the record keeps the value without rounding (owner, 2026-11-02); the two decimals the page shows are P15, and the keeper refuses any value but 2 in the rulebook JSON while neither the line nor the mark reads it (test O5 in `keeper/test/qvol-operating-values.test.mjs`).
 
 Values this decision introduces: every value above except P14 is new. None of them is "not tested" or
 "partly tested"; none is an exception. P14 is inherited not tested, and disclosed as such; it is not a new
 or changed value — the vault runs the same bytecode as the redeployed vaults — and, with no deposits, it
 acts on the display only. Arithmetic, not a row: a complete day has 1,440 one-minute bars (24 × 60).
 
-Numbers fixed by convention (shown in the "not tested" side of the page block): 8 — P01 · P02 · P03 · P04 ·
-P05 · P06 · P07 · P12. Each row of appendix P names its outside methodology document and that
-file's sha256 — P01 · P02 · P03 · P04 · P05 · P07 cite documents of Volmex Labs, Coin Metrics and Cboe. For the day boundary (P06) and the day close (P12) no direct outside sentence was found; their rows cite indirect documents only (the Binance API document, whose bar requests default to UTC; two documents that define a bar's close as the last trade in the interval). The owner adopted the definition with these two rows as written on 2026-11-02. The gate counts six of the eight as numeric measurement conventions: P03 and P05 hold no number.
+Numbers fixed by convention (shown in the "not tested" side of the page block): 9 — P01 · P02 · P03 · P04 ·
+P05 · P06 · P07 · P12 · P15. Each row of appendix P names its outside methodology document and that
+file's sha256 — P01 · P02 · P03 · P04 · P05 · P07 cite documents of Volmex Labs, Coin Metrics and Cboe; P15 cites
+the two-decimal statements of three published methodology documents (Nikkei, CF Benchmarks and Cboe). For the day boundary (P06) and the day close (P12) no direct outside sentence was found; their rows cite indirect documents only (the Binance API document, whose bar requests default to UTC; two documents that define a bar's close as the last trade in the interval). The owner adopted the definition with these two rows as written on 2026-11-02. The gate counts seven of the nine as numeric measurement conventions: P03 and P05 hold no number.
 
 Policy values of the decision rule (fixed with the owner before the registration; not rule values; no
 keeper or contract reads them):
@@ -245,10 +280,9 @@ Disclosures of the trading-tool track: long-run figures — none: nothing is hel
 claimed: nothing is held; a value measures the 30 UTC days before 00:00 UTC of its date. Deposit risk
 confirmation — not applicable: no deposits.
 
-The citation gate (report-only) does not pass this decision. Its report reads "fail" with 12 violations, none
-on a value of the rule: the page block is not yet in the form the gate reads (C10, 11 — one for each row), and
-the keeper JSON's `display.decimals`, an operating value of the page with no row in appendix P since P08 is not
-used, is read by the gate as a value without a citation (C7, 1).
+The citation gate (report-only) passes this decision: its report reads "pass" with 0 violations — twelve rows,
+every one cited (definition 11, of which 7 numeric measurement conventions; reference 1) — run on the website
+commit that holds the page block and this run record (below).
 
 Checks not run for this product, and why: holdability of assets on GIWA (R08) — not applicable, nothing is
 held; security items R44–R46 — no contract code beyond the redeployment's. Run, with their evidence in
@@ -257,34 +291,55 @@ held; security items R44–R46 — no contract code beyond the redeployment's. R
 - A red-team proof-of-concept pass over the new keeper code, the public verifiers and the workflows (R47),
   2026-11-04, offline — false bars, a mismatch between the two fetches of a day, a bypass of the gap
   acceptance, forged lines, the anchor and the in-force gates (`red-team-2026-11-04.md`, sha256
-  `e9a1bcd6276c8863e743016d1b3ef893eb0beb29d7ae4453707ebb59cfccfb90`). Before the fixes it failed: two
+  `806071033f2afe521f1ef6a5ac77a4335975b0bf8410283499f8949dd9b32c6c`). Before the fixes it failed: two
   paths inside the stated trust boundary put a wrong value into the record and the vault — bars falsified
   identically on both fetches of a day, and a self-consistent line appended by hand, which the next run
   anchored. Fixed before this anchor, each with tests: the keeper recomputes a line before it anchors it and
   the whole record each run, fetches the last line's day again and compares the daily candle; the verifier
   fetches every line's day again and checks every anchor's sender; the watchdog recomputes the series; and
-  lesser items (T-IF17–T-IF27 in `keeper/test/vol-index.test.mjs`, V1 and V2 in
-  `keeper/test/qvol-verify.test.mjs`). What remains: if the exchange serves the same false close as a
-  one-minute bar and as a daily candle, the line is written and both verifiers accept it — the trust boundary
-  (rulebook §9A). A halt on an absurd day return, outside the definition, is the owner's call and is not in
-  this decision.
-- The whole test suite at commit `fc89e887e6a3d15f1804adf71b1b0f9e5ee8b0c6`, run one file at a time: 420
-  tests — 407 pass, 0 fail, 12 skipped, 1 to do, the qBTC2X pins test, an open item
-  (`keeper-tests-2026-11-04.txt`, sha256 `8e253e42040fd56dd885b7163d12d952c7dd4c4791f9eb01274b5410d2f67d16`;
+  lesser items (T-IF17–T-IF31 in `keeper/test/vol-index.test.mjs`, V1–V6 in
+  `keeper/test/qvol-verify.test.mjs`). A second pass on 2026-11-04 passed; its findings were fixed in the keeper
+  (each transaction's hash from the signed bytes, T-IF28–T-IF31) and in the verifier (`--keeper`, the decision's
+  anchor in time, strict refetch, V3–V6), and its residuals are in that file. What remains, in the words of
+  `docs/vol-index.md`: "The keeper checks the 1-minute bars against the exchange's daily candle; if both reach the runner falsified to the same close, the line is written and anchored with a wrong value, and only a re-fetch of the bars from another network path (`scripts/verify.mjs --refetch-bars --strict-source`) or another venue's prices reveals it." This is the trust boundary (rulebook §9A). A halt on an absurd day return,
+  outside the definition, is the owner's call and is not in this decision.
+- The whole test suite at commit `8b6c57b75895d7606a203e14d1f7838da8ed79e0`, run one file at a time: 429
+  tests — 416 pass, 0 fail, 12 skipped, 1 to do, the qBTC2X pins test, an open item
+  (`keeper-tests-2026-11-04.txt`, sha256 `97039f098829196a6ba007f1c6f5d586b050233082b555225c3b1e13cfe1773f`;
   R50, failure paths).
 - Dry runs (R49): three runner dry runs of 2026-10-31 to 2026-11-04 (runs 41770565668 and 41770579822 at
   commit 4c077ed under node v22.23.4, run 41772753992 at commit ea9949c under node v22.23.1) wrote the same
-  five lines (2026-11-04: 28.47374564801124); the keeper of this decision writes the same record bytes as the
-  registered one in four dry-run cases (`dryrun-identity-2026-11-04.txt`, sha256
-  `5c697518068965375c0982326fb8c90b9972f972d8ed3ffefb273eeb7e3f8355`).
-- The public verifier's recomputation of this series and the check of every record (R56): done before this
-  anchor, on 2026-11-04 — `scripts/verify.mjs` over the whole record, 0 failures, and its qVOL tests
-  (T-IF13, V1, V2 and the watchdog's recomputation), 4 of 4 (`verify-full-2026-11-04.txt`, sha256
-  `6f23fb67660eb5eaaeca4e5152aa7a01cde282f8c5c38f33310670bdeb608e7e`). The check against the website's copy
+  five lines (2026-11-04: 28.47374564801124). The keeper of this decision (`keeper/vol-index.mjs` sha256
+  `77a480f78ea9d56599c3dd33ccebd9796d98dbdecadf1394cf672770e976ed57`, the same at commit `7e6213f9cb6b94e9cb94b43ec53866d31b14f317` and at
+  `8b6c57b75895d7606a203e14d1f7838da8ed79e0`) writes the same record bytes and prints the same lines as the registered one in four dry-run
+  cases. Both roots read the registered bytes of `keeper/rulebooks/qvol.json`: the in-force file differs from them
+  only in `status`, `asOf`, `inception` and `pendingOwner`, which the dry run does not use, and its in-force
+  fields would change `rule.rulebookSha256` in every line — the script checks that difference separately
+  (`dryrun-identity-2026-11-04.txt`, sha256 `6334693b76606db734493dffd14f8e5465b2602224479ac277b2b6a589f6354e`, run at `7e6213f`; the script
+  `dryrun-identity.mjs` exits 0 at the head of this decision).
+- The public verifier's check of every record (R56): done before this anchor, on 2026-11-04 —
+  `scripts/verify.mjs` at commit `8b6c57b75895d7606a203e14d1f7838da8ed79e0` over the whole
+  record, 0 failures (341 records, 341 anchors, 33 decisions), and its qVOL tests by name (T-IF13, V1, V2 and the
+  watchdog's recomputation), 5 of 5 pass (`verify-full-2026-11-04.txt`, sha256
+  `d3be4ed5e742524f7d3dc20d86241a7145bd6f9a50dba86665d8992879930e23`). This series has no line yet; the verifier's recomputation of it is checked by T-IF13,
+  V1–V6 in `keeper/test/qvol-verify.test.mjs`, the watchdog's test "qVOL recompute" and on the fork rehearsal. The check against the website's copy
   of the record needs this series' files on the website, which is the website's deployment.
-- A scan of the files and commits this branch adds for words a public record does not carry (R54): none
-  (`public-word-scan-2026-11-04.txt`, sha256 `f0b742a407f1c4ed6648a611a574f9411f9690255058a04ba25a6872cf0d080b`).
+- A scan for words a public record does not carry (R54): none in what this branch adds. The scan covers every
+  file of the tree at commit `c3db62961e115bd3c50db4bf37b2fa3e51f77221` with this decision's text in it, and the
+  author, committer and message of every commit since `af79c9099170c47f545ed30bcfc9c61380c41508`: no file the
+  branch adds or changes and no commit message matches; the twelve files of the tree that match are main's,
+  byte-identical to main at that commit, and are listed in the scan (`public-word-scan-2026-11-04.txt`, sha256
+  `c52938a591d81d552e9e876cb152b0743c321d2a2339fd99f2b9187a638e93a8`). The files committed after it — the provenance file, the gate report and this decision —
+  were scanned the same way before the anchor.
 - Roles on chain (R64): read back after the deployment, recorded in the run record of the deployment day.
+
+The checklist run record at this anchor: D11 (gate report) and D12 (page block) are done. D01 is partial: one
+item is open, the owner's judgment of this line against the nearest published index (Volmex BVRV30D); only
+the owner closes it. D05 is partial: the verdict runs read a temporary copy of the inputs in their
+containers; each run checked that copy byte for byte against the committed manifest (3,331 files, 0
+mismatches), and the registered run script has no refusal of an input path and is not changed after the
+registration. D13, D14, D16, D17 and D18 wait for the anchor, the deployment and the launch; D17 also
+checks that the page block's staging commit becomes an ancestor of the website's main.
 
 Judgments — values that differ from the decision rule's output: none. The decision rule chooses no value.
 
@@ -319,10 +374,10 @@ The registration pins fifteen files of implementation A, each by sha256: the byt
 `b8769aa5542313e6e7688266dfff0412a117bc3b` of this repository (branch `keeper/qvol-2026-11-02`), with a bundle of
 that branch in the site repository (sha256 `2b801e8f68905f0100179471cc68b43cc77b76872512f45ab6865047c61683c3`).
 In force, eleven of them are byte-identical to the registered ones (sha256 equal to the registration's). Four
-differ, and only as follows. `keeper/vol-index.mjs` adds the wiring — the in-force path, the anchor, the mark,
-the command line, the fork rehearsal mode and the source and record checks — and the computation module it
+differ, and only as follows. `keeper/vol-index.mjs` adds the wiring — the in-force path, the anchor (each transaction's hash computed from
+the signed bytes), the mark, the command line, the fork rehearsal mode and the source and record checks — and the computation module it
 imports, `keeper/vol-realized.mjs`, is unchanged. `keeper/test/vol-index.test.mjs` adds the tests of that wiring
-(T-IF1–T-IF27) and changes five registered tests — T14, T15, the configuration refusals, the rulebook shape and
+(T-IF1–T-IF31) and changes five registered tests — T14, T15, the configuration refusals, the rulebook shape and
 the fetch time-out — to the new command line and to a rulebook JSON that may be in force; none of them
 checks a computed value. `docs/vol-index.md`
 adds the sections on the line in force, its halts and how it resumes, and its status line.
@@ -330,7 +385,7 @@ adds the sections on the line in force, its halts and how it resumes, and its st
 put it in force; every other field, and so every rule value, is the registered one. The registration places
 the wiring after the test (its §9); no difference changes how a value is computed, and none is a new
 edition of the test: the keeper of this decision writes the same record bytes as the registered one in four
-dry-run cases (`dryrun-identity-2026-11-04.txt`, above). Four of the registered files are of the implied line (`keeper/vol-implied.mjs`,
+dry-run cases, both reading the registered rulebook JSON (`dryrun-identity-2026-11-04.txt`, above). Four of the registered files are of the implied line (`keeper/vol-implied.mjs`,
 `keeper/rulebooks/volbtc-implied.json`, `keeper/test/vol-implied.test.mjs`,
 `keeper/test/fixtures/vol/cboe-sample.json`): that code is inactive and outside this decision; the files are
 listed because the registration lists them.
@@ -338,7 +393,7 @@ listed because the registration lists them.
 | Registered path | Registered sha256 | In force |
 | --- | --- | --- |
 | `keeper/vol-realized.mjs` | `640d738b809b9a9c7dbd32c4e8291be3b0b60358237c5f684ce0818775005adc` | = registered |
-| `keeper/vol-index.mjs` | `1fe6fc44340fbfdb3e4d2bb2d628d119cd38b25ef067dffb23a428d7ca34b9df` | `4444376588c6bbf6482794e61b9b9d43cb0ea8b074994293cb28d57ea3c8c94f` — the wiring: in-force path, anchor, mark, command line, fork rehearsal mode, source and record checks |
+| `keeper/vol-index.mjs` | `1fe6fc44340fbfdb3e4d2bb2d628d119cd38b25ef067dffb23a428d7ca34b9df` | `77a480f78ea9d56599c3dd33ccebd9796d98dbdecadf1394cf672770e976ed57` — the wiring: in-force path, anchor, mark, command line, fork rehearsal mode, source and record checks |
 | `keeper/vol-sources.mjs` | `05c829854227bf7a3c90fbfb6d8316f76d844e03cecdeb211d7adf55d2029463` | = registered |
 | `keeper/vol-implied.mjs` | `7827d9430e316d6634c47d9f657e51ea4e47290af517aa3bc61c5acfbb2ff57d` | = registered |
 | `keeper/vol-index-gaps.json` | `37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570` | = registered |
@@ -347,19 +402,20 @@ listed because the registration lists them.
 | `scripts/verify-vol.mjs` | `c8bee502a19eaec6c1bf01cd6752d7b7a51326a36ad5274f61ba052389b11e2f` | = registered |
 | `keeper/test/vol-checks.test.mjs` | `f42e0828c4f9713f55ebde06b5f24ac46e82660a4186dd409c09a13f55a52bc0` | = registered |
 | `keeper/test/vol-realized.test.mjs` | `bdf330f6c8b3595e349e1364cbcc0da3e2a8a7f8db583948d1dfd29aa24b7600` | = registered |
-| `keeper/test/vol-index.test.mjs` | `c280b8184967f420fdbb96260d055065085b33b1b7a6690d0f4322f38ba6cc2e` | `d13fc356f6f341264c82c10d04df393048d86f81e366ea560f5f4aec9265e504` — the tests of the wiring, T-IF1–T-IF27 |
+| `keeper/test/vol-index.test.mjs` | `c280b8184967f420fdbb96260d055065085b33b1b7a6690d0f4322f38ba6cc2e` | `7fd32af6b3c5f85639e32806090d8507a476ce227c8ff3125b41aaae2e628a28` — the tests of the wiring, T-IF1–T-IF31 |
 | `keeper/test/vol-implied.test.mjs` | `998bb8e46050c59fa267327db8e733f60f2ee239259404f6c038815cdcedf897` | = registered |
 | `keeper/test/vol-helpers.mjs` | `399879e6c2a98bd19b42fc3775a3607a734938c0d1b1216552aa9e15475de820` | = registered |
 | `keeper/test/fixtures/vol/cboe-sample.json` | `29f276b522051ed33e942e072f0d15dd22e18717125faba3f9b98f8a6c5b353d` | = registered |
-| `docs/vol-index.md` | `e8c1b3874d2dcd9e4f40dfd7df9cd3ab97fdf81d53464befe981c3a3d198effd` | `57999160cad6e255be4cdabae92fb3dd1c17336d8d6d8148edf09e1e8d18518d` — the line in force, its halts and how it resumes, the status line |
+| `docs/vol-index.md` | `e8c1b3874d2dcd9e4f40dfd7df9cd3ab97fdf81d53464befe981c3a3d198effd` | `325b69c821d8f0923e97992b7b8a2b88fd2d1f276b5f61be063ba2ccc95561d6` — the line in force, its halts and how it resumes, the status line |
 
 `scripts/verify.mjs`: old sha256 `65f99e7c92194cf5515c2ee8a5358681a7553ee44a5ab36c05f8c77e58d890b1` (at this repository's main) → new
-`f6e3c063a74409dd487efe394c66eb3e734061e643fa1d0a13bc7d7c91f9859b`. The changes add the qVOL series: its
+`3b20cb71dffa61cc3f9e3a99b933606ee2bd1b316039673889cbd233521ccfa0`. The changes add the qVOL series: its
 recomputation through `scripts/verify-vol.mjs`, its binding to this decision, the second fetch of every line's
-day (`--refetch-bars`) and the check of every anchor's sender. The other series are verified as before. The
+day (`--refetch-bars`, strict for this series), the check of every anchor's sender (`--keeper`) and of the
+decision anchor's block. The other series are verified as before. The
 pins of `scripts/verify.mjs` in earlier decisions stay true of the file at the commits they name.
 
 | Repository | HEAD at pinning |
 | --- | --- |
-| quadrix-track-record (rulebook, rulebook JSON, keeper with its calculation files and wiring, verifiers, vault registry entry, deployment tool and artifact, publishable test copies and launch evidence, the provenance file, the gate report and the owner-decision extract, each pinned by sha256 above; this decision is added in the next commit, and the merge into main is recorded in a later dated checklist run record) | `8e0be4b8e19adbc165d9eb43640d10e3ebbb7c28` |
-| quadrix (site, private — contract source, checklist run record, registration; the commit the gate report was run on) | `f70e71a9a41328fbab5ae619f7d234c02b6e6c07` |
+| quadrix-track-record (rulebook, rulebook JSON, keeper with its calculation files and wiring, verifiers, vault registry entry, deployment tool and artifact, publishable test copies and launch evidence, the provenance file, the gate report and the owner-decision extract, each pinned by sha256 above; this decision is added in the next commit, and the merge into main is recorded in a later dated checklist run record) | `73dd07b40e8e1ed98d77950db12c2cfbdbbf4484` |
+| quadrix (site, private — contract source, checklist run record, registration, page block; the commit the gate report was run on, on the branch `staging/qvol-2026-11-04`, with the run record from main) | `bc9e772937ca79d1eebaa35ff6c81b84ff2805eb` |
