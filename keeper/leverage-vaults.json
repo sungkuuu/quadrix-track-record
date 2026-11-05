@@ -29,11 +29,11 @@
   },
   "qvol": {
     "chainId": 91342,
-    "address": null,
+    "address": "0xE927e645f139c240EFaa4b55F889CABF73508Bdc",
     "gate": {
       "mode": "step"
     },
-    "deployTx": null,
-    "block": null
+    "deployTx": "0x5807cad3aec45615bd40c2d6b968a34c6a5f053ef994666fc241451cb3dca6c4",
+    "block": 40498144
   }
 }
