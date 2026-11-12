@@ -3,8 +3,8 @@
   "index": "qbtc2x",
   "rulebook": {
     "path": "rulebooks/qbtc2x.md",
-    "commit": "bada86dd70bff5b3b6890e2dea4fec759731c13a",
-    "sha256": "219987e23ae7cf398b5e2419b91b22eb9686c126c8ad5c75174e702fd02a42ae"
+    "commit": "015d0986821562eeb75b02472191b8d9a657e04c",
+    "sha256": "9c6ee2f6f79ed0ba0c76cca73d8bbee521e19cd8bcc9247a81280b008739025e"
   },
   "checklistRun": {
     "path": "docs/methodology/checklist-runs/qbtc2x/2026-10-12.json",
@@ -251,7 +251,7 @@
       "resultFiles": [],
       "ruleOutput": null,
       "selectedBy": null,
-      "decision": "owner 2026-10-05 (no management fee in stage A; the key drives nothing — the level carries no fee and the vault contract has no fee function)",
+      "decision": "owner 2026-10-13, decision 2026-11-12-qbtc2x-management-fee: the management fee is 1% a year, can only be lowered, is not applied to the stage A level, and nothing collects it. The keeper JSON key fees.managementBps stays 0 — the record of the owner decision of 2026-10-05 (no management fee in stage A); the inception decision pins that file by sha256 and the key drives nothing",
       "definitionKind": null,
       "inForceSince": null,
       "auditRef": null,
