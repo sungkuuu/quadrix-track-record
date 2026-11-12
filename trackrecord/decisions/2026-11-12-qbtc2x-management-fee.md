@@ -85,7 +85,7 @@ are the record of the owner's decision of 2026-10-05, which this decision replac
 The fee in force is the one stated here.
 
 `keeper/rulebooks/qbtc2x.provenance.json` is rewritten with this amendment (sha256 `⟨provenance sha256⟩`): it
-names the amended rulebook, and its row P18 names this decision. The inception decision's pin of the provenance
+names the amended rulebook and this decision's checklist run record, and its row P18 names this decision. The inception decision's pin of the provenance
 file (sha256 `fd88061d162feb868717dd9ce2d298be60ed86ae9756faef796af129cc161f17`) stays true of the file at the
 commit it names. The gate report `rulebooks/qbtc2x.gate.json` is written again for the amended rulebook
 (below); the inception decision's pin of that report stays true of the file at the commit it names.
@@ -93,9 +93,13 @@ commit it names. The gate report `rulebooks/qbtc2x.gate.json` is written again f
 ## Tested, and not tested (pinned)
 
 Parameter citation table: appendix P of `rulebooks/qbtc2x.md` (pinned above); keeper provenance
-`keeper/rulebooks/qbtc2x.provenance.json` (pinned above). Checklist run record: ⟨run record path and sha256, or
-the sentence that no new run record was written and why⟩. Gate report: `rulebooks/qbtc2x.gate.json` (sha256
-`⟨gate report sha256⟩`).
+`keeper/rulebooks/qbtc2x.provenance.json` (pinned above). Checklist run record:
+`docs/methodology/checklist-runs/qbtc2x/2026-11-12.json` (site repository, private; sha256 `⟨run record sha256⟩`).
+Every evidence file it pins can be published: the keeper tests, the two dry runs, the verifier output, the word
+scan and the review summary written for this decision are in `docs/methodology/checklist-runs/qbtc2x/evidence/`
+of the site repository, each with its sha256 in the run record; the rows of the level's tested values carry the
+result files of the inception's tests, unchanged. The run record names no internal file. Gate report:
+`rulebooks/qbtc2x.gate.json` (sha256 `⟨gate report sha256⟩`).
 
 | Basis | Count | Parameters |
 | --- | --- | --- |
@@ -110,7 +114,8 @@ A price is not a tested value: a lower fee is better for the holder at any level
 
 The citation gate (report-only) does not pass this decision. Its report for the amended rulebook reads
 "fail" with ⟨20⟩ violations. ⟨19⟩ are the ones the report carried before this decision: the checklist run
-record of 2026-10-12 is in an earlier form than the gate now reads (C4). One is new (C5): row P18 states 1% a
+record of 2026-10-12, which the rows of the inherited tested values cite, is in an earlier form than the gate
+now reads (C4). One is new (C5): row P18 states 1% a
 year and the keeper JSON key it points to holds 0, for the reason given above. The report counts P18 as the one
 changed value and counts no untested value among the changed.
 
@@ -136,5 +141,6 @@ Judgments: none.
 | `keeper/rulebooks/qbtc2x.json` | sha256 `ae8db495ba8bb9336aa598d8ef4ff36d51c7335cfe77de702ce74c525235ce88` (unchanged) |
 | `keeper/rulebooks/qbtc2x.provenance.json` | sha256 `⟨provenance sha256⟩` |
 | `rulebooks/qbtc2x.gate.json` | sha256 `⟨gate report sha256⟩` |
+| `docs/methodology/checklist-runs/qbtc2x/2026-11-12.json` (site, private) | sha256 `⟨run record sha256⟩` |
 | quadrix-track-record, HEAD at pinning | `⟨record commit⟩` |
 | quadrix (site, private — the commit the gate report was run on) | `⟨site commit⟩` |
