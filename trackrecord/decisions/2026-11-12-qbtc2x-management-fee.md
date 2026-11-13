@@ -51,7 +51,7 @@ after; that sentence stays.
 ## Why it is recorded now
 
 The owner set the fee on 2026-10-13, the day after the inception decision was anchored. The site has stated
-the fee since that day: its production deploy of 2026-10-13T08:14Z carried the sentence. This repository was not
+the fee since that day: its production deploy of 2026-10-13T08:14Z carried the fee statement. This repository was not
 updated: for ⟨days⟩ days the anchored decision, the rulebook and the
 keeper JSON said that no fee had been set, while the site said 1% a year. The difference was found on
 2026-11-12. This document closes it. The same fee was recorded for qETH1.5X at its inception
