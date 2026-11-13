@@ -1,7 +1,5 @@
 # qBTC2X — the management fee is 1% a year, a price set on 2026-10-13; recorded 2026-11-13
 
-> DRAFT · NOT ANCHORED. The date in the file name must be the UTC day of the anchor. Values in ⟨ ⟩ are filled after the final commits.
-
 **Decided:** 2026-10-13 (owner). **Written:** 2026-11-13. **Effective:** 2026-11-13 — the ledger's `effectiveFrom`
 is the date in the file name; the fee has been the owner's decision since 2026-10-13, and nothing in the series
 changes on either date. **Series:** `trackrecord/record-qbtc2x.jsonl` — unchanged. All dates are UTC unless marked.
@@ -73,8 +71,8 @@ records the fee. The keeper JSON stays as written, for the reason given below. T
 
 ## The rules in force (pinned)
 
-The rulebook is `rulebooks/qbtc2x.md` at commit `⟨rulebook commit⟩` of this repository (sha256
-`⟨rulebook sha256⟩`). This decision amends it only in the five places named above, in appendix R (a line that names this amendment's
+The rulebook is `rulebooks/qbtc2x.md` at commit `9411e4a7ee609f55223b94f6834ca16ebaf30fca` of this repository (sha256
+`d28b9a5770799c782c806b529de09dc1195558fe1fb4b95341a79c08c0211e35`). This decision amends it only in the five places named above, in appendix R (a line that names this amendment's
 checklist run record) and in its date line. The
 inception decision's pin of the rulebook (commit `bada86dd70bff5b3b6890e2dea4fec759731c13a`, sha256
 `219987e23ae7cf398b5e2419b91b22eb9686c126c8ad5c75174e702fd02a42ae`) stays true of the file at the commit it
@@ -88,7 +86,7 @@ are the record of the owner's decision of 2026-10-05. The owner's decision of 20
 This document records the decision of 2026-10-13. The key drives nothing.
 The fee in force is the one stated here.
 
-`keeper/rulebooks/qbtc2x.provenance.json` is rewritten with this amendment (sha256 `⟨provenance sha256⟩`): it
+`keeper/rulebooks/qbtc2x.provenance.json` is rewritten with this amendment (sha256 `444bc2418a57a19c1d83d3f9dd4a4d182dea7f90b0af91dcb9f686d8152bb091`): it
 names the amended rulebook and this decision's checklist run record, and its row P18 names this decision. The inception decision's pin of the provenance
 file (sha256 `fd88061d162feb868717dd9ce2d298be60ed86ae9756faef796af129cc161f17`) stays true of the file at the
 commit it names. The gate report `rulebooks/qbtc2x.gate.json` is written again for the amended rulebook
@@ -98,7 +96,7 @@ commit it names. The gate report `rulebooks/qbtc2x.gate.json` is written again f
 
 Parameter citation table: appendix P of `rulebooks/qbtc2x.md` (pinned above); keeper provenance
 `keeper/rulebooks/qbtc2x.provenance.json` (pinned above). Checklist run record:
-`docs/methodology/checklist-runs/qbtc2x/2026-11-12.json` (site repository, private; sha256 `⟨run record sha256⟩`).
+`docs/methodology/checklist-runs/qbtc2x/2026-11-12.json` (site repository, private; sha256 `20dcf4db683aa2927f1551a72de10e9ed7463939bf88a6f8cefcd2b00ccfe3c9`).
 Every evidence file it pins can be published: the keeper tests, the two dry runs, the verifier output, the word
 scan and the two review summaries written for this decision are in `docs/methodology/checklist-runs/qbtc2x/evidence/`
 of the site repository, each with its sha256 in the run record; the rows of the level's tested values carry the
@@ -108,7 +106,7 @@ The inception decision said that before the next anchored decision the run recor
 can be published; five decisions have been anchored since then, and that run record was not changed.
 This record keeps that promise late: the record of 2026-10-12 is not edited, and this new record carries the
 evidence instead. Gate report:
-`rulebooks/qbtc2x.gate.json` (sha256 `⟨gate report sha256⟩`).
+`rulebooks/qbtc2x.gate.json` (sha256 `12436b874f8b208b60367e9de79402f9db0167b6c0f755d3cd70e8426d233684`).
 
 | Basis | Count | Parameters |
 | --- | --- | --- |
@@ -122,7 +120,7 @@ Values this decision introduces or changes: one, P18. It is a price. None is "no
 A price is not a tested value: a lower fee is better for the holder at any level, so no test chooses it.
 
 The citation gate (report-only) does not pass this decision. Its report for the amended rulebook reads
-"fail" with ⟨20⟩ violations. ⟨19⟩ are the ones the report carried before this decision: the checklist run
+"fail" with 20 violations. 19 are the ones the report carried before this decision: the checklist run
 record of 2026-10-12, which the rows of the inherited tested values cite, is in an earlier form than the gate
 now reads (C4). One is new (C5): row P18 states 1% a
 year and the keeper JSON key it points to holds 0, for the reason given above. The report counts P18 as the one
@@ -159,10 +157,10 @@ Judgments: none.
 | File | Commit / sha256 |
 | --- | --- |
 | `2026-10-13-qbtc2x-paper-inception` (`trackrecord/decisions.jsonl`) | sha256 `3ffc004d025f68b1f955cd1f5ece8ae028cadbc5e500d15dc28bd1e4318177eb`, tx `0x822c2aa6f0c16140f24725e2d2fb43121e10f163f4afef26cfb43a2c1177a2cf`, anchored 2026-10-12T03:38:50Z |
-| `rulebooks/qbtc2x.md` | commit `⟨rulebook commit⟩`, sha256 `⟨rulebook sha256⟩` |
+| `rulebooks/qbtc2x.md` | commit `9411e4a7ee609f55223b94f6834ca16ebaf30fca`, sha256 `d28b9a5770799c782c806b529de09dc1195558fe1fb4b95341a79c08c0211e35` |
 | `keeper/rulebooks/qbtc2x.json` | sha256 `ae8db495ba8bb9336aa598d8ef4ff36d51c7335cfe77de702ce74c525235ce88` (unchanged) |
-| `keeper/rulebooks/qbtc2x.provenance.json` | sha256 `⟨provenance sha256⟩` |
-| `rulebooks/qbtc2x.gate.json` | sha256 `⟨gate report sha256⟩` |
-| `docs/methodology/checklist-runs/qbtc2x/2026-11-12.json` (site, private) | sha256 `⟨run record sha256⟩` |
-| quadrix-track-record, HEAD at pinning | `⟨record commit⟩` |
-| quadrix (site, private — the commit the gate report was run on) | `⟨site commit⟩` |
+| `keeper/rulebooks/qbtc2x.provenance.json` | sha256 `444bc2418a57a19c1d83d3f9dd4a4d182dea7f90b0af91dcb9f686d8152bb091` |
+| `rulebooks/qbtc2x.gate.json` | sha256 `12436b874f8b208b60367e9de79402f9db0167b6c0f755d3cd70e8426d233684` |
+| `docs/methodology/checklist-runs/qbtc2x/2026-11-12.json` (site, private) | sha256 `20dcf4db683aa2927f1551a72de10e9ed7463939bf88a6f8cefcd2b00ccfe3c9` |
+| quadrix-track-record, HEAD at pinning | `f15a6a13d08829646464155ca23e12a5f3322fe1` |
+| quadrix (site, private — the commit the gate report was run on) | `d1d27186715f29da6b99a88e6988e204e54011eb` |
