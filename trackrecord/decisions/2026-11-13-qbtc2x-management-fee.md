@@ -135,7 +135,7 @@ of collateral and debt on GIWA (R08) — not applicable, stage A holds none; sec
 applicable, no code changes. Steps of this decision's run record that close after the anchor, in a later dated
 follow-up run record of this product: the anchor of this document after its two reviews and its rehearsal (D16),
 the one site sentence that quotes the rulebook's "none in stage A" (D17), and the check that this decision, the
-rulebook, the site and the keeper JSON state P18 alike (D18). A passing gate report for the amended rulebook (D11)
+rulebook and the site state P18 alike and that the keeper JSON is unchanged (D18). A passing gate report for the amended rulebook (D11)
 waits for a later decision: the report pinned above fails, and its C5 stays until a later decision replaces the
 keeper JSON. One step stays as the inception's run record left it: the roles on chain (D14, R64), read after the
 redeployment and stated in `2026-10-21-testnet-vaults-redeployment`.
