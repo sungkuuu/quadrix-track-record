@@ -1,8 +1,8 @@
-# qBTC2X — the management fee is 1% a year, a price set on 2026-10-13; recorded 2026-11-12
+# qBTC2X — the management fee is 1% a year, a price set on 2026-10-13; recorded ⟨anchor date⟩
 
 > DRAFT · NOT ANCHORED. The date in the file name must be the UTC day of the anchor. Values in ⟨ ⟩ are filled after the final commits.
 
-**Decided:** 2026-10-13 (owner). **Written:** 2026-11-12. **Effective:** 2026-11-12 — the ledger's `effectiveFrom`
+**Decided:** 2026-10-13 (owner). **Written:** ⟨anchor date⟩. **Effective:** ⟨anchor date⟩ — the ledger's `effectiveFrom`
 is the date in the file name; the fee has been the owner's decision since 2026-10-13, and nothing in the series
 changes on either date. **Series:** `trackrecord/record-qbtc2x.jsonl` — unchanged. All dates are UTC unless marked.
 
@@ -51,7 +51,8 @@ after; that sentence stays.
 ## Why it is recorded now
 
 The owner set the fee on 2026-10-13, the day after the inception decision was anchored. The site has stated
-the fee since that day. This repository was not updated: for 30 days the anchored decision, the rulebook and the
+the fee since that day: its production deploy of 2026-10-13T08:14Z carried the sentence. This repository was not
+updated: for ⟨days⟩ days the anchored decision, the rulebook and the
 keeper JSON said that no fee had been set, while the site said 1% a year. The difference was found on
 2026-11-12. This document closes it. The same fee was recorded for qETH1.5X at its inception
 (`2026-10-16-qeth15-paper-inception`); qBTC2X was missed.
@@ -72,7 +73,8 @@ keeper JSON said that no fee had been set, while the site said 1% a year. The di
 ## The rules in force (pinned)
 
 The rulebook is `rulebooks/qbtc2x.md` at commit `⟨rulebook commit⟩` of this repository (sha256
-`⟨rulebook sha256⟩`). This decision amends it only in the five places named above and in its date line. The
+`⟨rulebook sha256⟩`). This decision amends it only in the five places named above, in appendix R (a line that names this amendment's
+checklist run record) and in its date line. The
 inception decision's pin of the rulebook (commit `bada86dd70bff5b3b6890e2dea4fec759731c13a`, sha256
 `219987e23ae7cf398b5e2419b91b22eb9686c126c8ad5c75174e702fd02a42ae`) stays true of the file at the commit it
 names.
@@ -81,7 +83,8 @@ names.
 `ae8db495ba8bb9336aa598d8ef4ff36d51c7335cfe77de702ce74c525235ce88`). The keeper and `scripts/verify.mjs` bind
 every line of this series to that file through the inception decision, so one changed byte would stop the
 series. Its key `fees.managementBps` stays 0 and its note "no management fee in stage A" stays as written: they
-are the record of the owner's decision of 2026-10-05, which this decision replaces. The key drives nothing.
+are the record of the owner's decision of 2026-10-05, which the owner's decision of 2026-10-13 replaced and this
+document records. The key drives nothing.
 The fee in force is the one stated here.
 
 `keeper/rulebooks/qbtc2x.provenance.json` is rewritten with this amendment (sha256 `⟨provenance sha256⟩`): it
@@ -98,7 +101,8 @@ Parameter citation table: appendix P of `rulebooks/qbtc2x.md` (pinned above); ke
 Every evidence file it pins can be published: the keeper tests, the two dry runs, the verifier output, the word
 scan and the review summary written for this decision are in `docs/methodology/checklist-runs/qbtc2x/evidence/`
 of the site repository, each with its sha256 in the run record; the rows of the level's tested values carry the
-result files of the inception's tests, unchanged. The run record names no internal file. Gate report:
+result files of the inception's tests, unchanged. The run record names no internal file. The inception's run record of 2026-10-12 stays as the inception decision
+pinned it; this record names it only as the source of the rows it carries, and pins none of its files. Gate report:
 `rulebooks/qbtc2x.gate.json` (sha256 `⟨gate report sha256⟩`).
 
 | Basis | Count | Parameters |
@@ -128,8 +132,8 @@ Judgments: none.
 2. The keeper JSON is unchanged: `shasum -a 256 keeper/rulebooks/qbtc2x.json` returns the value above, and
    every line of `trackrecord/record-qbtc2x.jsonl` carries it as `rule.rulebookSha256`.
 3. No fee in the level: `grep -ci fee keeper/leverage-step.mjs keeper/leverage-index.mjs` returns 0 for both.
-4. No fee function in the vault: the `abi` of `keeper/artifacts/QuadrixIndexVault.json` has no entry whose
-   name contains "fee"; the vault's code is compared with that artifact by `keeper/deploy-mark-vault.mjs`.
+4. No fee function in the vault: the `abi` of `keeper/artifacts/QuadrixIndexVault.json` has no function or
+   event whose name contains "fee" (31 functions, 11 events); the vault's code is compared with that artifact by `keeper/deploy-mark-vault.mjs`.
 5. The series: `node scripts/verify.mjs --dir ./trackrecord --series qbtc2x --recompute-only`.
 
 ## Pinned
