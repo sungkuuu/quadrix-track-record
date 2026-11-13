@@ -6,7 +6,7 @@
   "rulebook": {
     "path": "rulebooks/qbtc2x.md",
     "repo": "record",
-    "sha256": "219987e23ae7cf398b5e2419b91b22eb9686c126c8ad5c75174e702fd02a42ae"
+    "sha256": "d28b9a5770799c782c806b529de09dc1195558fe1fb4b95341a79c08c0211e35"
   },
   "keeperJson": {
     "path": "keeper/rulebooks/qbtc2x.json",
@@ -14,15 +14,15 @@
   },
   "provenance": {
     "path": "keeper/rulebooks/qbtc2x.provenance.json",
-    "sha256": "fd88061d162feb868717dd9ce2d298be60ed86ae9756faef796af129cc161f17"
+    "sha256": "444bc2418a57a19c1d83d3f9dd4a4d182dea7f90b0af91dcb9f686d8152bb091"
   },
   "checklistRun": {
-    "path": "docs/methodology/checklist-runs/qbtc2x/2026-10-12.json",
-    "sha256": "8fa05a5119c99f34891495614868cf42886a469d3f6e5898b569dc6da7c9c4f5"
+    "path": "docs/methodology/checklist-runs/qbtc2x/2026-11-12.json",
+    "sha256": "20dcf4db683aa2927f1551a72de10e9ed7463939bf88a6f8cefcd2b00ccfe3c9"
   },
-  "siteCommit": "76ecd221cef058145cd3a6faa0026641d8b2cb46",
+  "siteCommit": "d1d27186715f29da6b99a88e6988e204e54011eb",
   "siteCommitPushed": true,
-  "base": "HEAD",
+  "base": "010adbbde791be6bb23b28aef7b40e483ed165d9",
   "counts": {
     "tested": 1,
     "partial": 0,
@@ -41,7 +41,9 @@
     "inheritedUntested": 0,
     "untested": 18
   },
-  "changedParams": [],
+  "changedParams": [
+    "P18"
+  ],
   "exceptionsAmongChanged": 0,
   "exposureAmongChanged": 0,
   "exceptions": [],
@@ -51,6 +53,7 @@
   "checksSkipped": [],
   "result": "fail",
   "violationsByCheck": {
-    "C4": 19
+    "C4": 19,
+    "C5": 1
   }
 }
