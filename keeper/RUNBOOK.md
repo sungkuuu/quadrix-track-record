@@ -244,10 +244,14 @@ later leg, which then had no line for that day. No line in
 Unchanged — **the anchor itself fails** (gas, a nonce race past five tries,
 RPC): the leg exits 1 with the line and state on disk and no anchor entry.
 "Commit records" still commits them, and `scripts/verify.mjs` then reports
-`no anchor for this record` for that seq. Nothing anchors it later: a
-same-day re-run takes the record-exists path, which marks and does not
-anchor. The next day's anchor commits to a head whose `prevHash` chain
-includes the line, so its content is fixed from then, but not its date. The
+`no anchor for this record` for that seq. Since 2026-11-16 the next run of
+that leg with `--anchor` and the key — a same-day re-run or the next
+scheduled run — anchors every line without an anchor entry before its own
+work (`keeper/late-anchor.mjs`; the entry carries the line's own date, and
+the anchor's block time shows how late it came). A late anchor that fails
+is reported, the leg exits 1, and its own line is still written and
+anchored; the run after tries the old line again. Before that, nothing
+anchored such a line later (Triens #53, 2026-11-16). The
 anchor and the marks use the same GIWA RPC, so an RPC outage fails the anchor
 before any mark is tried. The N1Q record (`scripts/track-record.mjs`,
 `track-record.yml`) has no basket mark; there a failed anchor also skips the

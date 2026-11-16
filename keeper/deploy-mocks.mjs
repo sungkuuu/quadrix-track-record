@@ -71,6 +71,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWalletClient, http, getAddress, isAddress, encodeDeployData, zeroAddress, parseAbi } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { isNonceRace } from './nonce-race.mjs';
 import {
   INDEXES, TICKER, GIWA_RPC, GIWA_CHAIN_ID, ERC20_ABI, chainFor, isLocalRpc, sleep, makeReader, readVault,
   toRefPrice, decimalsByPrice, loadRulebook, readBook, recordRow, loadSourceA, loadSourceB,
@@ -143,7 +144,7 @@ async function sendNonceSafe(fn, tries = 5) {
   for (let i = 0; i < tries; i++) {
     try { return await fn(); } catch (e) {
       last = e;
-      if (!/nonce/i.test(String(e && e.message))) throw e;
+      if (!isNonceRace(e)) throw e; // keeper/nonce-race.mjs
       await sleep(4000 * (i + 1));
     }
   }
