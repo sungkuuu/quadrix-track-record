@@ -22,6 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWalletClient, createPublicClient, http, defineChain, parseAbi } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { sendNonceSafe } from './nonce-race.mjs';
 import { bookMembers } from './qx20-members.mjs';
 
 // 2026-09-14: redeployed with a reentrancy guard and a corrected header —
@@ -320,9 +321,11 @@ async function main() {
   // Before the transaction: nothing after it may throw before the ledger line is written.
   const members = bookMembers(units, prices);
 
-  const hash = await wallet.writeContract({
+  // The key is shared with the other senders: a nonce race is resent under a
+  // fresh nonce, anything else is thrown (keeper/nonce-race.mjs).
+  const hash = await sendNonceSafe(() => wallet.writeContract({
     address: VAULT, abi: ABI, functionName: 'setNav', args: [nav, nav],
-  });
+  }));
   await publicClient.waitForTransactionReceipt({ hash });
 
   const postedAt = new Date().toISOString();

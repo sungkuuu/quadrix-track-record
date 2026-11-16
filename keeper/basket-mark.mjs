@@ -50,6 +50,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createWalletClient, createPublicClient, http, defineChain, parseAbi, getAddress } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { sendNonceSafe } from './nonce-race.mjs';
 
 /** Strictly inside the contract's NAV_BAND_BPS (1,500): 14.9%. */
 export const STEP_BPS = 1_490n;
@@ -191,17 +192,8 @@ async function requireMined(publicClient, hash, what) {
   return receipt;
 }
 
-async function sendNonceSafe(fn, tries = 5) {
-  let last;
-  for (let i = 0; i < tries; i++) {
-    try { return await fn(); } catch (e) {
-      last = e;
-      if (!/nonce/i.test(String(e && e.message))) throw e;
-      await new Promise((r) => setTimeout(r, 4000 * (i + 1)));
-    }
-  }
-  throw last;
-}
+// sendNonceSafe: keeper/nonce-race.mjs (a nonce race is "nonce" or "replacement
+// transaction underpriced"; 2026-11-16).
 
 export async function markBasket(args) {
   const { index, basket, level, navBase, prices, members, reconstituted, dryRun, keeperDir, date, pricesB = null } = args;
