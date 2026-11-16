@@ -92,6 +92,8 @@ import { fileURLToPath } from 'node:url';
 import { createWalletClient, createPublicClient, http, defineChain, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { markBasket } from './basket-mark.mjs';
+import { sendNonceSafe } from './nonce-race.mjs';
+import { readJsonl, unanchoredLines, anchorUnanchored } from './late-anchor.mjs';
 import { rankingFor } from './rulebook-schedule.mjs';
 import { loadDTB3, rateOn, accrue, WC_PROXY_ID } from './working-capital.mjs';
 import { evaluateSpecialSituation } from './special-situation.mjs';
@@ -2501,17 +2503,18 @@ async function runSleeveIndex() {
   );
 }
 
+const giwaSepolia = defineChain({
+  id: 91342,
+  name: 'GIWA Sepolia',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: { default: { http: ['https://sepolia-rpc.giwa.io'] } },
+});
+
 /** The anchor step, identical for every record-writing leg: calldata-as-
  *  commitment on GIWA Sepolia under the prefix `qxpi-{index}:`, a genuine
  *  no-op when KEEPER_PK is absent. Nonce-safe: the keeper key is shared with
  *  the other crons and the desk. */
 async function maybeAnchor(record, dateStr) {
-  const giwaSepolia = defineChain({
-    id: 91342,
-    name: 'GIWA Sepolia',
-    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    rpcUrls: { default: { http: ['https://sepolia-rpc.giwa.io'] } },
-  });
   if (DO_ANCHOR) {
     const pk = process.env.KEEPER_PK;
     if (!pk) {
@@ -2521,27 +2524,49 @@ async function maybeAnchor(record, dateStr) {
       const wallet = createWalletClient({ account, chain: giwaSepolia, transport: http() });
       const publicClient = createPublicClient({ chain: giwaSepolia, transport: http() });
       // Shared key across crons and the desk: on a nonce race, wait and resend
-      // (viem refetches the nonce per call); anything else is rethrown.
-      let hash;
-      for (let attempt = 0; ; attempt++) {
-        try {
-          hash = await wallet.sendTransaction({
-            to: account.address,
-            value: 0n,
-            data: toHex(`qxpi-${INDEX}:` + record.hash),
-          });
-          break;
-        } catch (e) {
-          if (attempt >= 4 || !/nonce/i.test(String(e && e.message))) throw e;
-          await new Promise((r) => setTimeout(r, 4000 * (attempt + 1)));
-        }
-      }
+      // (viem refetches the nonce per call); anything else is rethrown
+      // (keeper/nonce-race.mjs).
+      const hash = await sendNonceSafe(() =>
+        wallet.sendTransaction({
+          to: account.address,
+          value: 0n,
+          data: toHex(`qxpi-${INDEX}:` + record.hash),
+        })
+      );
       await publicClient.waitForTransactionReceipt({ hash });
       fs.appendFileSync(ANCHORS_PATH, JSON.stringify({ date: dateStr, seq: record.seq, headHash: record.hash, txHash: hash }) + '\n');
       console.log(`anchored on GIWA Sepolia: ${hash}`);
     }
   } else {
     console.log('--anchor not passed — no on-chain anchor attempted for this run.');
+  }
+}
+
+/** Before today's work, an anchoring run with the key anchors every line an
+ *  earlier run wrote but did not anchor (keeper/late-anchor.mjs; Triens #53,
+ *  2026-11-16), each entry dated with its line's own date. Never in a dry run.
+ *  A failure here is reported and makes the run exit 1, but today's line is
+ *  still computed and anchored: the next anchoring run tries the old line
+ *  again. */
+async function anchorLateLines() {
+  if (!DO_ANCHOR || DRY_RUN || !process.env.KEEPER_PK) return;
+  if (unanchoredLines(readJsonl(RECORDS_PATH), readJsonl(ANCHORS_PATH)).length === 0) return;
+  const account = privateKeyToAccount(process.env.KEEPER_PK);
+  try {
+    await anchorUnanchored({
+      recordsPath: RECORDS_PATH,
+      anchorsPath: ANCHORS_PATH,
+      prefix: `qxpi-${INDEX}:`,
+      wallet: createWalletClient({ account, chain: giwaSepolia, transport: http() }),
+      publicClient: createPublicClient({ chain: giwaSepolia, transport: http() }),
+      address: account.address,
+    });
+  } catch (e) {
+    const msg = String(e?.shortMessage ?? e?.message ?? e).replace(/\s+/g, ' ').trim().slice(0, 300);
+    console.error(e);
+    console.error(`${RULEBOOK.ticker}: late anchor FAILED — a line written earlier is still unanchored; the next anchoring run tries again: ${msg}`);
+    if (process.env.GITHUB_ACTIONS === 'true') console.log(`::error title=${RULEBOOK.ticker} late anchor failed::${msg}`);
+    process.exitCode = 1;
   }
 }
 
@@ -2595,6 +2620,7 @@ function describeCategorySources() {
 
 async function main() {
   if (INDEX === 'qx20') return markQx20Basket();
+  await anchorLateLines();
   if (SLEEVE_INDEXES.has(INDEX)) return runSleeveIndex();
 
   const dateStr = todayUTC();
