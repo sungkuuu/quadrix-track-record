@@ -158,11 +158,14 @@ test('qVOL: its decision (<date>-qvol-inception) is effective the day before the
   assert.deepEqual(checkSeries({ dir, now: at('2026-11-13T12:00:00Z'), series: ['qvol'] }).problems, ['qvol: line seq 2 (2026-11-13) has no anchor txHash']);
 });
 
-test('qVOL recompute (red team R47 F5): the watchdog runs scripts/verify.mjs --recompute-only --series qvol — an honest record is quiet; a corrupted old line, which the freshness and anchor checks do not see, is one problem line naming the failure; only qvol is recomputed, and this repository (no qVOL record yet) is quiet', async () => {
+test('qVOL recompute (red team R47 F5): the watchdog runs scripts/verify.mjs --recompute-only --series qvol — an honest record is quiet; a corrupted old line, which the freshness and anchor checks do not see, is one problem line naming the failure; only qvol is recomputed, and the record of this repository (none before 2026-11-06, lines since) is quiet', async () => {
   assert.deepEqual(RECOMPUTE, ['qvol']);
   let r = recomputeSeries({ dir: path.join(REPO, 'trackrecord') });
   assert.deepEqual(r.problems, []);
-  assert.deepEqual(r.summary, ['qvol verifies (verify.mjs --recompute-only: QVOL not started)']);
+  // this repository's own record: "not started" before 2026-11-06, then N lines from 2026-11-06 — the assertion
+  // must hold on either side of the first line (it was written for the first state and failed from 2026-11-06)
+  assert.equal(r.summary.length, 1);
+  assert.match(r.summary[0], /^qvol verifies \(verify\.mjs --recompute-only: QVOL (not started|\d+ records 2026-11-06 → \d{4}-\d{2}-\d{2})\)$/);
   // an honest record: three lines, anchored on the fake node
   const x = await honestRecord(3);
   const now = at('2099-02-04T12:00:00Z');
